@@ -510,7 +510,7 @@ export default function Auth({ setPage, showToast, initialMode }) {
           <div className="form-animated" style={{ width: "100%", maxWidth: 448, position: "relative", zIndex: 1 }}>
             {/* Logo */}
             <div style={{ textAlign: "center", marginBottom: 32 }}>
-              <img src="https://i.ibb.co/8gdkTHSp/login.png" alt="ExamPro Logo" style={{ width: 80, height: 80, borderRadius: 22, marginBottom: 20 }} />
+              <img src="https://i.ibb.co/8gdkTHSp/login.png" alt="FlexExams Logo" style={{ width: 80, height: 80, borderRadius: 22, marginBottom: 20, display: "inline"}} />
               <h1 style={{ fontSize: "clamp(24px, 3.5vw, 30px)", fontWeight: 900, marginBottom: 8 }}>
                 {mode === "login" ? <>Welcome Back, <span style={{ color: "var(--accent)" }}>Champion</span></> : <>Start Your <span style={{ color: "var(--accent)" }}>Journey</span> Today</>}
               </h1>
@@ -671,13 +671,13 @@ export default function Auth({ setPage, showToast, initialMode }) {
           <ParticleDots />
           <div style={{ textAlign: "center",  position: "relative", zIndex: 1 }}>
             <div style={{ marginBottom: 24 }}>
-              <img src="https://i.ibb.co/DPztDcgx/Chat-GPT-Image-Apr-26-2026-09-45-41-PM.png" alt="ExamPro" style={{ height: 100, objectFit: "cover" }} />
+              <img src="https://i.ibb.co/DPztDcgx/Chat-GPT-Image-Apr-26-2026-09-45-41-PM.png" alt="FlexExams" style={{ height: 100, objectFit: "cover",    display: "inline", }} />
             </div>
             <h3 style={{ fontSize: 28, fontWeight: 900, marginBottom: 10 }}>
               Study Smarter.<br /><span style={{ color: "var(--accent)" }}>Achieve Faster.</span>
             </h3>
             <p style={{ marginBottom: 28, fontSize: 14 }}>
-              ExamPro is engineered around your ambitions — adaptive practice, real-world certifications, and a community of 100K+ driven professionals.
+              FlexExams is engineered around your ambitions — adaptive practice, real-world certifications, and a community of 100K+ driven professionals.
             </p>
             {benefits.map((b, i) => (
               <div key={i} className="benefit-item">
