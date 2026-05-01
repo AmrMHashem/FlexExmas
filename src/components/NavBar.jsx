@@ -27,7 +27,7 @@ const NI = ({ n, s = 16 }) => {
 
 const LogoMark = React.memo(({ style = {}, size = 100 }) => (
   <img
-    src="https://i.ibb.co/DPztDcgx/Chat-GPT-Image-Apr-26-2026-09-45-41-PM.png"
+    src="https://res.cloudinary.com/duimhtfij/image/upload/f_auto,q_auto/FlexExams_nkmt1k"
     alt="Logo"
     width={90}
     height={90}
