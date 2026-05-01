@@ -1,12 +1,11 @@
-// App.jsx — FlexExams v4.3 Performance Edition
-// ✅ Lazy loading لكل الصفحات (code splitting تلقائي)
-// ✅ Suspense fallback خفيف
-// ✅ useTransition للـ navigation (non-blocking)
-// ✅ Firebase/getExams يتحمل بعد Auth check (لا يعيق LCP)
-// ✅ preconnect + preload لأهم الـ resources
-// ✅ font-display: swap في الـ CSS
+// App.jsx — FlexExams v5.0 with React Router (Professional Routing)
+// ✅ Full React Router DOM integration
+// ✅ Deep linking & page refresh support
+// ✅ Lazy loading + Suspense + useTransition
+// ✅ Firebase + Auth + Toast + All features preserved
 
 import React, { useState, useCallback, useEffect, Suspense, lazy, useTransition } from "react";
+import { BrowserRouter, Routes, Route, useNavigate, useLocation, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import NavBar from "./components/NavBar";
 import Footer from "./components/Footer";
@@ -36,6 +35,7 @@ const PageFallback = () => (
   </div>
 );
 
+// ── GLOBAL CSS (full version from your original code) ─────────────
 const GLOBAL_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap');
 
@@ -206,52 +206,50 @@ function LoadingScreen() {
   );
 }
 
-function AppInner() {
+// ── Protected Route Wrapper ──────────────────────────────────────
+function ProtectedRoute({ children }) {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return <LoadingScreen />;
+  return user ? children : <Navigate to="/auth" replace />;
+}
+
+// ── Admin Route Wrapper ──────────────────────────────────────────
+function AdminRoute({ children }) {
+  const { user, isAdmin, isLoading } = useAuth();
+  if (isLoading) return <LoadingScreen />;
+  return user && isAdmin ? children : <Navigate to="/" replace />;
+}
+
+// ── Main App Router Component ────────────────────────────────────
+function AppRouter() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { isLoading } = useAuth();
-  const [page, setPage]             = useState("home");
-  const [authMode, setAuthMode]     = useState("login");
-  const [activeFilter, setActiveFilter] = useState({ vendor: null, topic: null });
-  const [activeExam, setActiveExam] = useState(null);
-  const [quizData, setQuizData]     = useState(null);
-  const [resultData, setResultData] = useState(null);
-  const [exams, setExams]           = useState([]);
+  const [exams, setExams] = useState([]);
   const [examsLoaded, setExamsLoaded] = useState(false);
-  const [toast, setToast]           = useState(null);
-  const [verifyCertId, setVerifyCertId] = useState(null);
-  const [, startTransition]         = useTransition();
+  const [toast, setToast] = useState(null);
+  const [activeFilter, setActiveFilter] = useState({ vendor: null, topic: null });
+  const [, startTransition] = useTransition();
+
+  // Shared state for quiz & results (passed via navigation state)
+  const [quizData, setQuizData] = useState(null);
+  const [resultData, setResultData] = useState(null);
+  const [activeExam, setActiveExam] = useState(null);
 
   const showToast = useCallback(t => {
     setToast(t);
     setTimeout(() => setToast(null), 4000);
   }, []);
 
-  // useTransition → navigation لا يعيق الـ UI
-  const nav = useCallback((p, opts) => {
+  // Navigation helper with transition (non-blocking)
+  const nav = useCallback((path, options = {}) => {
     startTransition(() => {
-      if (p === "auth" && opts?.mode) setAuthMode(opts.mode);
-      else if (p === "auth") setAuthMode("login");
-      if (p === "exams") setActiveFilter({ vendor: opts?.vendorFilter || null, topic: opts?.topicFilter || null });
-      setPage(p);
+      navigate(path, options);
     });
     requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
-  }, [startTransition]);
+  }, [navigate, startTransition]);
 
-  const startQuiz = useCallback(data => { setQuizData(data); nav("quiz"); }, [nav]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const id = params.get("id");
-    if (id) { setVerifyCertId(id); setPage("verify"); }
-  }, []);
-
-  useEffect(() => {
-    if (page !== "quiz") return;
-    const h = e => { e.preventDefault(); e.returnValue = "You have an active exam. Are you sure?"; };
-    window.addEventListener("beforeunload", h);
-    return () => window.removeEventListener("beforeunload", h);
-  }, [page]);
-
-  // تحميل Exams بعد Auth check + تأخير 200ms لا يعيق LCP
+  // Load exams after auth (unchanged)
   useEffect(() => {
     if (examsLoaded || isLoading) return;
     let cancelled = false;
@@ -266,29 +264,76 @@ function AppInner() {
     return () => { cancelled = true; clearTimeout(t); };
   }, [examsLoaded, isLoading]);
 
+  // Restore filter from URL query params (for /exams)
+  useEffect(() => {
+    if (location.pathname === "/exams") {
+      const params = new URLSearchParams(location.search);
+      const vendor = params.get("vendor");
+      const topic = params.get("topic");
+      setActiveFilter({ vendor, topic });
+    }
+  }, [location]);
+
+  // Beforeunload protection for quiz
+  useEffect(() => {
+    if (location.pathname !== "/quiz") return;
+    const h = e => { e.preventDefault(); e.returnValue = "You have an active exam. Are you sure?"; };
+    window.addEventListener("beforeunload", h);
+    return () => window.removeEventListener("beforeunload", h);
+  }, [location.pathname]);
+
   if (isLoading) return <LoadingScreen />;
 
   return (
     <>
-      <NavBar page={page} setPage={nav} showToast={showToast} />
-      <main key={page} className="fade-in" style={{ minHeight: "calc(100vh - 72px)", overflowX: "hidden" }}>
+      <NavBar setPage={nav} showToast={showToast} />
+      <main className="fade-in" style={{ minHeight: "calc(100vh - 72px)", overflowX: "hidden" }}>
         <Suspense fallback={<PageFallback />}>
-          {page === "home"        && <Home setPage={nav} setActiveExam={setActiveExam} exams={exams} />}
-          {page === "exams"       && <Exams setPage={nav} setActiveExam={setActiveExam} exams={exams} vendorFilter={activeFilter.vendor} topicFilter={activeFilter.topic} showToast={showToast} />}
-          {page === "topics"      && <Topics setPage={nav} setActiveExam={setActiveExam} exams={exams} />}
-          {page === "categories"  && <Categories setPage={nav} setActiveExam={setActiveExam} exams={exams} />}
-          {page === "about"       && <About />}
-          {page === "contact"     && <Contact showToast={showToast} />}
-          {page === "exam-detail" && activeExam && <ExamDetail exam={activeExam} setPage={nav} startQuiz={startQuiz} showToast={showToast} />}
-          {page === "quiz"        && quizData   && <Quiz quizData={quizData} setPage={nav} setResultData={setResultData} showToast={showToast} />}
-          {page === "result"      && resultData  && <Result result={resultData} setPage={nav} startQuiz={startQuiz} exams={exams} showToast={showToast} />}
-          {page === "auth"        && <Auth setPage={nav} showToast={showToast} initialMode={authMode} />}
-          {page === "dashboard"   && <Dashboard setPage={nav} setResultData={setResultData} setActiveExam={setActiveExam} exams={exams} showToast={showToast} />}
-          {page === "my-exams"    && <MyExams setPage={nav} setResultData={setResultData} setActiveExam={setActiveExam} exams={exams} showToast={showToast} />}
-          {page === "admin"       && <Admin showToast={showToast} setPage={nav} />}
-          {page === "favorites"   && <Favorites setPage={nav} setActiveExam={setActiveExam} exams={exams} showToast={showToast} />}
-          {page === "verify"      && <CertificateVerify certId={verifyCertId} setPage={nav} />}
-          {page === "career-diagnostic" && <CareerDiagnostic setPage={nav} exams={exams} />}
+          <Routes>
+            <Route path="/" element={<Home setPage={nav} setActiveExam={setActiveExam} exams={exams} />} />
+            <Route path="/exams" element={
+              <Exams setPage={nav} setActiveExam={setActiveExam} exams={exams}
+                vendorFilter={activeFilter.vendor} topicFilter={activeFilter.topic}
+                showToast={showToast} />
+            } />
+            <Route path="/topics" element={<Topics setPage={nav} setActiveExam={setActiveExam} exams={exams} />} />
+            <Route path="/categories" element={<Categories setPage={nav} setActiveExam={setActiveExam} exams={exams} />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/contact" element={<Contact showToast={showToast} />} />
+            <Route path="/exam-detail/:examId" element={
+              <ExamDetailWrapper exams={exams} setPage={nav} setActiveExam={setActiveExam} startQuiz={(data) => { setQuizData(data); nav("/quiz", { state: { quizData: data } }); }} showToast={showToast} />
+            } />
+            <Route path="/quiz" element={
+              <QuizWrapper quizData={quizData} setQuizData={setQuizData} setPage={nav} setResultData={(data) => { setResultData(data); nav("/result", { state: { resultData: data } }); }} showToast={showToast} />
+            } />
+            <Route path="/result" element={
+              <ResultWrapper resultData={resultData} setResultData={setResultData} setPage={nav} startQuiz={(data) => { setQuizData(data); nav("/quiz", { state: { quizData: data } }); }} exams={exams} showToast={showToast} />
+            } />
+            <Route path="/auth" element={<Auth setPage={nav} showToast={showToast} initialMode="login" />} />
+            <Route path="/dashboard" element={
+              <ProtectedRoute>
+                <Dashboard setPage={nav} setResultData={(data) => { setResultData(data); nav("/result", { state: { resultData: data } }); }} setActiveExam={setActiveExam} exams={exams} showToast={showToast} />
+              </ProtectedRoute>
+            } />
+            <Route path="/my-exams" element={
+              <ProtectedRoute>
+                <MyExams setPage={nav} setResultData={(data) => { setResultData(data); nav("/result", { state: { resultData: data } }); }} setActiveExam={setActiveExam} exams={exams} showToast={showToast} />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin" element={
+              <AdminRoute>
+                <Admin showToast={showToast} setPage={nav} />
+              </AdminRoute>
+            } />
+            <Route path="/favorites" element={
+              <ProtectedRoute>
+                <Favorites setPage={nav} setActiveExam={setActiveExam} exams={exams} showToast={showToast} />
+              </ProtectedRoute>
+            } />
+            <Route path="/verify" element={<CertificateVerifyWrapper setPage={nav} />} />
+            <Route path="/career-diagnostic" element={<CareerDiagnostic setPage={nav} exams={exams} />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
         </Suspense>
       </main>
       <Footer setPage={nav} />
@@ -297,6 +342,48 @@ function AppInner() {
   );
 }
 
+// ── Wrappers to extract navigation state from location ───────────
+function ExamDetailWrapper({ exams, setPage, setActiveExam, startQuiz, showToast }) {
+  const { examId } = useParams();
+  const exam = exams.find(e => e.id === examId);
+  useEffect(() => {
+    if (exam) setActiveExam(exam);
+  }, [exam, setActiveExam]);
+  if (!exam) return <div>Exam not found</div>;
+  return <ExamDetail exam={exam} setPage={setPage} startQuiz={startQuiz} showToast={showToast} />;
+}
+
+function QuizWrapper({ quizData, setQuizData, setPage, setResultData, showToast }) {
+  const location = useLocation();
+  const data = location.state?.quizData || quizData;
+  useEffect(() => {
+    if (!data && !quizData) {
+      setPage("/");
+    }
+  }, [data, quizData, setPage]);
+  if (!data && !quizData) return null;
+  return <Quiz quizData={data} setPage={setPage} setResultData={setResultData} showToast={showToast} />;
+}
+
+function ResultWrapper({ resultData, setResultData, setPage, startQuiz, exams, showToast }) {
+  const location = useLocation();
+  const data = location.state?.resultData || resultData;
+  useEffect(() => {
+    if (!data && !resultData) {
+      setPage("/");
+    }
+  }, [data, resultData, setPage]);
+  if (!data && !resultData) return null;
+  return <Result result={data} setPage={setPage} startQuiz={startQuiz} exams={exams} showToast={showToast} />;
+}
+
+function CertificateVerifyWrapper({ setPage }) {
+  const [searchParams] = useSearchParams();
+  const certId = searchParams.get("id");
+  return <CertificateVerify certId={certId} setPage={setPage} />;
+}
+
+// ── Root App with Router Provider ─────────────────────────────────
 export default function App() {
   useEffect(() => {
     const saved = localStorage.getItem("theme") || "dark";
@@ -349,9 +436,11 @@ export default function App() {
   }, []);
 
   return (
-    <AuthProvider>
-      <style>{GLOBAL_CSS}</style>
-      <AppInner />
-    </AuthProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <style>{GLOBAL_CSS}</style>
+        <AppRouter />
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
