@@ -25,7 +25,7 @@ const NI = ({ n, s = 16 }) => {
   return <span style={{ display: "flex", alignItems: "center" }}>{icons[n] || null}</span>;
 };
 
-const LogoMark = ({ style = {} }) => (
+const LogoMark = React.memo(({ style = {}, size = 100 }) => (
   <img
     src="https://i.ibb.co/DPztDcgx/Chat-GPT-Image-Apr-26-2026-09-45-41-PM.png"
     alt="Logo"
@@ -33,7 +33,7 @@ const LogoMark = ({ style = {} }) => (
     height={90}
     style={{ display: "block", objectFit: "contain", ...style }}
   />
-);
+));
 
 // ─── الروابط الأساسية في الـ Bottom Tab Bar (5 كحد أقصى) ──────────────────
 const PRIMARY_TABS = [
@@ -62,7 +62,7 @@ const DESKTOP_LINKS = [
   { p: "contact",    ic: "send",   lb: "Contact" },
 ];
 
-export default function NavBar({ page, setPage, showToast }) {
+const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
   const { user, profile, isAdmin, isLoading, logout, refreshProfile } = useAuth();
   const [refreshing, setRefreshing]   = useState(false);
   const [scrolled, setScrolled]       = useState(false);
@@ -71,7 +71,15 @@ export default function NavBar({ page, setPage, showToast }) {
 
   // ── scroll shadow ───────────────────────────────────────────────────────
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 10);
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        setScrolled(window.scrollY > 10);
+        ticking = false;
+      });
+    };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
@@ -89,8 +97,12 @@ export default function NavBar({ page, setPage, showToast }) {
     const handler = (e) => {
       if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false);
     };
-    setTimeout(() => document.addEventListener("pointerdown", handler), 0);
-    return () => document.removeEventListener("pointerdown", handler);
+    // استخدم setTimeout مع cleanup لتجنب تسرب الـ event listener
+    const id = setTimeout(() => document.addEventListener("pointerdown", handler), 0);
+    return () => {
+      clearTimeout(id);
+      document.removeEventListener("pointerdown", handler);
+    };
   }, [moreOpen]);
 
   // ── helpers ─────────────────────────────────────────────────────────────
@@ -101,12 +113,13 @@ export default function NavBar({ page, setPage, showToast }) {
   };
 
   const goToAuth = (mode = "login") => {
+    // تأكد من أن setPage يقبل وسيطين (اسم الصفحة وكائن الخيارات) ، إذا لم يفعل فمرر فقط "auth"
     setPage("auth", { mode });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleLogout = async () => {
-    await logout();
+    await logout(); // انتظر اكتمال تسجيل الخروج
     setPage("home");
     showToast({ msg: "Signed out successfully. See you soon!", type: "info" });
   };
@@ -121,7 +134,9 @@ export default function NavBar({ page, setPage, showToast }) {
     });
   };
 
-  const displayName = profile?.name || user?.displayName || "U";
+  // استخدم الحرف الأول بعد إزالة الفراغات الزائدة
+  const displayName = (profile?.name || user?.displayName || "U").trim();
+  const firstChar = displayName[0] || "U";
 
   // ── active tab: "more" يضيء لو الصفحة الحالية من MORE_ITEMS ────────────
   const morePages   = MORE_ITEMS.map((m) => m.p);
@@ -301,7 +316,7 @@ export default function NavBar({ page, setPage, showToast }) {
                   fontSize: 13, fontWeight: 800, color: "#fff",
                   background: isAdmin ? "linear-gradient(135deg,#F59E0B,#D97706)" : "var(--gradient-accent)",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                }}>{displayName[0].toUpperCase()}</div>
+                }}>{firstChar}</div>
                 <span className="hide-small" style={{ fontSize: 13 }}>Account</span>
               </button>
 
@@ -612,6 +627,11 @@ export default function NavBar({ page, setPage, showToast }) {
         .auth-label-full { display: inline; }
         .auth-label-short { display: none; }
 
+        /* ── Default hide desktop-only elements (shown only on desktop) ── */
+        .desktop-only {
+          display: none;
+        }
+
         /* ── Desktop: إخفاء الـ Bottom Tab Bar ── */
         .bottom-tab-bar {
           display: none;
@@ -684,7 +704,7 @@ export default function NavBar({ page, setPage, showToast }) {
           }
         }
 
-        /* ── Desktop: إخفاء كل حاجة خاصة بالموبايل ── */
+        /* ── Desktop: إظهار كل حاجة خاصة بالـ desktop ── */
         @media (min-width: 769px) {
           .desktop-links {
             display: flex !important;
@@ -704,4 +724,6 @@ export default function NavBar({ page, setPage, showToast }) {
       `}</style>
     </>
   );
-}
+});
+
+export default NavBar;

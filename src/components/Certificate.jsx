@@ -51,7 +51,7 @@ export default function Certificate({ user, exam, score, date, mode, passed, use
   const handleDownloadPDF = async () => {
     setDownloading(true); setDlType("pdf");
     try {
-      await generatePDFCertificate({ examTitle, userName, score: displayScore, date: displayDate, certId, examMode: mode || "examSimulation", passed: passed !== false, filename: `ExamPro_Certificate_${examFilename}` });
+      await generatePDFCertificate({ examTitle, userName, score: displayScore, date: displayDate, certId, examMode: mode || "examSimulation", passed: passed !== false, filename: `FlexExams_Certificate_${examFilename}` });
     } catch (e) { console.error(e); }
     setDownloading(false); setDlType(null);
   };

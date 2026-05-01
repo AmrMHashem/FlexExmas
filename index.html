@@ -10,21 +10,16 @@
     <title>FlexExams – #1 IT Certification Practice Tests | AWS, CCNA, Security+, PMP</title>
 
     <meta name="description" content="Pass your IT certification exam on the first try. FlexExams offers real exam-style questions, timed mock tests, AI explanations, and verified certificates for AWS, CCNA, Security+, PMP, CompTIA, Azure and 50+ certifications." />
-
     <meta name="keywords" content="AWS certification practice test, CCNA exam questions, Security+ practice exam, PMP exam simulator, CompTIA practice test, Azure certification questions, IT certification prep, exam simulator online, real exam questions" />
-
     <meta name="author" content="FlexExams" />
     <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
     <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large" />
-
     <meta name="bingbot" content="index, follow" />
     <meta name="language" content="English" />
     <meta name="rating" content="general" />
 
     <!-- Canonical -->
     <link rel="canonical" href="https://www.flexexams.com/" />
-
-    <!-- Hreflang -->
     <link rel="alternate" hreflang="en" href="https://www.flexexams.com/" />
     <link rel="alternate" hreflang="x-default" href="https://www.flexexams.com/" />
 
@@ -49,36 +44,44 @@
     <meta name="twitter:image" content="https://www.flexexams.com/og-image.png" />
 
     <!-- ═══════════════════════════════════════════
-         PERFORMANCE OPTIMIZATION
+         PERFORMANCE — RESOURCE HINTS
     ══════════════════════════════════════════════ -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
 
-    <link rel="dns-prefetch" href="https://firestore.googleapis.com" />
-    <link rel="dns-prefetch" href="https://www.google-analytics.com" />
+    <link rel="dns-prefetch" href="//i.ibb.co" />
+    <link rel="dns-prefetch" href="//i.postimg.cc" />
+    <link rel="dns-prefetch" href="//firebase.googleapis.com" />
+    <link rel="dns-prefetch" href="//www.google-analytics.com" />
 
+    <!-- ═══════════════════════════════════════════
+         FONT LOADING — NON-BLOCKING
+    ══════════════════════════════════════════════ -->
     <link rel="preload" as="style"
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap" />
-
     <link rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap"
       media="print" onload="this.media='all'" />
+    <noscript>
+      <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap" />
+    </noscript>
 
     <!-- ═══════════════════════════════════════════
-         THEME
+         THEME & PWA
     ══════════════════════════════════════════════ -->
     <meta name="theme-color" content="#0d1223" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-    <!-- ICONS -->
     <link rel="icon" href="/favicon.svg" />
 
     <!-- ═══════════════════════════════════════════
-         STRUCTURED DATA (CLEAN VERSION)
+         STRUCTURED DATA
     ══════════════════════════════════════════════ -->
-
-    <!-- Organization -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -91,7 +94,6 @@
     }
     </script>
 
-    <!-- Website -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -106,7 +108,6 @@
     }
     </script>
 
-    <!-- Software Application -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -129,23 +130,59 @@
     </script>
 
     <!-- ═══════════════════════════════════════════
-         CRITICAL CSS (NO CLS)
+         CRITICAL CSS — بدون تعديلات على حجم الصور
     ══════════════════════════════════════════════ -->
     <style>
-      html { scroll-behavior: smooth; }
+      /* Reset أساسي */
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html { scroll-behavior: smooth; overflow-x: hidden; }
+
       body {
-        margin: 0;
-        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         background: #0d1223;
         color: #eef1fb;
+        min-height: 100vh;
         overflow-x: hidden;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
       }
+
+      [data-theme="light"] body {
+        background: #ffffff;
+        color: #0f172a;
+      }
+
       #root { min-height: 100vh; }
+
+      /* تم إزالة max-width و height: auto — الصور تعرض بحجمها الطبيعي، مع منع الفراغات السفلية فقط */
+      img { display: block; }
+
+      #root:empty::after {
+        content: '';
+        display: block;
+        width: 100%;
+        height: 100vh;
+        background: #0d1223;
+      }
+      [data-theme="light"] #root:empty::after {
+        background: #ffffff;
+      }
     </style>
+
+    <script>
+      (function() {
+        try {
+          var t = localStorage.getItem('theme') || 'dark';
+          document.documentElement.setAttribute('data-theme', t);
+          var tc = document.querySelector('meta[name="theme-color"]');
+          if (tc) tc.setAttribute('content', t === 'dark' ? '#0d1223' : '#ffffff');
+        } catch(e) {}
+      })();
+    </script>
   </head>
 
   <body>
     <div id="root"></div>
-<script type="module" src="./src/main.jsx"></script>
+    <script type="module" src="./src/main.jsx"></script>
   </body>
 </html>
