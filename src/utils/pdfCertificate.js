@@ -9,8 +9,8 @@
  * ✅ تصدير PNG إضافي
  */
 
-import { jsPDF } from "jspdf";
-import QRCode    from "qrcode";
+// jsPDF و QRCode يُحمَّلان dynamically لتقليل initial bundle
+// لا تُوجد static imports هنا — كل شيء يُحمَّل عند الحاجة فقط
 
 // ─── ثوابت ───────────────────────────────────────────────────────
 const CW      = 1056;
@@ -126,6 +126,7 @@ function textShadow(ctx, blur = 7) {
 
 async function makeQRImage(text, size = 110) {
   try {
+    const QRCode = (await import("qrcode")).default;
     const dataURL = await QRCode.toDataURL(text, {
       width: size, margin: 1,
       color: { dark: "#0f172a", light: "#ffffff" },
@@ -315,6 +316,8 @@ export async function generatePDFCertificate(opts) {
   }
 
   try {
+    // Dynamic import — لا يُحمَّل jsPDF إلا عند الحاجة
+    const { jsPDF } = await import("jspdf");
     const canvas = document.createElement("canvas");
     await drawCertificateOnCanvas(canvas, { examTitle, userName, score, date, certId });
 
