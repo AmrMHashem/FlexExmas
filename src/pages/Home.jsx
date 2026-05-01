@@ -1,7 +1,9 @@
-// pages/Home.jsx — v4.0 Performance Edition
+// pages/Home.jsx — v4.0 Performance Edition (معدل للهواتف)
 // ✅ لا استدعاء getEnrolledCountForExam — يستخدم propExams مباشرة
 // ✅ vendors/topics من propExams (لا Firestore إضافي)
 // ✅ انيميشن تدريجي خفيف مع Intersection Observer
+// ✅ تحسين كرت Exam of the Day للهواتف (عرض عمودي بدل الأفقي)
+
 import React from "react";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useAuth } from "../hooks/useAuth";
@@ -94,7 +96,8 @@ const PI = ({ type, size = 24, color = "var(--accent)" }) => {
   };
   return M[type] || M.sparkle;
 };
-// ─── Hero Illustration (معزول عن TESTIMONIALS) ────────────────────
+
+// HeroIllustration (معزول)
 const HeroIllustration = React.memo(function HeroIllustration() {
   const [loaded, setLoaded] = React.useState(false);
   return (
@@ -104,14 +107,12 @@ const HeroIllustration = React.memo(function HeroIllustration() {
         width: "100%", 
         maxWidth: 560, 
         margin: "0 auto",
-        isolation: "isolate",           // 🛡️ عزل السياق
-         transform: "translateZ(0)",        // 🚀 تحسين الأداء ومنع التأثيرات الخارجية
-        willChange: "transform",        // تحسين الأداء
-        
+        isolation: "isolate",           
+        transform: "translateZ(0)",        
+        willChange: "transform",        
       }}
     >
       <style>{`
-        /* إضافة نطاق محلي للأنيميشن باستخدام أسماء فريدة لتجنب التعارض */
         @keyframes heroFloatCard1{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-10px) rotate(-2deg)}}
         @keyframes heroFloatCard2{0%,100%{transform:translateY(0) rotate(2deg)}50%{transform:translateY(-7px) rotate(2deg)}}
         @keyframes heroFloatCard3{0%,100%{transform:translateY(-3px) rotate(-1deg)}50%{transform:translateY(7px) rotate(-1deg)}}
@@ -152,7 +153,7 @@ const HeroIllustration = React.memo(function HeroIllustration() {
       <div style={{ 
         position:"absolute", top:0, left:0, right:0, bottom:0, 
         perspective:"1200px", pointerEvents:"none", zIndex:10,
-        isolation: "isolate"  // عزل إضافي
+        isolation: "isolate" 
       }}>
         <div style={{ 
           position:"relative", width:"100%", height:"100%", 
@@ -230,6 +231,7 @@ const HeroIllustration = React.memo(function HeroIllustration() {
     </div>
   );
 });
+
 const TESTIMONIALS = [
   {
     name: "Michael Chen",
@@ -368,7 +370,7 @@ function HorizontalTestimonialsStrip() {
 
     setAnimating(true);
     strip.style.transition = 'transform 0.55s cubic-bezier(0.25, 0.1, 0.25, 1)';
-    strip.style.transform = `translateX(${shift}px)`; // +shift للتحريك لليمين
+    strip.style.transform = `translateX(${shift}px)`;
 
     const handleTransitionEnd = () => {
       strip.removeEventListener('transitionend', handleTransitionEnd);
@@ -391,9 +393,8 @@ function HorizontalTestimonialsStrip() {
     return TESTIMONIALS[idx];
   };
 
-  // تعديل التوزيع: اليسار = +1 (التالي)، النص = 0، اليمين = -1 (السابق)
   const positions = ['left', 'center', 'right'];
-  const offsets = [1, 0, -1]; // ترتيب modified
+  const offsets = [1, 0, -1];
 
   return (
     <div style={{ width: "100%", overflow: "hidden" }}>
@@ -432,7 +433,6 @@ function HorizontalTestimonialsStrip() {
                 gap: 10,
               }}
             >
-              {/* Avatar & Name */}
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div
                   style={{
@@ -472,7 +472,6 @@ function HorizontalTestimonialsStrip() {
                     </span>
                   </div>
                 </div>
-                {/* Stars */}
                 <div style={{ display: "flex", gap: 1 }}>
                   {Array(5)
                     .fill(0)
@@ -490,7 +489,6 @@ function HorizontalTestimonialsStrip() {
                 </div>
               </div>
 
-              {/* Quote */}
               <p
                 style={{
                   fontSize: 12,
@@ -507,7 +505,6 @@ function HorizontalTestimonialsStrip() {
                 "{t.text}"
               </p>
 
-              {/* Verified badge – center only */}
               {isCenter && (
                 <div
                   style={{
@@ -546,7 +543,6 @@ function StatCard({ num, suffix, label, iconType, accentColor }) {
   );
 }
 
-// ✅ ExamCard بـ Intersection Observer للأنيميشن
 const ExamCard = React.memo(function ExamCard({ exam, onClick, isFeatured, isFavorite, onToggleFavorite, user, isEnrolled }) {
   const color = exam.color || "#4f46e5";
   const [hovered, setHovered] = useState(false);
@@ -668,21 +664,18 @@ function TopicCardHome({ topic, examCount, onViewAll }) {
   );
 }
 
-// ════════════════════════════════════════════
 export default function Home({ setPage, setActiveExam, exams: propExams = [], showToast }) {
   const { user, profile } = useAuth();
-  // ✅ لا getExams() — نستخدم propExams مباشرة من App.jsx
   const exams = useMemo(() => propExams.filter(e => e.isActive !== false), [propExams]);
 
   const [vendors, setVendors] = useState([]);
   const [topics, setTopics] = useState([]);
-  const [metaLoading, setMetaLoading] = useState(true); // فقط vendors/topics
+  const [metaLoading, setMetaLoading] = useState(true);
   const [visibleCount, setVisibleCount] = useState(6);
   const [favorites, setFavorites] = useState([]);
   const [enrolledExamIds, setEnrolledExamIds] = useState([]);
   const hasMergedRef = useRef(false);
 
-  // ✅ جلب vendors + topics فقط (خفيف جداً)
   useEffect(() => {
     let cancelled = false;
     Promise.all([
@@ -694,7 +687,6 @@ export default function Home({ setPage, setActiveExam, exams: propExams = [], sh
     return () => { cancelled = true; };
   }, []);
 
-  // ✅ favorites + enrollments
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -731,22 +723,19 @@ export default function Home({ setPage, setActiveExam, exams: propExams = [], sh
     } catch { showToast?.({ msg:"Could not update favorites", type:"error" }); }
   }, [user, showToast]);
 
-  // ✅ حسابات من propExams (لا Firestore)
-const sortedExams = useMemo(() => [...exams].sort((a,b)=>(b.attempts||0)-(a.attempts||0)), [exams]);
-const examOfTheDay = sortedExams[0] || null;
+  const sortedExams = useMemo(() => [...exams].sort((a,b)=>(b.attempts||0)-(a.attempts||0)), [exams]);
+  const examOfTheDay = sortedExams[0] || null;
 
-// ✅ استبعاد examOfTheDay نهائياً من القائمة المعروضة في Most Popular
-const popularExams = useMemo(() => {
-  if (!examOfTheDay) return sortedExams.slice(0, visibleCount);
-  // تصفية قوية باستخدام مقارنة id و title احتياطاً
-  const filtered = sortedExams.filter(exam => exam.id !== examOfTheDay.id);
-  return filtered.slice(0, visibleCount);
-}, [sortedExams, examOfTheDay, visibleCount]);
+  const popularExams = useMemo(() => {
+    if (!examOfTheDay) return sortedExams.slice(0, visibleCount);
+    const filtered = sortedExams.filter(exam => exam.id !== examOfTheDay.id);
+    return filtered.slice(0, visibleCount);
+  }, [sortedExams, examOfTheDay, visibleCount]);
 
-// ✅ للتأكد من أن examOfTheDay لا يظهر أبداً (إضافة حماية وقت العرض)
-const safePopularExams = useMemo(() => {
-  return popularExams.filter(exam => examOfTheDay ? exam.id !== examOfTheDay.id : true);
-}, [popularExams, examOfTheDay]);
+  const safePopularExams = useMemo(() => {
+    return popularExams.filter(exam => examOfTheDay ? exam.id !== examOfTheDay.id : true);
+  }, [popularExams, examOfTheDay]);
+
   const vendorsWithCounts = useMemo(() => vendors.map(v=>({...v, count:exams.filter(e=>(e.vendor||"").toLowerCase()===v.name.toLowerCase()).length})).filter(v=>v.count>0), [vendors, exams]);
   const topicsWithCounts = useMemo(() => topics.map(t=>({...t, count:exams.filter(e=>(e.topic||"").toLowerCase()===t.name.toLowerCase()).length})).filter(t=>t.count>0), [topics, exams]);
 
@@ -759,7 +748,6 @@ const safePopularExams = useMemo(() => {
     { iconType:"infinity", color:"#0891b2", title:"Unlimited Practice, Forever", desc:"No daily caps, no paywalled retakes. Practice as many times as needed until you feel bulletproof." },
   ];
 
-  // نعرض الصفحة فوراً — لا loading screen
   return (
     <div style={{ background:"var(--bg)", minHeight:"100vh", overflowX:"hidden", }}>
       <style>{`
@@ -770,41 +758,63 @@ const safePopularExams = useMemo(() => {
         @keyframes bgOrb3{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(50px,70px) scale(1.12)}}
         @keyframes iconFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
         @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms !important;transition-duration:0.01ms !important}}
-       /* النسخة المعدلة */
-@media(max-width:768px){
-    .tstrip-outer{padding:0 16px!important}
-    .hero-grid-wrap{padding:48px 16px 44px!important}
-    .popular-exams-grid{grid-template-columns:1fr!important;gap:14px!important}
-    .stats-grid{grid-template-columns:repeat(2,1fr)!important}
-    .features-grid{grid-template-columns:repeat(2,1fr)!important}
-    /* إضافة: منع overflow للشبكات */
-    .vendors-grid, .topics-grid {
-        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
-        gap: 16px !important;
-        overflow-x: hidden !important;
-    }
-}
-@media(max-width:480px){
-    .tstrip-outer{display:none!important}
-    .hero-grid-wrap{padding:36px 16px 32px!important}
-    .features-grid{grid-template-columns:1fr!important}
-    /* تعديل الأعمدة لعمودين بعرض مناسب */
-    .vendors-grid, .topics-grid {
-        grid-template-columns: repeat(2, 1fr) !important;
-        gap: 12px !important;
-        overflow-x: hidden !important;
-    }
-}
-@media(max-width:360px){
-    /* على الشاشات الصغيرة جداً: عمود واحد */
-    .vendors-grid, .topics-grid {
-        grid-template-columns: 1fr !important;
-        gap: 12px !important;
-    }
-}
+
+        @media(max-width:768px){
+          .tstrip-outer{padding:0 16px!important}
+          .hero-grid-wrap{padding:48px 16px 44px!important}
+          .popular-exams-grid{grid-template-columns:1fr!important;gap:14px!important}
+          .stats-grid{grid-template-columns:repeat(2,1fr)!important}
+          .features-grid{grid-template-columns:repeat(2,1fr)!important}
+          .vendors-grid, .topics-grid {
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+            gap: 16px !important;
+            overflow-x: hidden !important;
+          }
+          /* تعديل كرت Exam of the Day للهواتف */
+          .exam-day-card {
+            flex-direction: column !important;
+          }
+          .exam-day-thumb {
+            width: 100% !important;
+            min-width: unset !important;
+            height: 160px !important;
+            border-right: none !important;
+            border-bottom: 2px solid rgba(139,92,246,0.3) !important;
+          }
+          .exam-day-body {
+            padding: 24px 20px !important;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 20px !important;
+          }
+          .exam-day-enroll {
+            align-self: stretch !important;
+            margin-left: 0 !important;
+          }
+          .exam-day-enroll > div {
+            width: 100% !important;
+            justify-content: center !important;
+          }
+        }
+        @media(max-width:480px){
+          .tstrip-outer{display:none!important}
+          .hero-grid-wrap{padding:36px 16px 32px!important}
+          .features-grid{grid-template-columns:1fr!important}
+          .vendors-grid, .topics-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 12px !important;
+            overflow-x: hidden !important;
+          }
+        }
+        @media(max-width:360px){
+          .vendors-grid, .topics-grid {
+            grid-template-columns: 1fr !important;
+            gap: 12px !important;
+          }
+        }
       `}</style>
 
-      {/* ══════ HERO ══════ */}
+      {/* HERO SECTION */}
       <section className="hero-grid-wrap" style={{ borderBottom:"1px solid var(--border)", padding:"80px clamp(20px,6vw,60px) 80px", position:"relative", overflow:"hidden", background:"var(--gradient-hero)" }}>
         <div style={{ position:"absolute", inset:0, pointerEvents:"none", overflow:"hidden", zIndex:0 }}>
           <div style={{ position:"absolute", inset:0, backgroundImage:"linear-gradient(rgba(99,102,241,0.09) 1px, transparent 1px),linear-gradient(90deg, rgba(99,102,241,0.09) 1px, transparent 1px)", backgroundSize:"60px 60px", animation:"gridMove 8s linear infinite" }} />
@@ -849,26 +859,14 @@ const safePopularExams = useMemo(() => {
         </div>
       </section>
 
-      {/* ══════ TESTIMONIALS STRIP (معزول تماماً عن Hero) ══════ */}
-      <div
-        className="tstrip-outer"
-        style={{
-          width: "100%",
-          overflow: "hidden",
-          padding: "0 clamp(20px,6vw,60px)",
-          marginTop: "-1px",          /* يلتصق بنهاية الـ Hero بدون gap */
-          boxSizing: "border-box",
-          /* عزل كامل: لا transform، لا will-change، لا animation تأثر من الأعلى */
-          isolation: "isolate",
-          contain: "layout style",
-        }}
-      >
+      {/* TESTIMONIALS STRIP */}
+      <div className="tstrip-outer" style={{ width: "100%", overflow: "hidden", padding: "0 clamp(20px,6vw,60px)", marginTop: "-1px", boxSizing: "border-box", isolation: "isolate", contain: "layout style" }}>
         <div style={{ maxWidth: 1280, margin: "0 auto", paddingTop: 32, paddingBottom: 32 }}>
           <HorizontalTestimonialsStrip />
         </div>
       </div>
 
-      {/* ══════ STATS ══════ */}
+      {/* STATS */}
       <section style={{ borderBottom:"2px solid var(--border)", padding:"64px clamp(20px,5vw,60px)" }}>
         <div style={{ maxWidth:1200, margin:"0 auto" }}>
           <div className="stats-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))", gap:20 }}>
@@ -880,7 +878,7 @@ const safePopularExams = useMemo(() => {
         </div>
       </section>
 
-      {/* ══════ FREE PREVIEW BANNER ══════ */}
+      {/* FREE PREVIEW BANNER */}
       {!user && (
         <div style={{ padding:"36px clamp(20px,5vw,60px) 0" }}>
           <div className="free-banner" style={{ maxWidth:1200, margin:"0 auto", background:"var(--accent-soft)", border:"2px solid var(--accent)", borderRadius:16, padding:"28px 36px", display:"flex", alignItems:"center", gap:24, flexWrap:"wrap" }}>
@@ -896,14 +894,14 @@ const safePopularExams = useMemo(() => {
         </div>
       )}
 
-      {/* ══════ CAREER DIAGNOSTIC BANNER ══════ */}
+      {/* CAREER DIAGNOSTIC BANNER */}
       <div style={{ padding: "48px clamp(20px,5vw,60px) 0" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
           <DiagnosticCard setPage={setPage} />
         </div>
       </div>
 
-      {/* ══════ EXAM OF THE DAY ══════ */}
+      {/* EXAM OF THE DAY (معدل) */}
       {examOfTheDay && (
         <div style={{ padding:"64px clamp(20px,5vw,60px) 0" }}>
           <div style={{ maxWidth:1200, margin:"0 auto" }}>
@@ -916,10 +914,10 @@ const safePopularExams = useMemo(() => {
               const isEnrolled = enrolledExamIds.includes(exam.id);
               const btnColor = isEnrolled?"#059669":color;
               return (
-                <div onClick={()=>handleExamClick(exam)} style={{ background:`linear-gradient(145deg, ${color}08, var(--bg2))`, border:`2.5px solid ${color}40`, borderRadius:20, cursor:"pointer", display:"flex", transition:"all 0.3s", position:"relative", overflow:"hidden", minHeight:200, boxShadow:"var(--card-shadow)" }}
+                <div onClick={()=>handleExamClick(exam)} className="exam-day-card" style={{ background:`linear-gradient(145deg, ${color}08, var(--bg2))`, border:`2.5px solid ${color}40`, borderRadius:20, cursor:"pointer", display:"flex", transition:"all 0.3s", position:"relative", overflow:"hidden", minHeight:200, boxShadow:"var(--card-shadow)" }}
                   onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-4px)";e.currentTarget.style.borderColor=color;e.currentTarget.style.boxShadow=`0 24px 56px ${color}20`;}}
                   onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.borderColor=`${color}40`;e.currentTarget.style.boxShadow="var(--card-shadow)";}}>
-                  <div className="exam-day-thumb" style={{ width:"25%", minWidth:180, background:`${color}10`, display:"flex", alignItems:"center", justifyContent:"center", borderRight:`2.5px solid ${color}30`, position:"relative", overflow:"hidden", flexShrink:0 }}>
+                  <div className="exam-day-thumb" style={{ width:"35%", minWidth:180, background:`${color}10`, display:"flex", alignItems:"center", justifyContent:"center", borderRight:`2.5px solid ${color}30`, position:"relative", overflow:"hidden", flexShrink:0 }}>
                     {exam.image?<img src={exam.image} alt={exam.title} loading="lazy" style={{ width:"100%", height:"100%", objectFit:"cover", position:"absolute", inset:0 }} />:<div style={{ width:100, height:100, borderRadius:24, background:`${color}10`, border:`2.5px solid ${color}40`, display:"flex", alignItems:"center", justifyContent:"center" }}><PI type="award" size={52} color={color} /></div>}
                   </div>
                   <div className="exam-day-body" style={{ flex:1, padding:"36px 40px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:"30px" }}>
@@ -946,7 +944,7 @@ const safePopularExams = useMemo(() => {
         </div>
       )}
 
-      {/* ══════ MOST POPULAR EXAMS ══════ */}
+      {/* MOST POPULAR EXAMS */}
       <div id="exams-sec" className="section-pad" style={{ padding:"64px clamp(20px,5vw,60px)" }}>
         <div style={{ maxWidth:1200, margin:"0 auto" }}>
           <div style={{ marginBottom:40, display:"flex", justifyContent:"space-between", alignItems:"flex-end", flexWrap:"wrap", gap:16 }}>
@@ -987,7 +985,7 @@ const safePopularExams = useMemo(() => {
         </div>
       </div>
 
-      {/* ══════ VENDORS ══════ */}
+      {/* VENDORS */}
       {vendorsWithCounts.length > 0 && (
         <section style={{ borderTop:"2px solid var(--border)", borderBottom:"2px solid var(--border)", padding:"72px clamp(20px,5vw,60px)" }}>
           <div style={{ maxWidth:1200, margin:"0 auto" }}>
@@ -996,7 +994,7 @@ const safePopularExams = useMemo(() => {
               <h2 style={{ fontSize:"clamp(24px,3.5vw,38px)", fontWeight:900, color:"var(--text)", letterSpacing:"-1.5px", marginBottom:12 }}>The World's Most In-Demand Providers</h2>
               <p style={{ fontSize:15, color:"var(--text2)", maxWidth:500, margin:"0 auto" }}>Filter by your target vendor and go straight to what matters.</p>
             </div>
-            <div className="vendors-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(110px,1fr))", gap:"clamp(16px,3vw,45px)",  justifyContent:"center"}}>
+            <div className="vendors-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(110px,1fr))", gap:"clamp(16px,3vw,45px)", justifyContent:"center"}}>
               {vendorsWithCounts.map((vendor,i)=>(
                 <div key={vendor.id} className={`fade-up delay-${Math.min(i+1,6)}`}>
                   <VendorCard vendor={vendor} examCount={vendor.count} onViewAll={()=>setPage("exams",{vendorFilter:vendor.name})} />
@@ -1007,7 +1005,7 @@ const safePopularExams = useMemo(() => {
         </section>
       )}
 
-      {/* ══════ TOPICS ══════ */}
+      {/* TOPICS */}
       {topicsWithCounts.length > 0 && (
         <section style={{ borderBottom:"2px solid var(--border)", padding:"72px clamp(20px,5vw,60px)" }}>
           <div style={{ maxWidth:1200, margin:"0 auto" }}>
@@ -1016,7 +1014,7 @@ const safePopularExams = useMemo(() => {
               <h2 style={{ fontSize:"clamp(24px,3.5vw,38px)", fontWeight:900, color:"var(--text)", letterSpacing:"-1.5px", marginBottom:12 }}>Explore Learning Specializations</h2>
               <p style={{ fontSize:15, color:"var(--text2)", maxWidth:500, margin:"0 auto" }}>Choose a specialty area and dive deep into practice exams from top experts.</p>
             </div>
-            <div className="topics-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(110px,1fr))", gap:"clamp(16px,3vw,45px)",  justifyContent:"center" }}>
+            <div className="topics-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(110px,1fr))", gap:"clamp(16px,3vw,45px)", justifyContent:"center" }}>
               {topicsWithCounts.map((topic,i)=>(
                 <div key={topic.id} className={`fade-up delay-${Math.min(i+1,6)}`}>
                   <TopicCardHome topic={topic} examCount={topic.count} onViewAll={()=>setPage("exams",{topicFilter:topic.name})} />
@@ -1027,7 +1025,7 @@ const safePopularExams = useMemo(() => {
         </section>
       )}
 
-      {/* ══════ WHY CHOOSE US ══════ */}
+      {/* WHY CHOOSE US */}
       <div style={{ padding:"80px clamp(20px,5vw,60px)", position:"relative" }}>
         <div style={{ maxWidth:1200, margin:"0 auto" }}>
           <div style={{ textAlign:"center", marginBottom:64 }}>
@@ -1049,7 +1047,7 @@ const safePopularExams = useMemo(() => {
         </div>
       </div>
 
-      {/* ══════ CTA ══════ */}
+      {/* CTA */}
       <div style={{ padding:"0 clamp(20px,5vw,60px) 80px" }}>
         <div style={{ maxWidth:1100, margin:"0 auto" }}>
           <div className="cta-wrap" style={{ background:"var(--gradient-accent)", borderRadius:24, padding:"72px clamp(28px,5vw,72px)", position:"relative", overflow:"hidden", border:"2px solid var(--accent)" }}>
