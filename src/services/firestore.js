@@ -1,4 +1,8 @@
-// firestore.js — Full file with getExamDashboardData added
+// firestore.js — Full file with getExamDashboardData added + in-memory cache for vendors/topics/exams
+
+// ======================
+// IMPORTS
+// ======================
 import {
   db,
   collection, doc, setDoc, getDoc, getDocs,
@@ -8,14 +12,37 @@ import {
   arrayUnion, arrayRemove,
 } from "../firebase";
 
-// استيراد دالة توليد ID الشهادة من ملف pdfCertificate
 import { generateCertId } from "../utils/pdfCertificate";
+
+// ======================
+// IN-MEMORY CACHE
+// ======================
+const _cache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function cacheGet(key) {
+  const entry = _cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CACHE_TTL) {
+    _cache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function cacheSet(key, data) {
+  _cache.set(key, { data, ts: Date.now() });
+  return data;
+}
 
 // ========== VENDORS ==========
 export const getVendors = async () => {
+  const cached = cacheGet("vendors:all");
+  if (cached) return cached;
   try {
     const querySnapshot = await getDocs(collection(db, "vendors"));
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return cacheSet("vendors:all", data);
   } catch (error) {
     console.error("Error getting vendors:", error);
     throw error;
@@ -65,9 +92,12 @@ export const deleteVendor = async (vendorId) => {
 
 // ========== TOPICS ==========
 export const getTopics = async () => {
+  const cached = cacheGet("topics:all");
+  if (cached) return cached;
   try {
     const querySnapshot = await getDocs(collection(db, "topics"));
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return cacheSet("topics:all", data);
   } catch (error) {
     console.error("Error getting topics:", error);
     throw error;
@@ -124,7 +154,7 @@ export const deleteTopic = async (topicId) => {
 export async function createUserProfile(uid, data) {
   const ref = doc(db, "users", uid);
   const snap = await getDoc(ref);
-  
+
   if (snap.exists()) {
     const existing = snap.data();
     await updateDoc(ref, {
@@ -172,29 +202,29 @@ export async function getAllUsers() {
 }
 
 export async function updateUserRole(uid, role) {
-  await updateDoc(doc(db, "users", uid), { 
+  await updateDoc(doc(db, "users", uid), {
     role,
     updatedAt: serverTimestamp()
   });
 }
 
 export async function updateUserProfile(uid, data) {
-  await updateDoc(doc(db, "users", uid), { 
-    ...data, 
-    updatedAt: serverTimestamp() 
+  await updateDoc(doc(db, "users", uid), {
+    ...data,
+    updatedAt: serverTimestamp()
   });
 }
 
 export async function addFavorite(userId, examId) {
-  await setDoc(doc(db, "users", userId), 
-    { favorites: arrayUnion(examId) }, 
+  await setDoc(doc(db, "users", userId),
+    { favorites: arrayUnion(examId) },
     { merge: true }
   );
 }
 
 export async function removeFavorite(userId, examId) {
-  await setDoc(doc(db, "users", userId), 
-    { favorites: arrayRemove(examId) }, 
+  await setDoc(doc(db, "users", userId),
+    { favorites: arrayRemove(examId) },
     { merge: true }
   );
 }
@@ -227,13 +257,13 @@ export async function mergeGuestFavorites(userId, guestFavIds) {
 export async function getCountryStats() {
   const snap = await getDocs(collection(db, "users"));
   const stats = {};
-  
+
   snap.docs.forEach(doc => {
     const data = doc.data();
     const country = data.country || "Unknown";
     stats[country] = (stats[country] || 0) + 1;
   });
-  
+
   return Object.entries(stats)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 15)
@@ -258,7 +288,7 @@ export async function getEnrolledExams(userId) {
   try {
     const userRef = doc(db, "users", userId);
     const userSnap = await getDoc(userRef);
-    
+
     if (userSnap.exists()) {
       return userSnap.data().enrolledExams || [];
     }
@@ -282,8 +312,6 @@ export async function checkIfEnrolled(userId, examId) {
 export async function unenrollUserFromExam(userId, examId) {
   try {
     console.log("🔍 Starting unenroll process...");
-    
-    console.log("📝 Step 1: Clearing progress...");
     try {
       await clearExamProgress(userId, examId);
       console.log("✅ Progress cleared");
@@ -291,14 +319,12 @@ export async function unenrollUserFromExam(userId, examId) {
       console.warn("⚠️ Progress clear warning:", clearErr.message);
     }
 
-    console.log("🔄 Step 2: Removing from enrolledExams...");
     const userRef = doc(db, "users", userId);
     await updateDoc(userRef, {
       enrolledExams: arrayRemove(examId),
     });
     console.log("✅ Removed from enrolledExams");
 
-    console.log("✨ Unenroll completed successfully");
     return true;
   } catch (err) {
     console.error("❌ Unenrollment error:", err);
@@ -309,16 +335,8 @@ export async function unenrollUserFromExam(userId, examId) {
 // ─── EXAM PROGRESS ─────────────────────────────────────────────────────────────
 export async function saveExamProgress(userId, examId, progressData) {
   try {
-    console.log("💾 Saving exam progress...", {
-      userId,
-      examId,
-      part: progressData.currentPart,
-      question: progressData.currentQuestion,
-      answered: Object.keys(progressData.answers || {}).length,
-    });
-
     const progressRef = doc(db, "users", userId, "examProgress", examId);
-    
+
     const dataToSave = {
       examId,
       userId,
@@ -335,7 +353,7 @@ export async function saveExamProgress(userId, examId, progressData) {
     };
 
     await setDoc(progressRef, dataToSave, { merge: true });
-    
+
     console.log("✅ Progress saved successfully");
     return true;
   } catch (err) {
@@ -346,22 +364,13 @@ export async function saveExamProgress(userId, examId, progressData) {
 
 export async function getExamProgress(userId, examId) {
   try {
-    console.log("📖 Loading exam progress...", { userId, examId });
-    
     const progressRef = doc(db, "users", userId, "examProgress", examId);
     const progressSnap = await getDoc(progressRef);
-    
+
     if (progressSnap.exists()) {
-      const data = progressSnap.data();
-      console.log("✅ Progress loaded:", {
-        part: data.currentPart,
-        question: data.currentQuestion,
-        answered: data.totalAnswered,
-      });
-      return data;
+      return progressSnap.data();
     }
-    
-    console.log("ℹ️ No previous progress found");
+
     return null;
   } catch (err) {
     console.error("❌ Error fetching exam progress:", err);
@@ -371,12 +380,8 @@ export async function getExamProgress(userId, examId) {
 
 export async function clearExamProgress(userId, examId) {
   try {
-    console.log("🗑️ Clearing exam progress...", { userId, examId });
-    
     const progressRef = doc(db, "users", userId, "examProgress", examId);
     await deleteDoc(progressRef);
-    
-    console.log("✅ Progress cleared successfully");
     return true;
   } catch (err) {
     console.error("❌ Error clearing exam progress:", err);
@@ -388,12 +393,9 @@ export async function getExamCompletionPercentage(userId, examId, totalQuestions
   try {
     const progress = await getExamProgress(userId, examId);
     if (!progress || !progress.answers) return 0;
-    
+
     const answeredCount = Object.keys(progress.answers).length;
-    const percentage = Math.round((answeredCount / totalQuestions) * 100);
-    
-    console.log("📊 Completion:", { answered: answeredCount, total: totalQuestions, percentage });
-    return percentage;
+    return Math.round((answeredCount / totalQuestions) * 100);
   } catch (err) {
     console.error("❌ Error calculating completion percentage:", err);
     return 0;
@@ -402,10 +404,13 @@ export async function getExamCompletionPercentage(userId, examId, totalQuestions
 
 // ─── EXAMS ───────────────────────────────────────────────────────────────────
 export async function getExams() {
+  const cached = cacheGet("exams:all");
+  if (cached) return cached;
   const snap = await getDocs(
     query(collection(db, "exams"), orderBy("createdAt", "desc"))
   );
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return cacheSet("exams:all", data);
 }
 
 export async function getExam(id) {
@@ -501,7 +506,7 @@ export async function deleteAllExamQuestions(examId) {
     query(collection(db, "questions"), where("examId", "==", examId))
   );
   await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
-  await updateDoc(doc(db, "exams", examId), { 
+  await updateDoc(doc(db, "exams", examId), {
     totalQuestions: 0,
     updatedAt: serverTimestamp(),
   });
@@ -512,9 +517,9 @@ export async function deleteQuestion(questionId) {
   const questionSnap = await getDoc(questionRef);
   if (!questionSnap.exists()) return;
   const examId = questionSnap.data().examId;
-  
+
   await deleteDoc(questionRef);
-  
+
   const remainingQuestions = await getQuestions(examId);
   await updateDoc(doc(db, "exams", examId), {
     totalQuestions: remainingQuestions.length,
@@ -525,23 +530,21 @@ export async function deleteQuestion(questionId) {
 // ─── RESULTS ─────────────────────────────────────────────────────────────────
 export async function saveExamScore(userId, examId, scoreData) {
   try {
-    console.log("💾 Saving exam score...", { userId, examId, score: scoreData?.score });
-    
     const progressRef = doc(db, "users", userId, "examProgress", examId);
     const progressSnap = await getDoc(progressRef);
-    
+
     let updateData = {
       lastAttemptAt: serverTimestamp(),
       totalAttempts: increment(1),
     };
-    
+
     if (scoreData?.score !== undefined && scoreData.score !== null) {
       updateData.lastScore = scoreData.score;
     }
     if (scoreData?.pass !== undefined) {
       updateData.lastPass = scoreData.pass;
     }
-    
+
     if (progressSnap.exists()) {
       const currentBest = progressSnap.data().bestScore || 0;
       if (scoreData?.score > currentBest) {
@@ -556,9 +559,8 @@ export async function saveExamScore(userId, examId, scoreData) {
       updateData.currentQuestion = 0;
       updateData.answers = {};
     }
-    
+
     await setDoc(progressRef, updateData, { merge: true });
-    console.log("✅ Exam score saved successfully");
     return true;
   } catch (error) {
     console.error("❌ Error saving exam score:", error);
@@ -571,7 +573,7 @@ export async function saveResult(data) {
     ...data,
     createdAt: serverTimestamp(),
   });
-  
+
   if (data.userId && data.userId !== "guest") {
     const userRef = doc(db, "users", data.userId);
     const userSnap = await getDoc(userRef);
@@ -580,7 +582,7 @@ export async function saveResult(data) {
       const newTotal = stats.totalAttempts + 1;
       const newPassed = stats.totalPassed + (data.pass ? 1 : 0);
       const newAvg = Math.round((stats.averageScore * stats.totalAttempts + (data.score || 0)) / newTotal);
-      
+
       await updateDoc(userRef, {
         stats: {
           totalAttempts: newTotal,
@@ -588,11 +590,11 @@ export async function saveResult(data) {
           averageScore: newAvg,
         }
       });
-      
-      const finalScore = (data.score !== undefined && data.score !== null) 
-        ? data.score 
+
+      const finalScore = (data.score !== undefined && data.score !== null)
+        ? data.score
         : (data.percentage || 0);
-      
+
       await saveExamScore(data.userId, data.examId, {
         score: finalScore,
         pass: data.pass,
@@ -601,8 +603,8 @@ export async function saveResult(data) {
       });
     }
   }
-  
-  // ✅ حفظ الشهادة إذا كان الاختبار في وضع المحاكاة والنتيجة نجاح
+
+  // حفظ الشهادة إذا كان الاختبار في وضع المحاكاة والنتيجة نجاح
   if (data.mode === "examSimulation" && data.pass === true) {
     try {
       const certId = generateCertId();
@@ -620,7 +622,7 @@ export async function saveResult(data) {
       console.error("❌ Failed to save certificate:", certErr);
     }
   }
-  
+
   return ref.id;
 }
 
@@ -661,10 +663,10 @@ export async function getAdminStats() {
     getDocs(collection(db, "results")),
     getDocs(collection(db, "questions")),
   ]);
-  
+
   const results = resultsSnap.docs.map(d => d.data());
   const passed = results.filter(r => r.pass).length;
-  
+
   return {
     totalExams: examsSnap.size,
     totalStudents: studentsSnap.size,
@@ -717,41 +719,34 @@ export async function deleteReport(reportId) {
 // ─── USER EXAM SCORES & BEST SCORE ─────────────────────────────────────────
 export async function getUserBestScore(userId, examId) {
   try {
-    console.log("📊 Fetching user best score...", { userId, examId });
-    
     const progressRef = doc(db, "users", userId, "examProgress", examId);
     const progressSnap = await getDoc(progressRef);
-    
+
     if (progressSnap.exists()) {
       const data = progressSnap.data();
       if (data.bestScore !== undefined && data.bestScore !== null) {
-        console.log("✅ Found bestScore in examProgress:", data.bestScore);
         return data.bestScore;
       }
       if (data.lastScore !== undefined && data.lastScore !== null) {
-        console.log("✅ Found lastScore in examProgress:", data.lastScore);
         return data.lastScore;
       }
     }
-    
+
     const resultsRef = collection(db, "results");
     const q = query(
-      resultsRef, 
-      where("userId", "==", userId), 
+      resultsRef,
+      where("userId", "==", userId),
       where("examId", "==", examId),
       orderBy("score", "desc"),
       limit(1)
     );
     const querySnapshot = await getDocs(q);
-    
+
     if (!querySnapshot.empty) {
       const bestResult = querySnapshot.docs[0].data();
-      const bestScore = bestResult.score || bestResult.percentage;
-      console.log("✅ Found best score in results:", bestScore);
-      return bestScore;
+      return bestResult.score || bestResult.percentage;
     }
-    
-    console.log("ℹ️ No previous score found for this exam");
+
     return null;
   } catch (error) {
     console.error("❌ Error getting user best score:", error);
@@ -759,24 +754,18 @@ export async function getUserBestScore(userId, examId) {
   }
 }
 
-// ✅ جذرية 2: دالة محسنة لجلب آخر سكور للمستخدم في اختبار معين
 export async function getUserLastScore(userId, examId) {
   try {
-    console.log("📊 Fetching user last score...", { userId, examId });
-    
-    // أولاً: جلب من examProgress
     const progressRef = doc(db, "users", userId, "examProgress", examId);
     const progressSnap = await getDoc(progressRef);
-    
+
     if (progressSnap.exists()) {
       const data = progressSnap.data();
       if (data.lastScore !== undefined && data.lastScore !== null) {
-        console.log("✅ Found lastScore in examProgress:", data.lastScore);
         return data.lastScore;
       }
     }
-    
-    // ثانياً: جلب آخر نتيجة من results
+
     const resultsRef = collection(db, "results");
     const q = query(
       resultsRef,
@@ -786,15 +775,12 @@ export async function getUserLastScore(userId, examId) {
       limit(1)
     );
     const querySnapshot = await getDocs(q);
-    
+
     if (!querySnapshot.empty) {
       const lastResult = querySnapshot.docs[0].data();
-      const lastScore = lastResult.score || lastResult.percentage;
-      console.log("✅ Found last score in results:", lastScore);
-      return lastScore;
+      return lastResult.score || lastResult.percentage;
     }
-    
-    console.log("ℹ️ No last score found for this exam");
+
     return null;
   } catch (error) {
     console.error("❌ Error getting user last score:", error);
@@ -802,7 +788,6 @@ export async function getUserLastScore(userId, examId) {
   }
 }
 
-// ✅ جذرية 3: دالة محسنة لجلب إحصائيات كاملة للمستخدم في اختبار
 export async function getUserExamStats(userId, examId) {
   try {
     const stats = {
@@ -812,11 +797,10 @@ export async function getUserExamStats(userId, examId) {
       lastAttemptAt: null,
       completionPercentage: 0
     };
-    
-    // من examProgress
+
     const progressRef = doc(db, "users", userId, "examProgress", examId);
     const progressSnap = await getDoc(progressRef);
-    
+
     if (progressSnap.exists()) {
       const data = progressSnap.data();
       stats.bestScore = data.bestScore || null;
@@ -824,14 +808,12 @@ export async function getUserExamStats(userId, examId) {
       stats.totalAttempts = data.totalAttempts || 0;
       stats.lastAttemptAt = data.lastAttemptAt || null;
     }
-    
-    // إذا لم نجد lastScore في progress، نحاول من results
+
     if (!stats.lastScore) {
       const lastScoreFromResults = await getUserLastScore(userId, examId);
       if (lastScoreFromResults) stats.lastScore = lastScoreFromResults;
     }
-    
-    // نسبة الإكمال من آخر نتيجة
+
     const resultsRef = collection(db, "results");
     const q = query(
       resultsRef,
@@ -841,14 +823,13 @@ export async function getUserExamStats(userId, examId) {
       limit(1)
     );
     const querySnapshot = await getDocs(q);
-    
+
     if (!querySnapshot.empty) {
       const lastResult = querySnapshot.docs[0].data();
-      stats.completionPercentage = lastResult.completionPercentage || 
+      stats.completionPercentage = lastResult.completionPercentage ||
         (lastResult.correctAnswers / lastResult.totalQuestions) * 100 || 0;
     }
-    
-    console.log("📊 User exam stats:", stats);
+
     return stats;
   } catch (error) {
     console.error("❌ Error getting user exam stats:", error);
@@ -866,16 +847,15 @@ export async function saveCertificate({ certId, userId, userName, examId, examTi
 
     await setDoc(certRef, {
       certId,
-      userId:    userId    || "",
-      userName:  userName  || "Valued Candidate",
-      examId:    examId    || "",
+      userId: userId || "",
+      userName: userName || "Valued Candidate",
+      examId: examId || "",
       examTitle: examTitle || "Professional Certification Exam",
-      score:     score     ?? 0,
-      date:      date      || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
-      issuedAt:  serverTimestamp(),
+      score: score ?? 0,
+      date: date || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+      issuedAt: serverTimestamp(),
     });
 
-    console.log("✅ Certificate saved:", certId);
     return certId;
   } catch (err) {
     console.error("❌ Error saving certificate:", err);
@@ -915,9 +895,8 @@ export async function getUserCertificateForExam(userId, examId) {
 // ======================
 export async function getExamDashboardData(userId, examId, options = {}) {
   const { signal } = options;
-  
+
   try {
-    // Run all queries in parallel for maximum performance
     const [
       enrolledStatus,
       bestScore,
@@ -953,7 +932,6 @@ export async function getExamDashboardData(userId, examId, options = {}) {
       throw error;
     }
     console.error("Error fetching exam dashboard data:", error);
-    // Return default values on error
     return {
       isEnrolled: false,
       bestScore: null,
