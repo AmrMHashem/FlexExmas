@@ -1,12 +1,10 @@
-// vite.config.js — FlexExams v4.4 (Optimized Production Build)
+// vite.config.js — FlexExams v5.0 Ultra Optimized Build
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 
 export default defineConfig({
-  plugins: [
-    react()
-  ],
+  plugins: [react()],
 
   resolve: {
     alias: {
@@ -14,46 +12,13 @@ export default defineConfig({
     },
   },
 
-  build: {
-    outDir: "dist",
-    sourcemap: false,
-    minify: "esbuild",
-    target: "es2020",
-    cssMinify: true,
-    assetsInlineLimit: 4096,
-
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          // React core (stable split)
-          if (id.includes("react-dom")) return "react-dom";
-          if (id.includes("react")) return "react";
-
-          // Firebase (single chunk أفضل للاستقرار)
-          if (id.includes("firebase")) return "firebase";
-
-          // UI libs
-          if (id.includes("framer-motion")) return "framer-motion";
-          if (id.includes("react-icons")) return "react-icons";
-
-          // Heavy lazy features
-          if (id.includes("jspdf")) return "pdf";
-          if (id.includes("qrcode")) return "qrcode";
-        },
-
-        chunkFileNames: "assets/[name]-[hash].js",
-        entryFileNames: "assets/[name]-[hash].js",
-        assetFileNames: "assets/[name]-[hash].[ext]",
-      },
-    },
-
-    chunkSizeWarningLimit: 800,
-    reportCompressedSize: false,
-  },
-
+  // ─────────────────────────────────────────────
+  // DEV SERVER
+  // ─────────────────────────────────────────────
   server: {
     port: 3000,
     host: true,
+    open: false,
   },
 
   preview: {
@@ -61,21 +26,73 @@ export default defineConfig({
     host: true,
   },
 
+  // ─────────────────────────────────────────────
+  // DEPENDENCY PRE-BUNDLING
+  // ─────────────────────────────────────────────
   optimizeDeps: {
     include: [
       "react",
       "react-dom",
-      "firebase/app"
+      "firebase/app",
+      "firebase/auth",
+      "firebase/firestore",
     ],
-    exclude: [
-      "jspdf",
-      "qrcode"
-    ],
+    exclude: ["jspdf", "qrcode"],
   },
 
+  // ─────────────────────────────────────────────
+  // BUILD CONFIG
+  // ─────────────────────────────────────────────
+  build: {
+    outDir: "dist",
+    sourcemap: false,
+    minify: "esbuild",
+    cssMinify: true,
+    target: "es2020",
+    assetsInlineLimit: 4096,
+
+    chunkSizeWarningLimit: 600,
+    reportCompressedSize: false,
+
+    rollupOptions: {
+      output: {
+        // ─────────────────────────────
+        // SMART CHUNK SPLITTING
+        // ─────────────────────────────
+        manualChunks(id) {
+          // React core
+          if (id.includes("react")) return "react-vendor";
+          if (id.includes("react-dom")) return "react-vendor";
+
+          // Firebase (split but not over fragmented)
+          if (id.includes("firebase/app")) return "firebase-core";
+          if (id.includes("firebase/auth")) return "firebase-auth";
+          if (id.includes("firebase/firestore")) return "firebase-db";
+          if (id.includes("firebase/storage")) return "firebase-storage";
+
+          // UI / Animation libs
+          if (id.includes("framer-motion")) return "ui-anim";
+          if (id.includes("react-icons")) return "ui-icons";
+
+          // Heavy lazy features
+          if (id.includes("jspdf")) return "pdf";
+          if (id.includes("qrcode")) return "qr";
+        },
+
+        // ─────────────────────────────
+        // FILE NAMING (CACHE OPTIMIZED)
+        // ─────────────────────────────
+        chunkFileNames: "assets/js/[name]-[hash].js",
+        entryFileNames: "assets/js/[name]-[hash].js",
+        assetFileNames: "assets/[ext]/[name]-[hash].[ext]",
+      },
+    },
+  },
+
+  // ─────────────────────────────────────────────
+  // ESBUILD OPTIMIZATION
+  // ─────────────────────────────────────────────
   esbuild: {
     legalComments: "none",
-    // 👇 safer option (no log stripping by default)
-    // drop: process.env.NODE_ENV === "production" ? ["debugger"] : []
   },
 });
