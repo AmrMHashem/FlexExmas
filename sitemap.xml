@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- ═══════════════════════════════════════════
+         PRIMARY SEO
+    ═══════════════════════════════════════════ -->
+    <title>FlexExams – #1 IT Certification Practice Tests | AWS, CCNA, Security+, PMP</title>
+
+    <meta name="description" content="Pass IT certification exams faster with FlexExams. Real exam-style questions, timed tests, AI explanations, and verified certificates for AWS, CCNA, Security+, PMP & 50+ certifications." />
+
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <meta name="googlebot" content="index, follow" />
+    <meta name="bingbot" content="index, follow" />
+
+    <meta name="author" content="FlexExams" />
+
+    <!-- FIXED: unified domain -->
+    <link rel="canonical" href="https://www.flexexams.com/" />
+
+    <!-- ═══════════════════════════════════════════
+         OPEN GRAPH
+    ═══════════════════════════════════════════ -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="FlexExams" />
+    <meta property="og:title" content="FlexExams – #1 IT Certification Practice Tests" />
+    <meta property="og:description" content="Real exam questions, AI explanations & certificates for 50+ IT certifications." />
+    <meta property="og:url" content="https://www.flexexams.com/" />
+    <meta property="og:image" content="https://www.flexexams.com/og-image.png" />
+
+    <!-- ═══════════════════════════════════════════
+         TWITTER
+    ═══════════════════════════════════════════ -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="FlexExams – IT Certification Practice Tests" />
+    <meta name="twitter:description" content="Practice AWS, CCNA, Security+, PMP & more with real exam questions." />
+    <meta name="twitter:image" content="https://www.flexexams.com/og-image.png" />
+
+    <!-- ═══════════════════════════════════════════
+         PERFORMANCE
+    ═══════════════════════════════════════════ -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <link rel="dns-prefetch" href="https://firestore.googleapis.com" />
+    <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
+
+    <!-- ═══════════════════════════════════════════
+         STRUCTURED DATA (CLEAN + IMPROVED)
+    ═══════════════════════════════════════════ -->
+
+    <!-- Organization -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "FlexExams",
+      "url": "https://www.flexexams.com",
+      "logo": "https://www.flexexams.com/logo.png"
+    }
+    </script>
+
+    <!-- WebSite -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "FlexExams",
+      "url": "https://www.flexexams.com",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://www.flexexams.com/exams?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    }
+    </script>
+
+    <!-- WebPage (🔥 IMPORTANT ADDITION) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "name": "FlexExams Home",
+      "url": "https://www.flexexams.com/",
+      "description": "IT certification practice platform with real exam questions and AI explanations."
+    }
+    </script>
+
+    <!-- Software App -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "FlexExams",
+      "applicationCategory": "EducationalApplication",
+      "operatingSystem": "Web",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+    </script>
+
+    <!-- FAQ -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Is FlexExams free?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes, free practice tests are available."
+          }
+        }
+      ]
+    }
+    </script>
+
+    <!-- ═══════════════════════════════════════════
+         CRITICAL CSS
+    ═══════════════════════════════════════════ -->
+    <style>
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: #0d1223;
+        color: #fff;
+      }
+      #root {
+        min-height: 100vh;
+      }
+    </style>
+
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

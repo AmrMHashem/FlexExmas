@@ -1,0 +1,37 @@
+{
+  "name": "FlexExams - Certification Platform",
+  "short_name": "FlexExams",
+  "description": "Premium exam practice for IT certifications - Real questions, smart analytics",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#0d1223",
+  "background_color": "#0d1223",
+  "orientation": "portrait",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/home-mobile.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "platform": "narrow",
+      "label": "FlexExams Home Screen"
+    }
+  ],
+  "categories": ["education", "productivity"],
+  "lang": "en",
+  "dir": "ltr"
+}

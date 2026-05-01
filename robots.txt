@@ -1,0 +1,106 @@
+# FlexExams – robots.txt
+# https://www.flexexams.com
+# Last updated: 2026-05-01
+
+# ═══════════════════════════════════════════════
+# DEFAULT BOT RULES
+# ═══════════════════════════════════════════════
+User-agent: *
+
+# ── PUBLIC PAGES ───────────────────────────────
+Allow: /
+Allow: /exams/
+Allow: /exam/
+Allow: /topics/
+Allow: /topic/
+Allow: /categories/
+Allow: /about
+Allow: /contact
+Allow: /verify
+Allow: /certifications
+
+# ── PRIVATE / AUTH ROUTES ──────────────────────
+Disallow: /admin/
+Disallow: /dashboard/
+Disallow: /profile/
+Disallow: /settings/
+Disallow: /auth/
+Disallow: /api/
+Disallow: /my-exams/
+Disallow: /favorites/
+Disallow: /search
+
+# ── BLOCK DUPLICATE / TRACKING PARAMETERS ───────
+Disallow: /*?utm_*
+Disallow: /*?fbclid=
+Disallow: /*?gclid=
+Disallow: /*?ref=
+Disallow: /*?session=
+
+# ── TECHNICAL FILES (SAFE CLEANUP) ─────────────
+Disallow: /*.map$
+Disallow: /.git/
+
+# ❌ removed /src/ and /node_modules/ (not needed in production)
+# ❌ removed block for *.json$ (was risky for SEO)
+
+# ── ALLOW STATIC ASSETS ────────────────────────
+Allow: /icons/
+Allow: /screenshots/
+Allow: /favicon.svg
+Allow: /og-image.png
+Allow: /logo.png
+Allow: /site.webmanifest
+Allow: /sw.js
+
+# ═══════════════════════════════════════════════
+# SEARCH ENGINE SPECIFIC RULES
+# ═══════════════════════════════════════════════
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Googlebot-Image
+Allow: /icons/
+Allow: /screenshots/
+Allow: /og-image.png
+
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 2
+
+User-agent: DuckDuckBot
+Allow: /
+
+# ═══════════════════════════════════════════════
+# AI CRAWLERS (CONTROLLED ACCESS - NOT FULL BLOCK)
+# ═══════════════════════════════════════════════
+
+User-agent: GPTBot
+Disallow: /admin/
+Disallow: /dashboard/
+Disallow: /api/
+
+User-agent: ChatGPT-User
+Disallow: /admin/
+Disallow: /dashboard/
+Disallow: /api/
+
+User-agent: CCBot
+Disallow: /admin/
+Disallow: /dashboard/
+
+User-agent: anthropic-ai
+Disallow: /admin/
+Disallow: /dashboard/
+
+User-agent: Claude-Web
+Disallow: /admin/
+Disallow: /dashboard/
+
+# ═══════════════════════════════════════════════
+# SITEMAPS
+# ═══════════════════════════════════════════════
+Sitemap: https://www.flexexams.com/sitemap.xml
+Sitemap: https://www.flexexams.com/sitemap-exams.xml
+Sitemap: https://www.flexexams.com/sitemap-certifications.xml
