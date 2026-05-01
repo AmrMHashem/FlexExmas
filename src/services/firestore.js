@@ -1,18 +1,4 @@
 // firestore.js — Full file with getExamDashboardData added
-
-// ── In-memory cache (يمنع re-fetching نفس البيانات في نفس الجلسة) ──
-const _cache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 دقائق
-
-function cacheGet(key) {
-  const entry = _cache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.ts > CACHE_TTL) { _cache.delete(key); return null; }
-  return entry.data;
-}
-function cacheSet(key, data) { _cache.set(key, { data, ts: Date.now() }); return data; }
-function cacheClear(prefix) { _cache.forEach((_, k) => { if (k.startsWith(prefix)) _cache.delete(k); }); }
-
 import {
   db,
   collection, doc, setDoc, getDoc, getDocs,
@@ -27,12 +13,9 @@ import { generateCertId } from "../utils/pdfCertificate";
 
 // ========== VENDORS ==========
 export const getVendors = async () => {
-  const cached = cacheGet("vendors:all");
-  if (cached) return cached;
   try {
     const querySnapshot = await getDocs(collection(db, "vendors"));
-    const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    return cacheSet("vendors:all", data);
+    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   } catch (error) {
     console.error("Error getting vendors:", error);
     throw error;
@@ -82,12 +65,9 @@ export const deleteVendor = async (vendorId) => {
 
 // ========== TOPICS ==========
 export const getTopics = async () => {
-  const cached = cacheGet("topics:all");
-  if (cached) return cached;
   try {
     const querySnapshot = await getDocs(collection(db, "topics"));
-    const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    return cacheSet("topics:all", data);
+    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   } catch (error) {
     console.error("Error getting topics:", error);
     throw error;
@@ -305,7 +285,7 @@ export async function unenrollUserFromExam(userId, examId) {
     
     console.log("📝 Step 1: Clearing progress...");
     try {
-      await clearFlexExamsgress(userId, examId);
+      await clearExamProgress(userId, examId);
       console.log("✅ Progress cleared");
     } catch (clearErr) {
       console.warn("⚠️ Progress clear warning:", clearErr.message);
@@ -327,7 +307,7 @@ export async function unenrollUserFromExam(userId, examId) {
 }
 
 // ─── EXAM PROGRESS ─────────────────────────────────────────────────────────────
-export async function saveFlexExamsgress(userId, examId, progressData) {
+export async function saveExamProgress(userId, examId, progressData) {
   try {
     console.log("💾 Saving exam progress...", {
       userId,
@@ -337,7 +317,7 @@ export async function saveFlexExamsgress(userId, examId, progressData) {
       answered: Object.keys(progressData.answers || {}).length,
     });
 
-    const progressRef = doc(db, "users", userId, "FlexExamsgress", examId);
+    const progressRef = doc(db, "users", userId, "examProgress", examId);
     
     const dataToSave = {
       examId,
@@ -364,11 +344,11 @@ export async function saveFlexExamsgress(userId, examId, progressData) {
   }
 }
 
-export async function getFlexExamsgress(userId, examId) {
+export async function getExamProgress(userId, examId) {
   try {
     console.log("📖 Loading exam progress...", { userId, examId });
     
-    const progressRef = doc(db, "users", userId, "FlexExamsgress", examId);
+    const progressRef = doc(db, "users", userId, "examProgress", examId);
     const progressSnap = await getDoc(progressRef);
     
     if (progressSnap.exists()) {
@@ -389,11 +369,11 @@ export async function getFlexExamsgress(userId, examId) {
   }
 }
 
-export async function clearFlexExamsgress(userId, examId) {
+export async function clearExamProgress(userId, examId) {
   try {
     console.log("🗑️ Clearing exam progress...", { userId, examId });
     
-    const progressRef = doc(db, "users", userId, "FlexExamsgress", examId);
+    const progressRef = doc(db, "users", userId, "examProgress", examId);
     await deleteDoc(progressRef);
     
     console.log("✅ Progress cleared successfully");
@@ -406,7 +386,7 @@ export async function clearFlexExamsgress(userId, examId) {
 
 export async function getExamCompletionPercentage(userId, examId, totalQuestions) {
   try {
-    const progress = await getFlexExamsgress(userId, examId);
+    const progress = await getExamProgress(userId, examId);
     if (!progress || !progress.answers) return 0;
     
     const answeredCount = Object.keys(progress.answers).length;
@@ -422,13 +402,10 @@ export async function getExamCompletionPercentage(userId, examId, totalQuestions
 
 // ─── EXAMS ───────────────────────────────────────────────────────────────────
 export async function getExams() {
-  const cached = cacheGet("exams:all");
-  if (cached) return cached;
   const snap = await getDocs(
     query(collection(db, "exams"), orderBy("createdAt", "desc"))
   );
-  const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  return cacheSet("exams:all", data);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 export async function getExam(id) {
@@ -550,7 +527,7 @@ export async function saveExamScore(userId, examId, scoreData) {
   try {
     console.log("💾 Saving exam score...", { userId, examId, score: scoreData?.score });
     
-    const progressRef = doc(db, "users", userId, "FlexExamsgress", examId);
+    const progressRef = doc(db, "users", userId, "examProgress", examId);
     const progressSnap = await getDoc(progressRef);
     
     let updateData = {
@@ -742,17 +719,17 @@ export async function getUserBestScore(userId, examId) {
   try {
     console.log("📊 Fetching user best score...", { userId, examId });
     
-    const progressRef = doc(db, "users", userId, "FlexExamsgress", examId);
+    const progressRef = doc(db, "users", userId, "examProgress", examId);
     const progressSnap = await getDoc(progressRef);
     
     if (progressSnap.exists()) {
       const data = progressSnap.data();
       if (data.bestScore !== undefined && data.bestScore !== null) {
-        console.log("✅ Found bestScore in FlexExamsgress:", data.bestScore);
+        console.log("✅ Found bestScore in examProgress:", data.bestScore);
         return data.bestScore;
       }
       if (data.lastScore !== undefined && data.lastScore !== null) {
-        console.log("✅ Found lastScore in FlexExamsgress:", data.lastScore);
+        console.log("✅ Found lastScore in examProgress:", data.lastScore);
         return data.lastScore;
       }
     }
@@ -787,14 +764,14 @@ export async function getUserLastScore(userId, examId) {
   try {
     console.log("📊 Fetching user last score...", { userId, examId });
     
-    // أولاً: جلب من FlexExamsgress
-    const progressRef = doc(db, "users", userId, "FlexExamsgress", examId);
+    // أولاً: جلب من examProgress
+    const progressRef = doc(db, "users", userId, "examProgress", examId);
     const progressSnap = await getDoc(progressRef);
     
     if (progressSnap.exists()) {
       const data = progressSnap.data();
       if (data.lastScore !== undefined && data.lastScore !== null) {
-        console.log("✅ Found lastScore in FlexExamsgress:", data.lastScore);
+        console.log("✅ Found lastScore in examProgress:", data.lastScore);
         return data.lastScore;
       }
     }
@@ -836,8 +813,8 @@ export async function getUserExamStats(userId, examId) {
       completionPercentage: 0
     };
     
-    // من FlexExamsgress
-    const progressRef = doc(db, "users", userId, "FlexExamsgress", examId);
+    // من examProgress
+    const progressRef = doc(db, "users", userId, "examProgress", examId);
     const progressSnap = await getDoc(progressRef);
     
     if (progressSnap.exists()) {
@@ -953,7 +930,7 @@ export async function getExamDashboardData(userId, examId, options = {}) {
       checkIfEnrolled(userId, examId),
       getUserBestScore(userId, examId),
       getUserExamStats(userId, examId),
-      getFlexExamsgress(userId, examId),
+      getExamProgress(userId, examId),
       getUserCertificateForExam(userId, examId),
       getEnrolledCountForExam(examId),
       getExam(examId)
