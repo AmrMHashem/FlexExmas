@@ -454,8 +454,7 @@ export default function Topics({ setPage, setActiveExam, exams: propExams = [] }
   }, []);
 
   const handleExamClick = (exam) => {
-    setActiveExam(exam);
-    setPage("exam-detail");
+    setPage("exam-detail", { exam });
   };
 
   const topicGroups = useMemo(() => {
