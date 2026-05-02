@@ -1,42 +1,99 @@
-// App.jsx — FlexExams v4.3 Performance Edition
-// ✅ Lazy loading لكل الصفحات (code splitting تلقائي)
-// ✅ Suspense fallback خفيف
+// App.jsx — FlexExams v4.4 — Hash Router Edition
+// ✅ Hash-based routing (refresh safe)
+// ✅ Unique SEO-friendly slug per exam → /#exam/aws-solutions-architect-saa-c03
+// ✅ Shareable exam links
+// ✅ Browser Back/Forward support
+// ✅ Pending slug resolution after exams load
+// ✅ Lazy loading + code splitting
 // ✅ useTransition للـ navigation (non-blocking)
-// ✅ Firebase/getExams يتحمل بعد Auth check (لا يعيق LCP)
+// ✅ Firebase/getExams يتحمل بعد Auth check
 // ✅ preconnect + preload لأهم الـ resources
 // ✅ font-display: swap في الـ CSS
 
-import React, { useState, useCallback, useEffect, Suspense, lazy, useTransition } from "react";
+import React, {
+  useState,
+  useCallback,
+  useEffect,
+  Suspense,
+  lazy,
+  useTransition,
+} from "react";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import NavBar from "./components/NavBar";
 import Footer from "./components/Footer";
 import { Toast, Spinner } from "./components/UI";
 
-
 // ── Lazy pages ────────────────────────────────────────────────────
-const Home             = lazy(() => import("./pages/Home"));
-const Exams            = lazy(() => import("./pages/Exams"));
-const Topics           = lazy(() => import("./pages/Topics"));
-const Categories       = lazy(() => import("./pages/Categories"));
-const About            = lazy(() => import("./pages/About"));
-const Contact          = lazy(() => import("./pages/Contact"));
-const ExamDetail       = lazy(() => import("./pages/ExamDetail"));
-const Quiz             = lazy(() => import("./pages/Quiz"));
-const Result           = lazy(() => import("./pages/Result"));
-const Auth             = lazy(() => import("./pages/Auth"));
-const Dashboard        = lazy(() => import("./pages/Dashboard"));
-const MyExams          = lazy(() => import("./pages/MyExams"));
-const Admin            = lazy(() => import("./pages/Admin"));
-const Favorites        = lazy(() => import("./pages/Favorites"));
+const Home              = lazy(() => import("./pages/Home"));
+const Exams             = lazy(() => import("./pages/Exams"));
+const Topics            = lazy(() => import("./pages/Topics"));
+const Categories        = lazy(() => import("./pages/Categories"));
+const About             = lazy(() => import("./pages/About"));
+const Contact           = lazy(() => import("./pages/Contact"));
+const ExamDetail        = lazy(() => import("./pages/ExamDetail"));
+const Quiz              = lazy(() => import("./pages/Quiz"));
+const Result            = lazy(() => import("./pages/Result"));
+const Auth              = lazy(() => import("./pages/Auth"));
+const Dashboard         = lazy(() => import("./pages/Dashboard"));
+const MyExams           = lazy(() => import("./pages/MyExams"));
+const Admin             = lazy(() => import("./pages/Admin"));
+const Favorites         = lazy(() => import("./pages/Favorites"));
 const CertificateVerify = lazy(() => import("./pages/Certificateverify"));
 const CareerDiagnostic  = lazy(() => import("./pages/CareerDiagnostic"));
 
+// ── Page fallback spinner ─────────────────────────────────────────
 const PageFallback = () => (
-  <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+  <div
+    style={{
+      minHeight: "60vh",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    }}
+  >
     <Spinner size={32} color="var(--accent)" />
   </div>
 );
 
+// ─────────────────────────────────────────────────────────────────
+// slugify — توليد slug احترافي من اسم الاختبار
+// مثال: "AWS Solutions Architect SAA-C03" → "aws-solutions-architect-saa-c03"
+// ─────────────────────────────────────────────────────────────────
+const slugify = (text) =>
+  (text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0600-\u06FF\s-]/g, "") // يحافظ على العربي + الإنجليزي + الأرقام
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 70) || "exam";
+
+// ─────────────────────────────────────────────────────────────────
+// getStateFromHash — يقرأ الـ URL Hash ويحدد الصفحة والـ slug
+// ─────────────────────────────────────────────────────────────────
+const getStateFromHash = () => {
+  const raw = window.location.hash.replace(/^#\/?/, "").trim() || "home";
+
+  // /#exam/aws-solutions-architect-saa-c03
+  if (raw.startsWith("exam/")) {
+    const slug = raw.replace("exam/", "").trim();
+    return { page: "exam-detail", slug };
+  }
+
+  // صفحات عادية
+  const knownPages = [
+    "home", "exams", "topics", "categories", "about", "contact",
+    "quiz", "result", "auth", "dashboard", "my-exams", "admin",
+    "favorites", "verify", "career-diagnostic",
+  ];
+
+  const page = knownPages.includes(raw) ? raw : "home";
+  return { page, slug: null };
+};
+
+// ─────────────────────────────────────────────────────────────────
+// GLOBAL CSS
+// ─────────────────────────────────────────────────────────────────
 const GLOBAL_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap');
 
@@ -63,7 +120,8 @@ const GLOBAL_CSS = `
 }
 
 [data-theme="dark"] {
-  --bg: #0d1223; --bg2: linear-gradient(145deg, #1a2b69 0%, #060810 100%);
+  --bg: #0d1223;
+  --bg2: linear-gradient(145deg, #1a2b69 0%, #060810 100%);
   --bg3: #131828; --bg4: #1a2035;
   --border: #6878ae; --border2: #727eb0;
   --text: #eef1fb; --text2: #bfc7e0; --text3: #9bb6f0;
@@ -105,8 +163,9 @@ h1,h2,h3,h4,h5,h6 { font-family: 'Plus Jakarta Sans',sans-serif; font-weight: 70
 .scale-in   { animation: scaleIn  0.3s  cubic-bezier(0.16,1,0.3,1) both; }
 .slide-right{ animation: slideInRight 0.4s ease both; }
 
-.delay-1{animation-delay:0.03s} .delay-2{animation-delay:0.08s} .delay-3{animation-delay:0.14s}
-.delay-4{animation-delay:0.20s} .delay-5{animation-delay:0.28s} .delay-6{animation-delay:0.36s}
+.delay-1{animation-delay:0.03s} .delay-2{animation-delay:0.08s}
+.delay-3{animation-delay:0.14s} .delay-4{animation-delay:0.20s}
+.delay-5{animation-delay:0.28s} .delay-6{animation-delay:0.36s}
 .fade-up,.fade-in,.scale-in { will-change: transform,opacity; }
 
 .gradient-text { background: var(--gradient-accent); -webkit-background-clip: text; background-clip: text; color: transparent; display: inline-block; }
@@ -191,179 +250,457 @@ h1,h2,h3,h4,h5,h6 { font-family: 'Plus Jakarta Sans',sans-serif; font-weight: 70
 .sticky-col { position:sticky; top:var(--sticky-top-offset); align-self:start; }
 `;
 
+// ─────────────────────────────────────────────────────────────────
+// Loading Screen
+// ─────────────────────────────────────────────────────────────────
 function LoadingScreen() {
   return (
-    <div style={{ position:"fixed",inset:0,background:"var(--bg)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:9999 }}>
-      <style>{`@keyframes loadGlow{0%,100%{box-shadow:0 0 20px rgba(99,102,241,0.3)}50%{box-shadow:0 0 40px rgba(99,102,241,0.6)}} @keyframes loadDot{0%,100%{transform:scaleY(0.5);opacity:0.4}50%{transform:scaleY(1);opacity:1}}`}</style>
-      <div style={{ marginBottom:28 }}>
-        <img src="https://i.ibb.co/DPztDcgx/Chat-GPT-Image-Apr-26-2026-09-45-41-PM.png" width={70} height={70} style={{objectFit:"contain",animation:"loadGlow 3s ease-in-out infinite",borderRadius:24}} alt="FlexExams" loading="eager" fetchpriority="high" />
+    <div
+      style={{
+        position: "fixed", inset: 0, background: "var(--bg)",
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center", zIndex: 9999,
+      }}
+    >
+      <style>{`
+        @keyframes loadGlow {
+          0%,100% { box-shadow: 0 0 20px rgba(99,102,241,0.3); }
+          50%      { box-shadow: 0 0 40px rgba(99,102,241,0.6); }
+        }
+        @keyframes loadDot {
+          0%,100% { transform: scaleY(0.5); opacity: 0.4; }
+          50%      { transform: scaleY(1);   opacity: 1;   }
+        }
+      `}</style>
+
+      <div style={{ marginBottom: 28 }}>
+        <img
+          src="https://i.ibb.co/DPztDcgx/Chat-GPT-Image-Apr-26-2026-09-45-41-PM.png"
+          width={70} height={70}
+          style={{ objectFit: "contain", animation: "loadGlow 3s ease-in-out infinite", borderRadius: 24 }}
+          alt="FlexExams" loading="eager" fetchpriority="high"
+        />
       </div>
-      <div style={{ fontFamily:"'Plus Jakarta Sans',sans-serif",fontSize:28,fontWeight:900,marginBottom:5,letterSpacing:"-1px",background:"var(--gradient-accent)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent" }}>FlexExams</div>
-      <div style={{ fontSize:11,color:"var(--text3)",letterSpacing:"0.25em",textTransform:"uppercase",marginBottom:36,fontWeight:700 }}>Certification Platform</div>
-      <div style={{ display:"flex",gap:5,alignItems:"center" }}>
-        {[0,1,2,3].map(i=><div key={i} style={{width:5,height:14,borderRadius:99,background:"linear-gradient(180deg,var(--accent),var(--accent2))",animation:`loadDot 1s ease-in-out ${i*0.12}s infinite`}}/>)}
+
+      <div style={{
+        fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 28, fontWeight: 900,
+        marginBottom: 5, letterSpacing: "-1px",
+        background: "var(--gradient-accent)",
+        WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+      }}>
+        FlexExams
+      </div>
+
+      <div style={{
+        fontSize: 11, color: "var(--text3)", letterSpacing: "0.25em",
+        textTransform: "uppercase", marginBottom: 36, fontWeight: 700,
+      }}>
+        Certification Platform
+      </div>
+
+      <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} style={{
+            width: 5, height: 14, borderRadius: 99,
+            background: "linear-gradient(180deg,var(--accent),var(--accent2))",
+            animation: `loadDot 1s ease-in-out ${i * 0.12}s infinite`,
+          }} />
+        ))}
       </div>
     </div>
   );
 }
 
+// ─────────────────────────────────────────────────────────────────
+// AppInner — النواة الرئيسية
+// ─────────────────────────────────────────────────────────────────
 function AppInner() {
   const { isLoading } = useAuth();
-const getPageFromHash = () => {
-  const hash = window.location.hash.replace("#", "") || "home";
-  return hash;
-};
-const [page, setPage] = useState(getPageFromHash);
-  const [authMode, setAuthMode]     = useState("login");
-  const [activeFilter, setActiveFilter] = useState({ vendor: null, topic: null });
-  const [activeExam, setActiveExam] = useState(null);
-  const [quizData, setQuizData]     = useState(null);
-  const [resultData, setResultData] = useState(null);
-  const [exams, setExams]           = useState([]);
-  const [examsLoaded, setExamsLoaded] = useState(false);
-  const [toast, setToast]           = useState(null);
-  const [verifyCertId, setVerifyCertId] = useState(null);
-  const [, startTransition]         = useTransition();
 
-  const showToast = useCallback(t => {
+  // ── قراءة الحالة الأولية من الـ URL عند أي load/refresh ──────
+  const initialState = getStateFromHash();
+
+  const [page, setPage]               = useState(initialState.page);
+  const [pendingSlug, setPendingSlug]  = useState(initialState.slug); // slug ينتظر تحميل الـ exams
+  const [authMode, setAuthMode]        = useState("login");
+  const [activeFilter, setActiveFilter] = useState({ vendor: null, topic: null });
+  const [activeExam, setActiveExam]    = useState(null);
+  const [quizData, setQuizData]        = useState(null);
+  const [resultData, setResultData]    = useState(null);
+  const [exams, setExams]              = useState([]);
+  const [examsLoaded, setExamsLoaded]  = useState(false);
+  const [toast, setToast]              = useState(null);
+  const [verifyCertId, setVerifyCertId] = useState(null);
+  const [, startTransition]            = useTransition();
+
+  // ── Toast helper ─────────────────────────────────────────────
+  const showToast = useCallback((t) => {
     setToast(t);
     setTimeout(() => setToast(null), 4000);
   }, []);
 
-  // useTransition → navigation لا يعيق الـ UI
-// ✅ حطه بدله
-const nav = useCallback((p, opts) => {
-  startTransition(() => {
-    if (p === "auth" && opts?.mode) setAuthMode(opts.mode);
-    else if (p === "auth") setAuthMode("login");
-    if (p === "exams") setActiveFilter({ 
-      vendor: opts?.vendorFilter || null, 
-      topic: opts?.topicFilter || null 
-    });
-    window.location.hash = p; // ← ده اللي بيحفظ الصفحة في الـ URL
-    setPage(p);
-  });
-  requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
-}, [startTransition]);
+  // ── nav — دالة التنقل المركزية ────────────────────────────────
+  const nav = useCallback(
+    (p, opts) => {
+      startTransition(() => {
+        // Auth mode
+        if (p === "auth") {
+          setAuthMode(opts?.mode || "login");
+        }
 
-// ✅ زيد ده بعدها (يسمع لو حد ضغط Back/Forward في الـ browser)
-useEffect(() => {
-  const handleHashChange = () => {
-    const newPage = window.location.hash.replace("#", "") || "home";
-    startTransition(() => setPage(newPage));
-  };
-  window.addEventListener("hashchange", handleHashChange);
-  return () => window.removeEventListener("hashchange", handleHashChange);
-}, []);
+        // Exams filter
+        if (p === "exams") {
+          setActiveFilter({
+            vendor: opts?.vendorFilter || null,
+            topic:  opts?.topicFilter  || null,
+          });
+          window.location.hash = "exams";
+          setPage("exams");
+          return;
+        }
 
-  const startQuiz = useCallback(data => { setQuizData(data); nav("quiz"); }, [nav]);
+        // Exam detail — ننشئ slug من العنوان ونحفظه في الـ URL
+        if (p === "exam-detail") {
+          const exam = opts?.exam || opts; // يقبل nav("exam-detail", { exam }) أو nav("exam-detail", exam)
+          if (exam && (exam.title || exam.name || exam.id)) {
+            const slug = slugify(exam.title || exam.name || String(exam.id));
+            setActiveExam(exam);
+            window.location.hash = `exam/${slug}`;
+            setPage("exam-detail");
+            requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+            return;
+          }
+        }
 
+        // باقي الصفحات العادية
+        window.location.hash = p;
+        setPage(p);
+      });
+
+      requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+    },
+    [startTransition]
+  );
+
+  // ── startQuiz helper ──────────────────────────────────────────
+  const startQuiz = useCallback(
+    (data) => {
+      setQuizData(data);
+      nav("quiz");
+    },
+    [nav]
+  );
+
+  // ── مستمع لـ Back / Forward في المتصفح ───────────────────────
+  useEffect(() => {
+    const handleHashChange = () => {
+      const { page: newPage, slug } = getStateFromHash();
+
+      startTransition(() => {
+        if (newPage === "exam-detail" && slug) {
+          // لو الاختبارات موجودة → ابحث فوراً
+          if (exams.length > 0) {
+            const found = exams.find(
+              (ex) => slugify(ex.title || ex.name || String(ex.id)) === slug
+            );
+            if (found) {
+              setActiveExam(found);
+              setPage("exam-detail");
+            } else {
+              // slug غير معروف → روح لصفحة الاختبارات
+              window.location.hash = "exams";
+              setPage("exams");
+            }
+          } else {
+            // الاختبارات لم تُحمَّل بعد → خزّن الـ slug وانتظر
+            setPendingSlug(slug);
+            setPage("exam-detail");
+          }
+          return;
+        }
+        setPage(newPage);
+      });
+    };
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, [exams, startTransition]);
+
+  // ── Certificate verify من query param (?id=...) ───────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get("id");
-    if (id) { setVerifyCertId(id); setPage("verify"); }
+    if (id) {
+      setVerifyCertId(id);
+      setPage("verify");
+    }
   }, []);
 
+  // ── Quiz beforeunload guard ───────────────────────────────────
   useEffect(() => {
     if (page !== "quiz") return;
-    const h = e => { e.preventDefault(); e.returnValue = "You have an active exam. Are you sure?"; };
+    const h = (e) => {
+      e.preventDefault();
+      e.returnValue = "You have an active exam. Are you sure?";
+    };
     window.addEventListener("beforeunload", h);
     return () => window.removeEventListener("beforeunload", h);
   }, [page]);
 
-  // تحميل Exams بعد Auth check + تأخير 200ms لا يعيق LCP
+  // ── تحميل الـ Exams (بعد Auth + تأخير 200ms لحماية LCP) ──────
   useEffect(() => {
     if (examsLoaded || isLoading) return;
     let cancelled = false;
+
     const load = async () => {
       try {
         const { getExams } = await import("./services/firestore");
         const data = await getExams();
-        if (!cancelled) { setExams(data.filter(ex => ex.isActive !== false)); setExamsLoaded(true); }
-      } catch { if (!cancelled) setExamsLoaded(true); }
-    };
-    const t = setTimeout(load, 200);
-    return () => { cancelled = true; clearTimeout(t); };
-  }, [examsLoaded, isLoading]);
 
+        if (!cancelled) {
+          const active = data.filter((ex) => ex.isActive !== false);
+          setExams(active);
+          setExamsLoaded(true);
+
+          // ── حل الـ pendingSlug لو كان في refresh على صفحة اختبار ──
+          if (pendingSlug) {
+            const found = active.find(
+              (ex) => slugify(ex.title || ex.name || String(ex.id)) === pendingSlug
+            );
+            if (found) {
+              setActiveExam(found);
+              setPage("exam-detail");
+            } else {
+              // slug مش موجود → redirect للاختبارات
+              window.location.hash = "exams";
+              setPage("exams");
+              showToast({ type: "error", message: "Exam not found." });
+            }
+            setPendingSlug(null);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load exams:", err);
+        if (!cancelled) {
+          setExamsLoaded(true);
+          setPendingSlug(null);
+        }
+      }
+    };
+
+    const t = setTimeout(load, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [examsLoaded, isLoading, pendingSlug, showToast]);
+
+  // ── Loading screen أثناء Auth check ──────────────────────────
   if (isLoading) return <LoadingScreen />;
 
+  // ─────────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────────
   return (
     <>
       <NavBar page={page} setPage={nav} showToast={showToast} />
-      <main key={page} className="fade-in" style={{ minHeight: "calc(100vh - 72px)", overflowX: "hidden" }}>
+
+      <main
+        key={page}
+        className="fade-in"
+        style={{ minHeight: "calc(100vh - 72px)", overflowX: "hidden" }}
+      >
         <Suspense fallback={<PageFallback />}>
-          {page === "home"        && <Home setPage={nav} setActiveExam={setActiveExam} exams={exams} />}
-          {page === "exams"       && <Exams setPage={nav} setActiveExam={setActiveExam} exams={exams} vendorFilter={activeFilter.vendor} topicFilter={activeFilter.topic} showToast={showToast} />}
-          {page === "topics"      && <Topics setPage={nav} setActiveExam={setActiveExam} exams={exams} />}
-          {page === "categories"  && <Categories setPage={nav} setActiveExam={setActiveExam} exams={exams} />}
-          {page === "about"       && <About />}
-          {page === "contact"     && <Contact showToast={showToast} />}
-          {page === "exam-detail" && activeExam && <ExamDetail exam={activeExam} setPage={nav} startQuiz={startQuiz} showToast={showToast} />}
-          {page === "quiz"        && quizData   && <Quiz quizData={quizData} setPage={nav} setResultData={setResultData} showToast={showToast} />}
-          {page === "result"      && resultData  && <Result result={resultData} setPage={nav} startQuiz={startQuiz} exams={exams} showToast={showToast} />}
-          {page === "auth"        && <Auth setPage={nav} showToast={showToast} initialMode={authMode} />}
-          {page === "dashboard"   && <Dashboard setPage={nav} setResultData={setResultData} setActiveExam={setActiveExam} exams={exams} showToast={showToast} />}
-          {page === "my-exams"    && <MyExams setPage={nav} setResultData={setResultData} setActiveExam={setActiveExam} exams={exams} showToast={showToast} />}
-          {page === "admin"       && <Admin showToast={showToast} setPage={nav} />}
-          {page === "favorites"   && <Favorites setPage={nav} setActiveExam={setActiveExam} exams={exams} showToast={showToast} />}
-          {page === "verify"      && <CertificateVerify certId={verifyCertId} setPage={nav} />}
-          {page === "career-diagnostic" && <CareerDiagnostic setPage={nav} exams={exams} />}
+
+          {page === "home" && (
+            <Home setPage={nav} setActiveExam={setActiveExam} exams={exams} />
+          )}
+
+          {page === "exams" && (
+            <Exams
+              setPage={nav}
+              setActiveExam={setActiveExam}
+              exams={exams}
+              vendorFilter={activeFilter.vendor}
+              topicFilter={activeFilter.topic}
+              showToast={showToast}
+            />
+          )}
+
+          {page === "topics" && (
+            <Topics setPage={nav} setActiveExam={setActiveExam} exams={exams} />
+          )}
+
+          {page === "categories" && (
+            <Categories setPage={nav} setActiveExam={setActiveExam} exams={exams} />
+          )}
+
+          {page === "about" && <About />}
+
+          {page === "contact" && <Contact showToast={showToast} />}
+
+          {page === "exam-detail" && activeExam && (
+            <ExamDetail
+              exam={activeExam}
+              setPage={nav}
+              startQuiz={startQuiz}
+              showToast={showToast}
+            />
+          )}
+
+          {/* لو exam-detail بس الاختبار لسه بيتحمل → spinner */}
+          {page === "exam-detail" && !activeExam && <PageFallback />}
+
+          {page === "quiz" && quizData && (
+            <Quiz
+              quizData={quizData}
+              setPage={nav}
+              setResultData={setResultData}
+              showToast={showToast}
+            />
+          )}
+
+          {page === "result" && resultData && (
+            <Result
+              result={resultData}
+              setPage={nav}
+              startQuiz={startQuiz}
+              exams={exams}
+              showToast={showToast}
+            />
+          )}
+
+          {page === "auth" && (
+            <Auth setPage={nav} showToast={showToast} initialMode={authMode} />
+          )}
+
+          {page === "dashboard" && (
+            <Dashboard
+              setPage={nav}
+              setResultData={setResultData}
+              setActiveExam={setActiveExam}
+              exams={exams}
+              showToast={showToast}
+            />
+          )}
+
+          {page === "my-exams" && (
+            <MyExams
+              setPage={nav}
+              setResultData={setResultData}
+              setActiveExam={setActiveExam}
+              exams={exams}
+              showToast={showToast}
+            />
+          )}
+
+          {page === "admin" && (
+            <Admin showToast={showToast} setPage={nav} />
+          )}
+
+          {page === "favorites" && (
+            <Favorites
+              setPage={nav}
+              setActiveExam={setActiveExam}
+              exams={exams}
+              showToast={showToast}
+            />
+          )}
+
+          {page === "verify" && (
+            <CertificateVerify certId={verifyCertId} setPage={nav} />
+          )}
+
+          {page === "career-diagnostic" && (
+            <CareerDiagnostic setPage={nav} exams={exams} />
+          )}
+
         </Suspense>
       </main>
+
       <Footer setPage={nav} />
       <Toast toast={toast} />
     </>
   );
 }
 
+// ─────────────────────────────────────────────────────────────────
+// App — Root
+// ─────────────────────────────────────────────────────────────────
 export default function App() {
   useEffect(() => {
+    // ── Theme ────────────────────────────────────────────────────
     const saved = localStorage.getItem("theme") || "dark";
     if (!localStorage.getItem("theme")) localStorage.setItem("theme", saved);
     document.documentElement.setAttribute("data-theme", saved);
 
+    // ── Meta helper ──────────────────────────────────────────────
     const setMeta = (name, content, prop = false) => {
       const sel = prop ? `meta[property="${name}"]` : `meta[name="${name}"]`;
       let el = document.querySelector(sel);
-      if (!el) { el = document.createElement("meta"); prop ? el.setAttribute("property", name) : el.setAttribute("name", name); document.head.appendChild(el); }
+      if (!el) {
+        el = document.createElement("meta");
+        prop ? el.setAttribute("property", name) : el.setAttribute("name", name);
+        document.head.appendChild(el);
+      }
       el.setAttribute("content", content);
     };
-    document.title = "FlexExams — Practice Smarter, Pass with Confidence";
-    setMeta("description","Prepare for 50+ IT certifications with real exam-style questions, timed practice tests, and instant results. Trusted by 100,000+ professionals worldwide.");
-    setMeta("robots","index, follow");
-    setMeta("og:title","FlexExams — Practice Smarter, Pass with Confidence",true);
-    setMeta("og:description","Real exam-style questions for 50+ certifications.",true);
-    setMeta("og:type","website",true);
-    setMeta("og:image","https://i.ibb.co/DPztDcgx/Chat-GPT-Image-Apr-26-2026-09-45-41-PM.png",true);
-    setMeta("twitter:card","summary_large_image");
 
+    // ── SEO Meta ─────────────────────────────────────────────────
+    document.title =
+      "FlexExams — Practice Smarter, Pass with Confidence";
+    setMeta(
+      "description",
+      "Prepare for 50+ IT certifications with real exam-style questions, timed practice tests, and instant results. Trusted by 100,000+ professionals worldwide."
+    );
+    setMeta("robots", "index, follow");
+    setMeta("og:title",       "FlexExams — Practice Smarter, Pass with Confidence", true);
+    setMeta("og:description", "Real exam-style questions for 50+ certifications.",   true);
+    setMeta("og:type",        "website",                                              true);
+    setMeta("og:image",       "https://i.ibb.co/DPztDcgx/Chat-GPT-Image-Apr-26-2026-09-45-41-PM.png", true);
+    setMeta("twitter:card",   "summary_large_image");
+
+    // ── Canonical ────────────────────────────────────────────────
     let canonical = document.querySelector("link[rel='canonical']");
-    if (!canonical) { canonical = document.createElement("link"); canonical.rel = "canonical"; document.head.appendChild(canonical); }
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.rel = "canonical";
+      document.head.appendChild(canonical);
+    }
     canonical.href = window.location.origin;
 
+    // ── Theme color ──────────────────────────────────────────────
     let tc = document.querySelector("meta[name='theme-color']");
-    if (!tc) { tc = document.createElement("meta"); tc.name = "theme-color"; document.head.appendChild(tc); }
+    if (!tc) {
+      tc = document.createElement("meta");
+      tc.name = "theme-color";
+      document.head.appendChild(tc);
+    }
     tc.content = saved === "dark" ? "#0d1223" : "#ffffff";
 
-    // Resource hints
+    // ── Resource hints ───────────────────────────────────────────
     [
-      { rel:"preconnect", href:"https://fonts.googleapis.com" },
-      { rel:"preconnect", href:"https://fonts.gstatic.com", crossOrigin:"anonymous" },
-      { rel:"dns-prefetch", href:"//i.ibb.co" },
-      { rel:"dns-prefetch", href:"//firestore.googleapis.com" },
-      { rel:"dns-prefetch", href:"//firebase.googleapis.com" },
+      { rel: "preconnect",  href: "https://fonts.googleapis.com" },
+      { rel: "preconnect",  href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      { rel: "dns-prefetch", href: "//i.ibb.co" },
+      { rel: "dns-prefetch", href: "//firestore.googleapis.com" },
+      { rel: "dns-prefetch", href: "//firebase.googleapis.com" },
     ].forEach(({ rel, href, crossOrigin }) => {
       if (document.querySelector(`link[rel="${rel}"][href="${href}"]`)) return;
-      const l = document.createElement("link"); l.rel = rel; l.href = href;
+      const l = document.createElement("link");
+      l.rel = rel;
+      l.href = href;
       if (crossOrigin) l.crossOrigin = crossOrigin;
       document.head.appendChild(l);
     });
 
-    // Preload logo (LCP)
+    // ── Preload logo (LCP) ───────────────────────────────────────
     if (!document.querySelector("link[rel='preload'][as='image']")) {
-      const pl = document.createElement("link"); pl.rel = "preload"; pl.as = "image";
-      pl.href = "https://i.ibb.co/DPztDcgx/Chat-GPT-Image-Apr-26-2026-09-45-41-PM.png";
+      const pl = document.createElement("link");
+      pl.rel = "preload";
+      pl.as  = "image";
+      pl.href =
+        "https://i.ibb.co/DPztDcgx/Chat-GPT-Image-Apr-26-2026-09-45-41-PM.png";
       document.head.appendChild(pl);
     }
   }, []);
