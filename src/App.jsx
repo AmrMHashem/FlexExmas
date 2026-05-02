@@ -91,6 +91,38 @@ const getStateFromHash = () => {
   return { page, slug: null };
 };
 
+
+// ─────────────────────────────────────────────────────────────────
+// PAGE TITLES — عنوان التابة يتغير مع كل صفحة
+// ─────────────────────────────────────────────────────────────────
+const PAGE_TITLES = {
+  home:               "FlexExams — Practice Smarter, Pass with Confidence",
+  exams:              "All Exams — FlexExams",
+  topics:             "Browse by Topic — FlexExams",
+  categories:         "Categories — FlexExams",
+  about:              "About Us — FlexExams",
+  contact:            "Contact — FlexExams",
+  quiz:               "Active Exam — FlexExams",
+  result:             "Exam Result — FlexExams",
+  auth:               "Sign In — FlexExams",
+  dashboard:          "My Dashboard — FlexExams",
+  "my-exams":         "My Exams — FlexExams",
+  admin:              "Admin Panel — FlexExams",
+  favorites:          "My Favorites — FlexExams",
+  verify:             "Verify Certificate — FlexExams",
+  "career-diagnostic":"Career Diagnostic — FlexExams",
+};
+
+function usePageTitle(page, activeExam) {
+  useEffect(() => {
+    if (page === "exam-detail" && activeExam) {
+      document.title = activeExam.title + " — FlexExams | Practice Exam";
+    } else {
+      document.title = PAGE_TITLES[page] || "FlexExams";
+    }
+  }, [page, activeExam]);
+}
+
 // ─────────────────────────────────────────────────────────────────
 // GLOBAL CSS
 // ─────────────────────────────────────────────────────────────────
@@ -338,6 +370,9 @@ function AppInner() {
     setToast(t);
     setTimeout(() => setToast(null), 4000);
   }, []);
+
+  // ── Dynamic page title ───────────────────────────────────────
+  usePageTitle(page, activeExam);
 
   // ── nav — دالة التنقل المركزية ────────────────────────────────
   const nav = useCallback(
