@@ -62,7 +62,7 @@ export default function Favorites({ setPage, setActiveExam, exams: allExams, sho
     } catch {}
   };
 
-  const handleExamClick = (exam) => { setActiveExam(exam); setPage("exam-detail"); };
+  const handleExamClick = (exam) => { setPage("exam-detail", { exam }); };
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: "48px clamp(20px,4vw,40px)" }}>
