@@ -8,7 +8,7 @@ import {
 import { getUserEnrollments } from "../services/enrollments";
 import { Spinner, Empty } from "../components/UI";
 
-const GUEST_FAV_KEY = "FlexExams_guest_favorites";
+const GUEST_FAV_KEY = "exampro_guest_favorites";
 function getGuestFavorites() {
   try { return JSON.parse(localStorage.getItem(GUEST_FAV_KEY) || "[]"); } catch { return []; }
 }
@@ -450,8 +450,7 @@ export default function Exams({ setPage, setActiveExam, exams: allExams = [], ve
   const hasMore = visibleCount < filtered.length;
   const isFilterActive = search !== "" || selectedVendor !== "All" || selectedTopic !== "All";
 
-  const handleExamClick = useCallback((exam) => { setActiveExam(exam); setPage("exam-detail"); }, [setActiveExam, setPage]);
-  const handleSearchChange = useCallback((e) => { setSearch(e.target.value); setVisibleCount(12); }, []);
+  const handleExamClick = useCallback((exam) => { setPage("exam-detail", { exam }); }, [setPage]);
   const clearFilters = useCallback(() => { setSearch(""); setSelectedVendor("All"); setSelectedTopic("All"); setSortBy("popular"); setVisibleCount(12); }, []);
   const handleLoadMore = useCallback(() => setVisibleCount(v => v + 12), []);
 
