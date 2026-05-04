@@ -829,13 +829,44 @@ export default function Home({ setPage, setActiveExam, exams: propExams = [], sh
                 <PI type="sparkle" size={13} color="var(--accent)" /> Trusted by 100,000+ professionals worldwide
               </div>
               <WelcomePopup user={user} profile={profile} />
-              <h1 className="fade-up delay-1" style={{ fontSize:"clamp(38px,5.5vw,58px)", fontWeight:900, lineHeight:1.05, marginBottom:22, color:"var(--text)", letterSpacing:"-2.5px" }}>
-                Practice Smart.<br />
-                <span style={{ background:"linear-gradient(135deg,#8681dc,#8c69ca)", WebkitBackgroundClip:"text", backgroundClip:"text", color:"transparent" }}>Pass with Confidence.</span>
-              </h1>
-              <p className="fade-up delay-2" style={{ fontSize:"clamp(15px,1.8vw,17px)", color:"var(--text2)", maxWidth:500, lineHeight:1.8, marginBottom:32 }}>
-                FlexExams gives you <strong style={{ color:"var(--text)", fontWeight:700 }}>real exam-style questions</strong> from the world's top 50+ certifications — so when you sit the actual test, nothing surprises you.
-              </p>
+             <h1
+  className="fade-up delay-1"
+  style={{
+    fontSize: "clamp(38px,5.5vw,58px)",
+    fontWeight: 900,
+    lineHeight: 1.05,
+    marginBottom: 22,
+    color: "var(--text)",
+    letterSpacing: "-2.5px"
+  }}
+>
+  Master Any Certification Exam<br />
+  <span
+    style={{
+      background: "linear-gradient(135deg,#8681dc,#8c69ca)",
+      WebkitBackgroundClip: "text",
+      backgroundClip: "text",
+      color: "transparent"
+    }}
+  >
+    With Real Practice Questions.
+  </span>
+</h1>
+
+<p
+  className="fade-up delay-2"
+  style={{
+    fontSize: "clamp(15px,1.8vw,17px)",
+    color: "var(--text2)",
+    maxWidth: 520,
+    lineHeight: 1.8,
+    marginBottom: 32
+  }}
+>
+  The most advanced <strong style={{ color: "var(--text)", fontWeight: 700 }}>
+  certification exam practice platform</strong> built for IT, cloud, security, and professional exams.  
+  Train with <strong style={{ color: "var(--text)", fontWeight: 700 }}>real exam-style questions, timed simulations, and adaptive practice tests</strong> so you pass faster and with confidence.
+</p>
               <div className="fade-up delay-3" style={{ marginBottom:26, position:"relative", zIndex:100 }}>
                 <ExamSearch exams={exams} onSelect={handleExamClick} setPage={setPage} setActiveExam={setActiveExam} />
               </div>
