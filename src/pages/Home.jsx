@@ -826,7 +826,7 @@ export default function Home({ setPage, setActiveExam, exams: propExams = [], sh
           <div className="hero-grid" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"clamp(32px,6vw,80px)", alignItems:"start", overflow:"visible" }}>
             <div className="hero-mobile-center" style={{ position:"relative", zIndex:10 }}>
               <div className="fade-up" style={{ display:"inline-flex", alignItems:"center", gap:8, background:"var(--accent-soft)", border:"2px solid var(--accent)", borderRadius:100, padding:"7px 18px", marginBottom:28, fontSize:12.5, color:"var(--accent)", fontWeight:600 }}>
-                <PI type="sparkle" size={13} color="var(--accent)" /> Trusted by 100,000+ professionals worldwide
+                <PI type="sparkle" size={13} color="var(--accent)" /> The Sharpest Exam Simulator on the Web
               </div>
               <WelcomePopup user={user} profile={profile} />
              <h1
@@ -1061,7 +1061,7 @@ export default function Home({ setPage, setActiveExam, exams: propExams = [], sh
         <div style={{ maxWidth:1200, margin:"0 auto" }}>
           <div style={{ textAlign:"center", marginBottom:64 }}>
             <div style={{ display:"inline-flex", alignItems:"center", gap:8, background:"rgba(99,102,241,0.1)", border:"1.5px solid rgba(99,102,241,0.3)", borderRadius:100, padding:"6px 18px", marginBottom:18, fontSize:11, color:"var(--accent)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em" }}><PI type="sparkle" size={11} color="var(--accent)" /> Why Choose FlexExams</div>
-            <h2 style={{ fontSize:"clamp(26px,3.5vw,40px)", fontWeight:900, color:"var(--text)", letterSpacing:"-1.5px" }}>Everything Engineered for Your Exam Success</h2>
+            <h2 style={{ fontSize:"clamp(26px,3.5vw,40px)", fontWeight:900, color:"var(--text)", letterSpacing:"-1.5px" }}>Built for the Exam. Not Just the Theory.</h2>
           </div>
           <div className="features-grid" style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:24 }}>
             {features.map((f,i)=>(
@@ -1086,8 +1086,8 @@ export default function Home({ setPage, setActiveExam, exams: propExams = [], sh
             <div className="cta-grid" style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:40, alignItems:"center", position:"relative" }}>
               <div>
                 <div style={{ fontSize:11, fontWeight:800, color:"rgba(255,255,255,0.8)", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:14 }}>Your Journey Starts Now</div>
-                <h2 style={{ fontSize:"clamp(24px,4vw,42px)", fontWeight:900, color:"#fff", letterSpacing:"-1.5px", marginBottom:16, lineHeight:1.15 }}>The job you want is on the other side of this certification.</h2>
-                <p style={{ fontSize:15, color:"rgba(255,255,255,0.9)", lineHeight:1.7, maxWidth:560 }}>Stop procrastinating. Every day you wait is a day your competition doesn't. Join 100,000+ professionals who decided to act.</p>
+                <h2 style={{ fontSize:"clamp(24px,4vw,42px)", fontWeight:900, color:"#fff", letterSpacing:"-1.5px", marginBottom:16, lineHeight:1.15 }}>One exam stands between you and the career you're building.</h2>
+                <p style={{ fontSize:15, color:"rgba(255,255,255,0.9)", lineHeight:1.7, maxWidth:560 }}>While others practice, you decide where you’ll stand on exam day.</p>
               </div>
               <div className="cta-actions" style={{ display:"flex", flexDirection:"column", gap:12, flexShrink:0 }}>
                 {user ? (
