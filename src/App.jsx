@@ -1,14 +1,11 @@
-// App.jsx — FlexExams v4.4 — Hash Router Edition
-// ✅ Hash-based routing (refresh safe)
-// ✅ Unique SEO-friendly slug per exam → /#exam/aws-solutions-architect-saa-c03
-// ✅ Shareable exam links
-// ✅ Browser Back/Forward support
-// ✅ Pending slug resolution after exams load
+// App.jsx — FlexExams v5.0 — History Router Edition (SEO-Optimized)
+// ✅ History API routing — clean URLs /topics /exams /exam/slug
+// ✅ No more # in URLs → better SEO & social sharing
+// ✅ Per-page canonical + og:url updates
+// ✅ Structured data per page (BreadcrumbList + WebPage)
 // ✅ Lazy loading + code splitting
-// ✅ useTransition للـ navigation (non-blocking)
-// ✅ Firebase/getExams يتحمل بعد Auth check
-// ✅ preconnect + preload لأهم الـ resources
-// ✅ font-display: swap في الـ CSS
+// ✅ useTransition for non-blocking navigation
+// ✅ Firebase/getExams loads after Auth check
 
 import React, {
   useState,
@@ -57,70 +54,256 @@ const PageFallback = () => (
 
 // ─────────────────────────────────────────────────────────────────
 // slugify — توليد slug احترافي من اسم الاختبار
-// مثال: "AWS Solutions Architect SAA-C03" → "aws-solutions-architect-saa-c03"
 // ─────────────────────────────────────────────────────────────────
 const slugify = (text) =>
   (text || "")
     .toLowerCase()
-    .replace(/[^a-z0-9\u0600-\u06FF\s-]/g, "") // يحافظ على العربي + الإنجليزي + الأرقام
+    .replace(/[^a-z0-9\u0600-\u06FF\s-]/g, "")
     .trim()
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
     .slice(0, 70) || "exam";
 
 // ─────────────────────────────────────────────────────────────────
-// getStateFromHash — يقرأ الـ URL Hash ويحدد الصفحة والـ slug
+// ROUTE MAP — pathname → page key
 // ─────────────────────────────────────────────────────────────────
-const getStateFromHash = () => {
-  const raw = window.location.hash.replace(/^#\/?/, "").trim() || "home";
+const ROUTE_MAP = {
+  "/":                   "home",
+  "/exams":              "exams",
+  "/topics":             "topics",
+  "/categories":         "categories",
+  "/about":              "about",
+  "/contact":            "contact",
+  "/quiz":               "quiz",
+  "/result":             "result",
+  "/auth":               "auth",
+  "/dashboard":          "dashboard",
+  "/my-exams":           "my-exams",
+  "/admin":              "admin",
+  "/favorites":          "favorites",
+  "/verify":             "verify",
+  "/career-diagnostic":  "career-diagnostic",
+};
 
-  // /#exam/aws-solutions-architect-saa-c03
-  if (raw.startsWith("exam/")) {
-    const slug = raw.replace("exam/", "").trim();
+// ─────────────────────────────────────────────────────────────────
+// getStateFromPath — يقرأ الـ pathname ويحدد الصفحة والـ slug
+// ─────────────────────────────────────────────────────────────────
+const getStateFromPath = (pathname = window.location.pathname) => {
+  const clean = pathname.replace(/\/$/, "") || "/";
+
+  // /exam/aws-solutions-architect-saa-c03
+  if (clean.startsWith("/exam/")) {
+    const slug = clean.replace("/exam/", "").trim();
     return { page: "exam-detail", slug };
   }
 
-  // صفحات عادية
-  const knownPages = [
-    "home", "exams", "topics", "categories", "about", "contact",
-    "quiz", "result", "auth", "dashboard", "my-exams", "admin",
-    "favorites", "verify", "career-diagnostic",
-  ];
-
-  const page = knownPages.includes(raw) ? raw : "home";
+  const page = ROUTE_MAP[clean] || "home";
   return { page, slug: null };
 };
 
-
 // ─────────────────────────────────────────────────────────────────
-// PAGE TITLES — عنوان التابة يتغير مع كل صفحة
+// PAGE META — title + description + canonical per page
 // ─────────────────────────────────────────────────────────────────
-const PAGE_TITLES = {
-  home:               "FlexExams — Practice Smarter, Pass with Confidence",
-  exams:              "All Exams — FlexExams",
-  topics:             "Browse by Topic — FlexExams",
-  categories:         "Categories — FlexExams",
-  about:              "About Us — FlexExams",
-  contact:            "Contact — FlexExams",
-  quiz:               "Active Exam — FlexExams",
-  result:             "Exam Result — FlexExams",
-  auth:               "Sign In — FlexExams",
-  dashboard:          "My Dashboard — FlexExams",
-  "my-exams":         "My Exams — FlexExams",
-  admin:              "Admin Panel — FlexExams",
-  favorites:          "My Favorites — FlexExams",
-  verify:             "Verify Certificate — FlexExams",
-  "career-diagnostic":"Career Diagnostic — FlexExams",
+const PAGE_META = {
+  home: {
+    title: "FlexExams — Practice Smarter, Pass with Confidence",
+    description: "Prepare for 50+ IT certifications with real exam-style questions, timed practice tests, and instant results. Trusted by 100,000+ professionals worldwide.",
+    path: "/",
+  },
+  exams: {
+    title: "All Certification Exams — FlexExams",
+    description: "Browse 50+ IT certification practice exams. AWS, Azure, CCNA, Security+, PMP and more. Start your free practice test today.",
+    path: "/exams",
+  },
+  topics: {
+    title: "Browse by Topic — FlexExams",
+    description: "Explore IT certification exams by topic. Cloud, Security, Networking, DevOps, Project Management and more.",
+    path: "/topics",
+  },
+  categories: {
+    title: "Exam Categories — FlexExams",
+    description: "Find certification practice tests by category. Filter by vendor, difficulty, or specialty area.",
+    path: "/categories",
+  },
+  about: {
+    title: "About FlexExams — Our Mission",
+    description: "FlexExams is built by IT professionals for IT professionals. Learn about our mission to make certification prep accessible worldwide.",
+    path: "/about",
+  },
+  contact: {
+    title: "Contact FlexExams — Get in Touch",
+    description: "Have a question or feedback? Contact the FlexExams team. We're here to help you succeed.",
+    path: "/contact",
+  },
+  quiz: {
+    title: "Active Exam — FlexExams",
+    description: "You're in an active practice exam on FlexExams. Good luck!",
+    path: "/quiz",
+  },
+  result: {
+    title: "Exam Result — FlexExams",
+    description: "View your exam result and detailed answer explanations on FlexExams.",
+    path: "/result",
+  },
+  auth: {
+    title: "Sign In — FlexExams",
+    description: "Sign in or create a free FlexExams account to track your progress and unlock all features.",
+    path: "/auth",
+  },
+  dashboard: {
+    title: "My Dashboard — FlexExams",
+    description: "Track your certification exam progress, scores, and analytics on FlexExams.",
+    path: "/dashboard",
+  },
+  "my-exams": {
+    title: "My Exams — FlexExams",
+    description: "View all your enrolled and completed certification practice exams on FlexExams.",
+    path: "/my-exams",
+  },
+  admin: {
+    title: "Admin Panel — FlexExams",
+    description: "FlexExams administration panel.",
+    path: "/admin",
+  },
+  favorites: {
+    title: "My Favorites — FlexExams",
+    description: "Your saved favorite certification practice exams on FlexExams.",
+    path: "/favorites",
+  },
+  verify: {
+    title: "Verify Certificate — FlexExams",
+    description: "Verify the authenticity of a FlexExams digital certificate using the certificate ID.",
+    path: "/verify",
+  },
+  "career-diagnostic": {
+    title: "Career Diagnostic — FlexExams",
+    description: "Discover the best IT certification path for your career goals with our free Career Diagnostic tool.",
+    path: "/career-diagnostic",
+  },
 };
 
-function usePageTitle(page, activeExam) {
+// ─────────────────────────────────────────────────────────────────
+// SEO helpers
+// ─────────────────────────────────────────────────────────────────
+function setMeta(nameOrProp, content, isProp = false) {
+  const sel = isProp
+    ? `meta[property="${nameOrProp}"]`
+    : `meta[name="${nameOrProp}"]`;
+  let el = document.querySelector(sel);
+  if (!el) {
+    el = document.createElement("meta");
+    isProp
+      ? el.setAttribute("property", nameOrProp)
+      : el.setAttribute("name", nameOrProp);
+    document.head.appendChild(el);
+  }
+  el.setAttribute("content", content);
+}
+
+function setCanonical(path) {
+  const href = `https://www.flexexams.com${path}`;
+  let el = document.querySelector("link[rel='canonical']");
+  if (!el) {
+    el = document.createElement("link");
+    el.rel = "canonical";
+    document.head.appendChild(el);
+  }
+  el.href = href;
+  setMeta("og:url", href, true);
+}
+
+function injectJsonLd(id, data) {
+  let el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement("script");
+    el.id = id;
+    el.type = "application/ld+json";
+    document.head.appendChild(el);
+  }
+  el.textContent = JSON.stringify(data);
+}
+
+function updatePageSEO(page, activeExam) {
+  const OG_IMAGE = "https://www.flexexams.com/og-image.png";
+
+  if (page === "exam-detail" && activeExam) {
+    const examTitle = activeExam.title || activeExam.name || "Practice Exam";
+    const examSlug  = slugify(examTitle);
+    const path      = `/exam/${examSlug}`;
+    const title     = `${examTitle} — Practice Exam | FlexExams`;
+    const desc      = `Practice for ${examTitle} with real exam-style questions on FlexExams. Timed tests, instant feedback, and detailed explanations.`;
+
+    document.title = title;
+    setMeta("description", desc);
+    setCanonical(path);
+    setMeta("og:title",       title,    true);
+    setMeta("og:description", desc,     true);
+    setMeta("og:image",       OG_IMAGE, true);
+    setMeta("twitter:title",  title);
+    setMeta("twitter:description", desc);
+
+    injectJsonLd("ld-breadcrumb", {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "Home",  "item": "https://www.flexexams.com/" },
+        { "@type": "ListItem", "position": 2, "name": "Exams", "item": "https://www.flexexams.com/exams" },
+        { "@type": "ListItem", "position": 3, "name": examTitle, "item": `https://www.flexexams.com${path}` },
+      ],
+    });
+    return;
+  }
+
+  const meta  = PAGE_META[page] || PAGE_META.home;
+  document.title = meta.title;
+  setMeta("description",    meta.description);
+  setCanonical(meta.path);
+  setMeta("og:title",       meta.title,       true);
+  setMeta("og:description", meta.description, true);
+  setMeta("og:image",       OG_IMAGE,         true);
+  setMeta("twitter:title",  meta.title);
+  setMeta("twitter:description", meta.description);
+
+  if (page === "home") {
+    injectJsonLd("ld-breadcrumb", {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "FlexExams",
+      "url": "https://www.flexexams.com",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": { "@type": "EntryPoint", "urlTemplate": "https://www.flexexams.com/exams?q={search_term_string}" },
+        "query-input": "required name=search_term_string"
+      }
+    });
+  } else {
+    injectJsonLd("ld-breadcrumb", {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.flexexams.com/" },
+        { "@type": "ListItem", "position": 2, "name": meta.title.split(" —")[0], "item": `https://www.flexexams.com${meta.path}` },
+      ],
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// usePageSEO hook
+// ─────────────────────────────────────────────────────────────────
+function usePageSEO(page, activeExam) {
   useEffect(() => {
-    if (page === "exam-detail" && activeExam) {
-      document.title = activeExam.title + " — FlexExams | Practice Exam";
-    } else {
-      document.title = PAGE_TITLES[page] || "FlexExams";
-    }
+    updatePageSEO(page, activeExam);
   }, [page, activeExam]);
+}
+
+// ─────────────────────────────────────────────────────────────────
+// History navigation helper — pushes clean URL, no #
+// ─────────────────────────────────────────────────────────────────
+function pushPath(path) {
+  if (window.location.pathname !== path) {
+    window.history.pushState(null, "", path);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -349,11 +532,10 @@ function LoadingScreen() {
 function AppInner() {
   const { isLoading } = useAuth();
 
-  // ── قراءة الحالة الأولية من الـ URL عند أي load/refresh ──────
-  const initialState = getStateFromHash();
+  const initialState = getStateFromPath();
 
   const [page, setPage]               = useState(initialState.page);
-  const [pendingSlug, setPendingSlug]  = useState(initialState.slug); // slug ينتظر تحميل الـ exams
+  const [pendingSlug, setPendingSlug]  = useState(initialState.slug);
   const [authMode, setAuthMode]        = useState("login");
   const [activeFilter, setActiveFilter] = useState({ vendor: null, topic: null });
   const [activeExam, setActiveExam]    = useState(null);
@@ -365,50 +547,51 @@ function AppInner() {
   const [verifyCertId, setVerifyCertId] = useState(null);
   const [, startTransition]            = useTransition();
 
-  // ── Toast helper ─────────────────────────────────────────────
   const showToast = useCallback((t) => {
     setToast(t);
     setTimeout(() => setToast(null), 4000);
   }, []);
 
-  // ── Dynamic page title ───────────────────────────────────────
-  usePageTitle(page, activeExam);
+  // Dynamic SEO per page
+  usePageSEO(page, activeExam);
 
-  // ── nav — دالة التنقل المركزية ────────────────────────────────
+  // ── nav — دالة التنقل المركزية (History API) ─────────────────
   const nav = useCallback(
     (p, opts) => {
       startTransition(() => {
-        // Auth mode
         if (p === "auth") {
           setAuthMode(opts?.mode || "login");
+          pushPath("/auth");
+          setPage("auth");
+          return;
         }
 
-        // Exams filter
         if (p === "exams") {
           setActiveFilter({
             vendor: opts?.vendorFilter || null,
             topic:  opts?.topicFilter  || null,
           });
-          window.location.hash = "exams";
+          pushPath("/exams");
           setPage("exams");
           return;
         }
 
-        // Exam detail — ننشئ slug من العنوان ونحفظه في الـ URL
         if (p === "exam-detail") {
-          const exam = opts?.exam || opts; // يقبل nav("exam-detail", { exam }) أو nav("exam-detail", exam)
+          const exam = opts?.exam || opts;
           if (exam && (exam.title || exam.name || exam.id)) {
             const slug = slugify(exam.title || exam.name || String(exam.id));
             setActiveExam(exam);
-            window.location.hash = `exam/${slug}`;
+            pushPath(`/exam/${slug}`);
             setPage("exam-detail");
             requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
             return;
           }
         }
 
-        // باقي الصفحات العادية
-        window.location.hash = p;
+        // باقي الصفحات
+        const meta = PAGE_META[p];
+        const path = meta ? meta.path : `/${p}`;
+        pushPath(path);
         setPage(p);
       });
 
@@ -417,7 +600,6 @@ function AppInner() {
     [startTransition]
   );
 
-  // ── startQuiz helper ──────────────────────────────────────────
   const startQuiz = useCallback(
     (data) => {
       setQuizData(data);
@@ -426,14 +608,13 @@ function AppInner() {
     [nav]
   );
 
-  // ── مستمع لـ Back / Forward في المتصفح ───────────────────────
+  // ── مستمع لـ Back / Forward في المتصفح ──────────────────────
   useEffect(() => {
-    const handleHashChange = () => {
-      const { page: newPage, slug } = getStateFromHash();
+    const handlePopState = () => {
+      const { page: newPage, slug } = getStateFromPath();
 
       startTransition(() => {
         if (newPage === "exam-detail" && slug) {
-          // لو الاختبارات موجودة → ابحث فوراً
           if (exams.length > 0) {
             const found = exams.find(
               (ex) => slugify(ex.title || ex.name || String(ex.id)) === slug
@@ -442,12 +623,10 @@ function AppInner() {
               setActiveExam(found);
               setPage("exam-detail");
             } else {
-              // slug غير معروف → روح لصفحة الاختبارات
-              window.location.hash = "exams";
+              window.history.replaceState(null, "", "/exams");
               setPage("exams");
             }
           } else {
-            // الاختبارات لم تُحمَّل بعد → خزّن الـ slug وانتظر
             setPendingSlug(slug);
             setPage("exam-detail");
           }
@@ -457,11 +636,11 @@ function AppInner() {
       });
     };
 
-    window.addEventListener("hashchange", handleHashChange);
-    return () => window.removeEventListener("hashchange", handleHashChange);
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, [exams, startTransition]);
 
-  // ── Certificate verify من query param (?id=...) ───────────────
+  // ── Certificate verify من query param (?id=...) ──────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get("id");
@@ -482,7 +661,7 @@ function AppInner() {
     return () => window.removeEventListener("beforeunload", h);
   }, [page]);
 
-  // ── تحميل الـ Exams (بعد Auth + تأخير 200ms لحماية LCP) ──────
+  // ── تحميل الـ Exams ──────────────────────────────────────────
   useEffect(() => {
     if (examsLoaded || isLoading) return;
     let cancelled = false;
@@ -497,7 +676,6 @@ function AppInner() {
           setExams(active);
           setExamsLoaded(true);
 
-          // ── حل الـ pendingSlug لو كان في refresh على صفحة اختبار ──
           if (pendingSlug) {
             const found = active.find(
               (ex) => slugify(ex.title || ex.name || String(ex.id)) === pendingSlug
@@ -506,8 +684,7 @@ function AppInner() {
               setActiveExam(found);
               setPage("exam-detail");
             } else {
-              // slug مش موجود → redirect للاختبارات
-              window.location.hash = "exams";
+              window.history.replaceState(null, "", "/exams");
               setPage("exams");
               showToast({ type: "error", message: "Exam not found." });
             }
@@ -530,12 +707,8 @@ function AppInner() {
     };
   }, [examsLoaded, isLoading, pendingSlug, showToast]);
 
-  // ── Loading screen أثناء Auth check ──────────────────────────
   if (isLoading) return <LoadingScreen />;
 
-  // ─────────────────────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────────────────────
   return (
     <>
       <NavBar page={page} setPage={nav} showToast={showToast} />
@@ -583,7 +756,6 @@ function AppInner() {
             />
           )}
 
-          {/* لو exam-detail بس الاختبار لسه بيتحمل → spinner */}
           {page === "exam-detail" && !activeExam && <PageFallback />}
 
           {page === "quiz" && quizData && (
@@ -664,47 +836,11 @@ function AppInner() {
 // ─────────────────────────────────────────────────────────────────
 export default function App() {
   useEffect(() => {
-    // ── Theme ────────────────────────────────────────────────────
     const saved = localStorage.getItem("theme") || "dark";
     if (!localStorage.getItem("theme")) localStorage.setItem("theme", saved);
     document.documentElement.setAttribute("data-theme", saved);
 
-    // ── Meta helper ──────────────────────────────────────────────
-    const setMeta = (name, content, prop = false) => {
-      const sel = prop ? `meta[property="${name}"]` : `meta[name="${name}"]`;
-      let el = document.querySelector(sel);
-      if (!el) {
-        el = document.createElement("meta");
-        prop ? el.setAttribute("property", name) : el.setAttribute("name", name);
-        document.head.appendChild(el);
-      }
-      el.setAttribute("content", content);
-    };
-
-    // ── SEO Meta ─────────────────────────────────────────────────
-    document.title =
-      "FlexExams — Practice Smarter, Pass with Confidence";
-    setMeta(
-      "description",
-      "Prepare for 50+ IT certifications with real exam-style questions, timed practice tests, and instant results. Trusted by 100,000+ professionals worldwide."
-    );
-    setMeta("robots", "index, follow");
-    setMeta("og:title",       "FlexExams — Practice Smarter, Pass with Confidence", true);
-    setMeta("og:description", "Real exam-style questions for 50+ certifications.",   true);
-    setMeta("og:type",        "website",                                              true);
-    setMeta("og:image",       "https://i.ibb.co/DPztDcgx/Chat-GPT-Image-Apr-26-2026-09-45-41-PM.png", true);
-    setMeta("twitter:card",   "summary_large_image");
-
-    // ── Canonical ────────────────────────────────────────────────
-    let canonical = document.querySelector("link[rel='canonical']");
-    if (!canonical) {
-      canonical = document.createElement("link");
-      canonical.rel = "canonical";
-      document.head.appendChild(canonical);
-    }
-    canonical.href = window.location.origin;
-
-    // ── Theme color ──────────────────────────────────────────────
+    // Theme color meta
     let tc = document.querySelector("meta[name='theme-color']");
     if (!tc) {
       tc = document.createElement("meta");
@@ -713,10 +849,14 @@ export default function App() {
     }
     tc.content = saved === "dark" ? "#0d1223" : "#ffffff";
 
-    // ── Resource hints ───────────────────────────────────────────
+    // Twitter card base
+    setMeta("twitter:card", "summary_large_image");
+    setMeta("twitter:site", "@FlexExams");
+
+    // Resource hints
     [
-      { rel: "preconnect",  href: "https://fonts.googleapis.com" },
-      { rel: "preconnect",  href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      { rel: "preconnect",   href: "https://fonts.googleapis.com" },
+      { rel: "preconnect",   href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       { rel: "dns-prefetch", href: "//i.ibb.co" },
       { rel: "dns-prefetch", href: "//firestore.googleapis.com" },
       { rel: "dns-prefetch", href: "//firebase.googleapis.com" },
@@ -729,15 +869,30 @@ export default function App() {
       document.head.appendChild(l);
     });
 
-    // ── Preload logo (LCP) ───────────────────────────────────────
+    // Preload logo (LCP)
     if (!document.querySelector("link[rel='preload'][as='image']")) {
       const pl = document.createElement("link");
       pl.rel = "preload";
       pl.as  = "image";
-      pl.href =
-        "https://i.ibb.co/DPztDcgx/Chat-GPT-Image-Apr-26-2026-09-45-41-PM.png";
+      pl.href = "https://i.ibb.co/DPztDcgx/Chat-GPT-Image-Apr-26-2026-09-45-41-PM.png";
       document.head.appendChild(pl);
     }
+
+    // Organization JSON-LD (persistent)
+    injectJsonLd("ld-org", {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "@id": "https://www.flexexams.com/#organization",
+      "name": "FlexExams",
+      "url": "https://www.flexexams.com",
+      "logo": "https://www.flexexams.com/icons/icon-512x512.png",
+      "image": "https://www.flexexams.com/og-image.png",
+      "description": "IT certification practice platform with real exam questions, timed tests, and instant explanations for 50+ certifications.",
+      "sameAs": [
+        "https://twitter.com/FlexExams",
+        "https://linkedin.com/company/flexexams"
+      ]
+    });
   }, []);
 
   return (
