@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
-        xsi:schemaLocation="
-          http://www.sitemaps.org/schemas/sitemap/0.9
-          http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+<urlset 
+  xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
+  xsi:schemaLocation="
+    http://www.sitemaps.org/schemas/sitemap/0.9
+    http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
 
   <!-- ═══════════════════════════════════════════
-       FlexExams Sitemap — v2.0
-       https://www.flexexams.com/sitemap.xml
-       Last updated: 2026-05-05
+       FlexExams Sitemap v3.0 (Production SEO)
+       Clean + Scalable + Programmatic Ready
   ═══════════════════════════════════════════ -->
 
-  <!-- Homepage — Highest Priority -->
+  <!-- 🏠 Homepage -->
   <url>
     <loc>https://www.flexexams.com/</loc>
     <lastmod>2026-05-05</lastmod>
@@ -20,12 +20,12 @@
     <priority>1.0</priority>
     <image:image>
       <image:loc>https://www.flexexams.com/og-image.png</image:loc>
-      <image:title>FlexExams — Certification Exam Practice Platform</image:title>
-      <image:caption>The world's sharpest IT certification exam simulator</image:caption>
+      <image:title>FlexExams - IT Certification Practice Tests</image:title>
+      <image:caption>Real exam simulation for IT certifications</image:caption>
     </image:image>
   </url>
 
-  <!-- Exams Catalog -->
+  <!-- 📚 Core Pages -->
   <url>
     <loc>https://www.flexexams.com/exams</loc>
     <lastmod>2026-05-05</lastmod>
@@ -33,7 +33,6 @@
     <priority>0.9</priority>
   </url>
 
-  <!-- Topic Pages -->
   <url>
     <loc>https://www.flexexams.com/topics</loc>
     <lastmod>2026-05-05</lastmod>
@@ -41,7 +40,6 @@
     <priority>0.8</priority>
   </url>
 
-  <!-- Certification Category Pages -->
   <url>
     <loc>https://www.flexexams.com/certifications</loc>
     <lastmod>2026-05-05</lastmod>
@@ -49,7 +47,7 @@
     <priority>0.8</priority>
   </url>
 
-  <!-- Certificate Verification -->
+  <!-- 🔍 Functional Pages -->
   <url>
     <loc>https://www.flexexams.com/verify</loc>
     <lastmod>2026-05-05</lastmod>
@@ -57,7 +55,6 @@
     <priority>0.7</priority>
   </url>
 
-  <!-- About Page -->
   <url>
     <loc>https://www.flexexams.com/about</loc>
     <lastmod>2026-05-05</lastmod>
@@ -65,12 +62,56 @@
     <priority>0.6</priority>
   </url>
 
-  <!-- Contact Page -->
   <url>
     <loc>https://www.flexexams.com/contact</loc>
     <lastmod>2026-05-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
+  </url>
+
+  <!-- ═══════════════════════════════════════════
+       🔥 PROGRAMMATIC SEO - EXAM PAGES
+       (IMPORTANT: لازم تتولد تلقائي من الداتا)
+  ═══════════════════════════════════════════ -->
+
+  <!-- AWS -->
+  <url>
+    <loc>https://www.flexexams.com/exams/aws-saa-c03</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <!-- CCNA -->
+  <url>
+    <loc>https://www.flexexams.com/exams/ccna-200-301</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <!-- CompTIA Linux -->
+  <url>
+    <loc>https://www.flexexams.com/exams/comptia-linux-xk0-005</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <!-- Security+ -->
+  <url>
+    <loc>https://www.flexexams.com/exams/security-plus-sy0-701</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <!-- PMP -->
+  <url>
+    <loc>https://www.flexexams.com/exams/pmp-certification</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
   </url>
 
 </urlset>
