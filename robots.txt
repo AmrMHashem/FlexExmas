@@ -5,23 +5,24 @@
 # ═══════════════════════════════════════════════
 # DEFAULT BOT RULES
 # ═══════════════════════════════════════════════
+
 User-agent: *
 
-# ── PUBLIC PAGES (مهم يبقوا صريحين) ───────────
+# ── PUBLIC PAGES ──────────────────────────────
 Allow: /
 Allow: /exams
 Allow: /exams/
 Allow: /exam/
 Allow: /topics
 Allow: /topics/
-Allow: /topic/
-Allow: /certifications
-Allow: /certifications/
+Allow: /categories
+Allow: /categories/
 Allow: /about
 Allow: /contact
 Allow: /verify
+Allow: /career-diagnostic
 
-# ── PRIVATE / AUTH ROUTES ──────────────────────
+# ── PRIVATE / AUTH ROUTES ─────────────────────
 Disallow: /admin
 Disallow: /admin/
 Disallow: /dashboard
@@ -35,19 +36,22 @@ Disallow: /auth/
 Disallow: /api/
 Disallow: /my-exams/
 Disallow: /favorites/
+Disallow: /quiz
+Disallow: /result
 
-# ── BLOCK TRACKING PARAMETERS ──────────────────
+# ── BLOCK TRACKING PARAMETERS ─────────────────
 Disallow: /*?utm_
 Disallow: /*?fbclid=
 Disallow: /*?gclid=
 Disallow: /*?ref=
 Disallow: /*?session=
 
-# ── TECHNICAL FILES ─────────────────────────────
+# ── TECHNICAL FILES ───────────────────────────
 Disallow: /*.map$
 Disallow: /.git/
+Disallow: /src/
 
-# ── ALLOW STATIC ASSETS ────────────────────────
+# ── ALLOW STATIC ASSETS ───────────────────────
 Allow: /icons/
 Allow: /screenshots/
 Allow: /favicon.ico
@@ -103,20 +107,15 @@ Disallow: /dashboard/
 
 User-agent: CCBot
 Allow: /
-Disallow: /admin/
-Disallow: /dashboard/
 
 User-agent: anthropic-ai
 Allow: /
-Disallow: /admin/
-Disallow: /dashboard/
 
 User-agent: Claude-Web
 Allow: /
-Disallow: /admin/
-Disallow: /dashboard/
 
 # ═══════════════════════════════════════════════
 # SITEMAPS
 # ═══════════════════════════════════════════════
+
 Sitemap: https://www.flexexams.com/sitemap.xml
