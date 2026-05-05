@@ -874,7 +874,7 @@ export default function Home({ setPage, setActiveExam, exams: propExams = [], sh
                 <button onClick={()=>setPage(user?"exams":"exams")} style={{ padding:"14px 34px", borderRadius:50, border:"none", background:"linear-gradient(135deg,#6366f1,#a855f7,#ec4899)", color:"#fff", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:8, boxShadow:"0 12px 40px rgba(139,92,246,0.45)", transition:"all 0.3s" }}
                   onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px) scale(1.03)";e.currentTarget.style.boxShadow="0 20px 50px rgba(139,92,246,0.6)";}}
                   onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="0 12px 40px rgba(139,92,246,0.45)";}}>
-                  <PI type="rocket" size={17} color="#fff" /> {user?"Explore Exams":"Explore Topics"}
+                  <PI type="rocket" size={17} color="#fff" /> {user?"Explore Exams":"Explore Exams"}
                 </button>
                 <button onClick={()=>setPage("topics")} style={{ padding:"14px 26px", borderRadius:50, border:"2px solid rgba(139,92,246,0.5)", background:"rgba(139,92,246,0.1)", color:"var(--text)", fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:8, transition:"all 0.25s", backdropFilter:"blur(8px)" }}
                   onMouseEnter={e=>{e.currentTarget.style.background="rgba(139,92,246,0.2)";e.currentTarget.style.transform="translateY(-2px)";}}
