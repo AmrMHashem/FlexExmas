@@ -634,34 +634,51 @@ export default function About() {
             Your first practice exam is free — no account required.
           </p>
           <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
+      <button style={{
+  padding: "14px 32px", borderRadius: 50,
+  background: "#fff", border: "none",
+  color: "#4f46e5", fontSize: 15, fontWeight: 800,
+  cursor: "pointer", fontFamily: "inherit",
+  boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+  transition: "all 0.25s",
+  display: "flex", alignItems: "center", gap: 8,
+}}
+onClick={() => window.history.pushState(null, "", "/exams")}
+onMouseEnter={e => {
+  e.currentTarget.style.transform = "translateY(-2px)";
+  e.currentTarget.style.boxShadow = "0 16px 40px rgba(0,0,0,0.25)";
+}}
+onMouseLeave={e => {
+  e.currentTarget.style.transform = "";
+  e.currentTarget.style.boxShadow = "0 8px 32px rgba(0,0,0,0.2)";
+}}
+>
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+  </svg>
+  Browse Exams
+</button>
             <button style={{
-              padding: "14px 32px", borderRadius: 50,
-              background: "#fff", border: "none",
-              color: "#4f46e5", fontSize: 15, fontWeight: 800,
-              cursor: "pointer", fontFamily: "inherit",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
-              transition: "all 0.25s",
-              display: "flex", alignItems: "center", gap: 8,
-            }}
-              onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 16px 40px rgba(0,0,0,0.25)"; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 8px 32px rgba(0,0,0,0.2)"; }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-              Browse Exams
-            </button>
-            <button style={{
-              padding: "14px 28px", borderRadius: 50,
-              background: "rgba(255,255,255,0.15)", border: "2px solid rgba(255,255,255,0.4)",
-              color: "#fff", fontSize: 15, fontWeight: 700,
-              cursor: "pointer", fontFamily: "inherit",
-              backdropFilter: "blur(8px)",
-              transition: "all 0.25s",
-            }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.25)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.15)"; e.currentTarget.style.transform = ""; }}
-            >
-              View Certifications
-            </button>
+  padding: "14px 28px", borderRadius: 50,
+  background: "rgba(255,255,255,0.15)", border: "2px solid rgba(255,255,255,0.4)",
+  color: "#fff", fontSize: 15, fontWeight: 700,
+  cursor: "pointer", fontFamily: "inherit",
+  backdropFilter: "blur(8px)",
+  transition: "all 0.25s",
+}}
+onClick={() => window.history.pushState(null, "", "/my-exams")}
+onMouseEnter={e => {
+  e.currentTarget.style.background = "rgba(255,255,255,0.25)";
+  e.currentTarget.style.transform = "translateY(-2px)";
+}}
+onMouseLeave={e => {
+  e.currentTarget.style.background = "rgba(255,255,255,0.15)";
+  e.currentTarget.style.transform = "";
+}}
+>
+  View Certifications
+</button>
           </div>
         </div>
       </div>
