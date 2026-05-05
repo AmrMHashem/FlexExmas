@@ -20,9 +20,18 @@ export default function Footer({ setPage }) {
   label: "YouTube",
   href: "https://www.youtube.com/@FlexExams",
   svg: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.6 3.5 12 3.5 12 3.5s-7.6 0-9.4.6A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.8.6 9.4.6 9.4.6s7.6 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8z"/>
-      <polygon points="9.5,15.5 15.5,12 9.5,8.5"/>
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M22.5 7.5a3 3 0 0 0-2.1-2.1C18.6 5 12 5 12 5s-6.6 0-8.4.4A3 3 0 0 0 1.5 7.5 31 31 0 0 0 1 12a31 31 0 0 0 .5 4.5 3 3 0 0 0 2.1 2.1C5.4 19 12 19 12 19s6.6 0 8.4-.4a3 3 0 0 0 2.1-2.1A31 31 0 0 0 23 12a31 31 0 0 0-.5-4.5z"/>
+      <polygon points="10,15 16,12 10,9" />
     </svg>
   ),
 },
@@ -373,7 +382,7 @@ export default function Footer({ setPage }) {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {[
-                  { label: "flexexams.com", href: "https://flexexams.com" },
+                  { label: "youtube.com/@FlexExams", href: "https://www.youtube.com/@FlexExams" },
                   { label: "facebook.com/FlexExams", href: "https://facebook.com/FlexExams" },
                   { label: "linkedin.com/company/flexexams", href: "https://linkedin.com/company/flexexams" },
                   { label: "@flexexams (TikTok)", href: "https://tiktok.com/@flexexams" },
