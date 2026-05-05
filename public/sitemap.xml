@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
+        xsi:schemaLocation="
+          http://www.sitemaps.org/schemas/sitemap/0.9
+          http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+
+  <!-- ═══════════════════════════════════════════
+       FlexExams Sitemap — v2.0
+       https://www.flexexams.com/sitemap.xml
+       Last updated: 2026-05-05
+  ═══════════════════════════════════════════ -->
+
+  <!-- Homepage — Highest Priority -->
+  <url>
+    <loc>https://www.flexexams.com/</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://www.flexexams.com/og-image.png</image:loc>
+      <image:title>FlexExams — Certification Exam Practice Platform</image:title>
+      <image:caption>The world's sharpest IT certification exam simulator</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Exams Catalog -->
+  <url>
+    <loc>https://www.flexexams.com/exams</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <!-- Topic Pages -->
+  <url>
+    <loc>https://www.flexexams.com/topics</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Certification Category Pages -->
+  <url>
+    <loc>https://www.flexexams.com/certifications</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Certificate Verification -->
+  <url>
+    <loc>https://www.flexexams.com/verify</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- About Page -->
+  <url>
+    <loc>https://www.flexexams.com/about</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
+  <!-- Contact Page -->
+  <url>
+    <loc>https://www.flexexams.com/contact</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+</urlset>
