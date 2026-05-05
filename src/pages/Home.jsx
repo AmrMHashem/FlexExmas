@@ -879,7 +879,7 @@ export default function Home({ setPage, setActiveExam, exams: propExams = [], sh
                 <button onClick={()=>setPage("topics")} style={{ padding:"14px 26px", borderRadius:50, border:"2px solid rgba(139,92,246,0.5)", background:"rgba(139,92,246,0.1)", color:"var(--text)", fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:8, transition:"all 0.25s", backdropFilter:"blur(8px)" }}
                   onMouseEnter={e=>{e.currentTarget.style.background="rgba(139,92,246,0.2)";e.currentTarget.style.transform="translateY(-2px)";}}
                   onMouseLeave={e=>{e.currentTarget.style.background="rgba(139,92,246,0.1)";e.currentTarget.style.transform="";}}>
-                  Browse Exams <PI type="arrow" size={15} color="currentColor" />
+                  Browse Topics <PI type="arrow" size={15} color="currentColor" />
                 </button>
               </div>
             </div>
