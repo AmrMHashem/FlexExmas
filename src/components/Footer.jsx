@@ -15,6 +15,47 @@ export default function Footer({ setPage }) {
     { label: "Privacy Policy", page: "privacy" },
   ];
 
+  const socials = [
+    {
+      label: "Website",
+      href: "https://flexexams.com",
+      svg: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="2" y1="12" x2="22" y2="12"/>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        </svg>
+      ),
+    },
+    {
+      label: "Facebook",
+      href: "https://facebook.com/FlexExams",
+      svg: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+        </svg>
+      ),
+    },
+    {
+      label: "LinkedIn",
+      href: "https://linkedin.com/company/flexexams",
+      svg: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451c.979 0 1.771-.773 1.771-1.729V1.729C24 .774 23.208 0 22.225 0z"/>
+        </svg>
+      ),
+    },
+    {
+      label: "TikTok",
+      href: "https://tiktok.com/@flexexams",
+      svg: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.28 6.28 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.67a8.18 8.18 0 0 0 4.78 1.52V6.73a4.85 4.85 0 0 1-1.01-.04z"/>
+        </svg>
+      ),
+    },
+  ];
+
   return (
     <footer
       style={{
@@ -33,7 +74,7 @@ export default function Footer({ setPage }) {
           overflowX: "hidden",
         }}
       >
-        {/* شبكة الأعمدة - مسافات قليلة جدًا */}
+        {/* Grid columns */}
         <div
           style={{
             display: "grid",
@@ -42,7 +83,7 @@ export default function Footer({ setPage }) {
             marginBottom: 32,
           }}
         >
-          {/* العمود الأول: الشعار والمعلومات */}
+          {/* Column 1: Logo & info */}
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
               <div
@@ -98,52 +139,38 @@ export default function Footer({ setPage }) {
               Your certification success is our mission.
             </p>
 
+            {/* Email */}
+            <a
+              href="mailto:info@flexexams.com"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 11,
+                color: "var(--text3)",
+                textDecoration: "none",
+                marginBottom: 12,
+                transition: "color 0.2s",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent)")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text3)")}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+              </svg>
+              info@flexexams.com
+            </a>
+
+            {/* Social icons */}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {[
-                {
-                  svg: (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
-                        fill="currentColor"
-                      />
-                    </svg>
-                  ),
-                },
-                {
-                  svg: (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C0.792 0 0 0.774 0 1.729v20.542C0 23.227 0.792 24 1.771 24h20.451c0.979 0 1.771-0.773 1.771-1.729V1.729C24 0.774 23.208 0 22.225 0z"
-                        fill="currentColor"
-                      />
-                    </svg>
-                  ),
-                },
-                {
-                  svg: (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"
-                        fill="currentColor"
-                      />
-                    </svg>
-                  ),
-                },
-                {
-                  svg: (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zM12 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"
-                        fill="currentColor"
-                      />
-                    </svg>
-                  ),
-                },
-              ].map((social, i) => (
+              {socials.map((social, i) => (
                 <a
                   key={i}
-                  href="#"
+                  href={social.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={social.label}
                   style={{
                     width: 34,
                     height: 34,
@@ -156,16 +183,20 @@ export default function Footer({ setPage }) {
                     transition: "all 0.2s",
                     cursor: "pointer",
                     minWidth: 34,
+                    color: "var(--text3)",
+                    textDecoration: "none",
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = "var(--gradient-accent)";
                     e.currentTarget.style.borderColor = "transparent";
                     e.currentTarget.style.transform = "translateY(-1px)";
+                    e.currentTarget.style.color = "#fff";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = "var(--bg3)";
                     e.currentTarget.style.borderColor = "var(--border)";
                     e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.color = "var(--text3)";
                   }}
                 >
                   {social.svg}
@@ -174,7 +205,7 @@ export default function Footer({ setPage }) {
             </div>
           </div>
 
-          {/* العمود الثاني: Product */}
+          {/* Column 2: Product */}
           <div>
             <h4
               style={{
@@ -223,7 +254,7 @@ export default function Footer({ setPage }) {
             </div>
           </div>
 
-          {/* العمود الثالث: Company */}
+          {/* Column 3: Company */}
           <div>
             <h4
               style={{
@@ -269,7 +300,7 @@ export default function Footer({ setPage }) {
             </div>
           </div>
 
-          {/* العمود الرابع: Newsletter */}
+          {/* Column 4: Newsletter */}
           <div>
             <h4
               style={{
@@ -328,10 +359,51 @@ export default function Footer({ setPage }) {
                 Subscribe
               </button>
             </div>
+
+            {/* Connect with us section */}
+            <div style={{ marginTop: 16 }}>
+              <div style={{
+                fontSize: 10,
+                fontWeight: 800,
+                color: "var(--text)",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                marginBottom: 8,
+              }}>
+                Connect With Us
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {[
+                  { label: "flexexams.com", href: "https://flexexams.com" },
+                  { label: "facebook.com/FlexExams", href: "https://facebook.com/FlexExams" },
+                  { label: "linkedin.com/company/flexexams", href: "https://linkedin.com/company/flexexams" },
+                  { label: "@flexexams (TikTok)", href: "https://tiktok.com/@flexexams" },
+                ].map(({ label, href }) => (
+                  <a
+                    key={label}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      fontSize: 10.5,
+                      color: "var(--text3)",
+                      textDecoration: "none",
+                      transition: "color 0.15s",
+                      padding: "2px 0",
+                      display: "block",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text3)")}
+                  >
+                    {label}
+                  </a>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* الشريط السفلي */}
+        {/* Bottom bar */}
         <div
           style={{
             borderTop: "1px solid var(--border)",
@@ -379,10 +451,6 @@ export default function Footer({ setPage }) {
 
       <style>{`
         @media (max-width: 768px) {
-          footer .grid {
-            grid-template-columns: 1fr !important;
-            gap: 20px !important;
-          }
           footer button, footer a {
             min-height: 40px;
           }
