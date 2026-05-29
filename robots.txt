@@ -1,6 +1,6 @@
 # FlexExams — robots.txt
 # https://www.flexexams.com
-# Last updated: 2026-05-05
+# Last updated: 2026-05-29
 
 # ═══════════════════════════════════════════════
 # DEFAULT BOT RULES
@@ -61,9 +61,22 @@ Allow: /logo.png
 Allow: /site.webmanifest
 
 # ═══════════════════════════════════════════════
-# SEARCH ENGINE SPECIFIC
+# SEARCH ENGINE & SOCIAL MEDIA BOTS
 # ═══════════════════════════════════════════════
 
+# Facebook Crawler (Corrected Name)
+User-agent: facebookexternalhit
+Allow: /
+
+# Facebook Legacy Bot
+User-agent: facebot
+Allow: /
+
+# LinkedIn Crawler
+User-agent: LinkedInBot
+Allow: /
+
+# Google Search Bots
 User-agent: Googlebot
 Allow: /
 Crawl-delay: 0
@@ -74,6 +87,7 @@ Allow: /screenshots/
 Allow: /og-image.png
 Allow: /logo.png
 
+# Other Search Engines
 User-agent: Bingbot
 Allow: /
 Crawl-delay: 2
@@ -82,12 +96,6 @@ User-agent: DuckDuckBot
 Allow: /
 
 User-agent: Slurp
-Allow: /
-
-User-agent: facebot
-Allow: /
-
-User-agent: LinkedInBot
 Allow: /
 
 # ═══════════════════════════════════════════════
