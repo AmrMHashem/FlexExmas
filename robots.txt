@@ -1,69 +1,78 @@
-# FlexExams – robots.txt
+# FlexExams — robots.txt
 # https://www.flexexams.com
-# Last updated: 2026-05-01
+# Last updated: 2026-05-05
 
 # ═══════════════════════════════════════════════
 # DEFAULT BOT RULES
 # ═══════════════════════════════════════════════
+
 User-agent: *
 
-# ── PUBLIC PAGES ───────────────────────────────
+# ── PUBLIC PAGES ──────────────────────────────
 Allow: /
+Allow: /exams
 Allow: /exams/
 Allow: /exam/
+Allow: /topics
 Allow: /topics/
-Allow: /topic/
+Allow: /categories
 Allow: /categories/
 Allow: /about
 Allow: /contact
 Allow: /verify
-Allow: /certifications
+Allow: /career-diagnostic
 
-# ── PRIVATE / AUTH ROUTES ──────────────────────
+# ── PRIVATE / AUTH ROUTES ─────────────────────
+Disallow: /admin
 Disallow: /admin/
+Disallow: /dashboard
 Disallow: /dashboard/
+Disallow: /profile
 Disallow: /profile/
+Disallow: /settings
 Disallow: /settings/
+Disallow: /auth
 Disallow: /auth/
 Disallow: /api/
 Disallow: /my-exams/
 Disallow: /favorites/
-Disallow: /search
+Disallow: /quiz
+Disallow: /result
 
-# ── BLOCK DUPLICATE / TRACKING PARAMETERS ───────
-Disallow: /*?utm_*
+# ── BLOCK TRACKING PARAMETERS ─────────────────
+Disallow: /*?utm_
 Disallow: /*?fbclid=
 Disallow: /*?gclid=
 Disallow: /*?ref=
 Disallow: /*?session=
 
-# ── TECHNICAL FILES (SAFE CLEANUP) ─────────────
+# ── TECHNICAL FILES ───────────────────────────
 Disallow: /*.map$
 Disallow: /.git/
+Disallow: /src/
 
-# ❌ removed /src/ and /node_modules/ (not needed in production)
-# ❌ removed block for *.json$ (was risky for SEO)
-
-# ── ALLOW STATIC ASSETS ────────────────────────
+# ── ALLOW STATIC ASSETS ───────────────────────
 Allow: /icons/
 Allow: /screenshots/
+Allow: /favicon.ico
 Allow: /favicon.svg
 Allow: /og-image.png
 Allow: /logo.png
 Allow: /site.webmanifest
-Allow: /sw.js
 
 # ═══════════════════════════════════════════════
-# SEARCH ENGINE SPECIFIC RULES
+# SEARCH ENGINE SPECIFIC
 # ═══════════════════════════════════════════════
 
 User-agent: Googlebot
 Allow: /
+Crawl-delay: 0
 
 User-agent: Googlebot-Image
 Allow: /icons/
 Allow: /screenshots/
 Allow: /og-image.png
+Allow: /logo.png
 
 User-agent: Bingbot
 Allow: /
@@ -72,35 +81,41 @@ Crawl-delay: 2
 User-agent: DuckDuckBot
 Allow: /
 
+User-agent: Slurp
+Allow: /
+
+User-agent: facebot
+Allow: /
+
+User-agent: LinkedInBot
+Allow: /
+
 # ═══════════════════════════════════════════════
-# AI CRAWLERS (CONTROLLED ACCESS - NOT FULL BLOCK)
+# AI CRAWLERS — Controlled Access
 # ═══════════════════════════════════════════════
 
 User-agent: GPTBot
+Allow: /
 Disallow: /admin/
 Disallow: /dashboard/
 Disallow: /api/
 
 User-agent: ChatGPT-User
+Allow: /
 Disallow: /admin/
 Disallow: /dashboard/
-Disallow: /api/
 
 User-agent: CCBot
-Disallow: /admin/
-Disallow: /dashboard/
+Allow: /
 
 User-agent: anthropic-ai
-Disallow: /admin/
-Disallow: /dashboard/
+Allow: /
 
 User-agent: Claude-Web
-Disallow: /admin/
-Disallow: /dashboard/
+Allow: /
 
 # ═══════════════════════════════════════════════
 # SITEMAPS
 # ═══════════════════════════════════════════════
+
 Sitemap: https://www.flexexams.com/sitemap.xml
-Sitemap: https://www.flexexams.com/sitemap-exams.xml
-Sitemap: https://www.flexexams.com/sitemap-certifications.xml

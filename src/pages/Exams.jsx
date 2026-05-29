@@ -1,6 +1,7 @@
 // pages/Exams.jsx — v5.0 SEO + optimized FilterPanel + structured data
 import React from "react";
 import { useState, useEffect, useMemo, useCallback } from "react";
+import FloatingChat from "../components/FloatingChat";
 import { useAuth } from "../hooks/useAuth";
 import {
   addFavorite, removeFavorite, getFavorites,
@@ -196,7 +197,7 @@ const ExamCard = React.memo(function ExamCard({ exam, onClick, isFeatured, isFav
         <h4 style={{ fontSize: 15, fontWeight: 800, marginBottom: 5, color: "var(--text)", lineHeight: 1.3 }}>{exam.title}</h4>
         <p style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5, marginBottom: 10, flex: 1, fontWeight: 500 }}>{exam.subtitle || exam.description || "Practice with real exam questions"}</p>
         <div style={{ display: "flex", gap: 10, fontSize: 11, color: "var(--text3)", paddingTop: 10, borderTop: "2px solid var(--border)", alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 3 }}><PI type="question" size={10} color="var(--text3)" />{exam.totalQuestions || 0} Q</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 3 }}><PI type="question" size={10} color="var(--text3)" />{exam.totalQuestions || exam.questionsCount || 0} Q</span>
           <span style={{ display: "flex", alignItems: "center", gap: 3 }}><PI type="clock" size={10} color="var(--text3)" />{exam.duration || 60}m</span>
           <span style={{ display: "flex", alignItems: "center", gap: 3 }}><PI type="users" size={10} color="var(--text3)" />{(exam.enrolledCount || exam.attempts || 0).toLocaleString()}</span>
         </div>
@@ -450,7 +451,7 @@ export default function Exams({ setPage, setActiveExam, exams: allExams = [], ve
   const hasMore = visibleCount < filtered.length;
   const isFilterActive = search !== "" || selectedVendor !== "All" || selectedTopic !== "All";
 
-  const handleExamClick = useCallback((exam) => { setActiveExam(exam); setPage("exam-detail"); }, [setActiveExam, setPage]);
+  const handleExamClick = useCallback((exam) => { setPage("exam-detail", { exam }); }, [setPage]);
   const clearFilters = useCallback(() => { setSearch(""); setSelectedVendor("All"); setSelectedTopic("All"); setSortBy("popular"); setVisibleCount(12); }, []);
   const handleLoadMore = useCallback(() => setVisibleCount(v => v + 12), []);
 
@@ -570,6 +571,7 @@ export default function Exams({ setPage, setActiveExam, exams: allExams = [], ve
         }
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
+      <FloatingChat />
     </div>
   );
 }

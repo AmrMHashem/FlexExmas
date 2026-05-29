@@ -241,7 +241,7 @@ export default function Categories({ setPage, setActiveExam, exams: propExams = 
     return () => { cancelled = true; };
   }, []);
 
-  const handleExamClick = (exam) => { setActiveExam(exam); setPage("exam-detail"); };
+  const handleExamClick = (exam) => { setPage("exam-detail", { exam }); };
 
   // ✅ حسابات من propExams (لا Firestore)
   const vendorsWithExams = useMemo(() => {

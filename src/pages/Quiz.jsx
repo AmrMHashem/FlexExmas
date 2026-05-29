@@ -2,6 +2,8 @@ import React from "react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { saveResult, saveExamProgress, getExamProgress, clearExamProgress } from "../services/firestore";
+import { updateLeaderboardStats } from "./Leaderboard";
+import { processReferralOnPurchase } from "../components/ReferralSystem";
 
 import {
   Btn,
@@ -31,6 +33,12 @@ function getQuestionsForPart(questions, partIndex, totalParts) {
   const perPart = Math.ceil(totalQuestions / totalParts);
   const start = partIndex * perPart;
   return questions.slice(start, Math.min(start + perPart, totalQuestions));
+}
+
+// Helper: strip HTML tags for RTL detection and validation
+function stripHtml(html) {
+  if (!html) return "";
+  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
 
 export default function Quiz({ quizData, setPage, setResultData, showToast }) {
@@ -273,6 +281,38 @@ export default function Quiz({ quizData, setPage, setResultData, showToast }) {
   }, [user, exam, currentPart, current, answers, flagged, revealed, totalParts, isGuest, isSegmented, timeLeft]);
 
   // ====== Timer (only starts if no resume choice pending) ======
+  // ─── Security: Prevent copy/inspect during exam ──────────────────
+  useEffect(() => {
+    if (!started || mode === "review") return;
+
+    const preventCopy = (e) => e.preventDefault();
+    const preventContext = (e) => e.preventDefault();
+    const preventKeyInspect = (e) => {
+      // Block F12, Ctrl+Shift+I, Ctrl+U, Ctrl+S, PrintScreen, Ctrl+P
+      if (
+        e.key === "F12" ||
+        e.key === "PrintScreen" ||
+        (e.ctrlKey && e.shiftKey && ["I","i","J","j","C","c"].includes(e.key)) ||
+        (e.ctrlKey && ["u","U","s","S","p","P"].includes(e.key))
+      ) {
+        e.preventDefault();
+        return false;
+      }
+    };
+
+    document.addEventListener("copy",        preventCopy);
+    document.addEventListener("contextmenu", preventContext);
+    document.addEventListener("keydown",     preventKeyInspect);
+    document.addEventListener("selectstart", preventCopy);
+
+    return () => {
+      document.removeEventListener("copy",        preventCopy);
+      document.removeEventListener("contextmenu", preventContext);
+      document.removeEventListener("keydown",     preventKeyInspect);
+      document.removeEventListener("selectstart", preventCopy);
+    };
+  }, [started, mode]);
+
   useEffect(() => {
     if ((mode !== "examSimulation" && mode !== "review") || !user || isGuest || !duration || showResumeChoice) return;
     timerRef.current = setInterval(() => {
@@ -293,7 +333,20 @@ export default function Quiz({ quizData, setPage, setResultData, showToast }) {
   }, [user, mode, isGuest, duration, isSegmented, currentPart, totalParts, showResumeChoice]);
 
   // ====== Question helpers ======
-  const q = currentPartQuestions[current];
+  // ✅ FIX: Normalize q.correct for any question format (old CSV / new QuestionBuilder)
+  const _rawQ = currentPartQuestions[current];
+  const q = _rawQ ? {
+    ..._rawQ,
+    // Ensure correct[] always exists and is an array of option IDs
+    correct: (() => {
+      if (Array.isArray(_rawQ.correct) && _rawQ.correct.length > 0) return _rawQ.correct;
+      if (Array.isArray(_rawQ.answer)  && _rawQ.answer.length  > 0) return _rawQ.answer;
+      // Derive from options.isCorrect (last resort)
+      return (_rawQ.options || [])
+        .map((o, i) => (o.isCorrect ? (o.id || String(i)) : null))
+        .filter(Boolean);
+    })(),
+  } : null;
 
   const selectOption = (optId) => {
     if ((mode === "review" || isGuest) && revealed[`${currentPart}-${current}`]) return;
@@ -362,10 +415,18 @@ export default function Quiz({ quizData, setPage, setResultData, showToast }) {
         userAns = answers[qIdx] || [];
         flaggedStatus = flagged[qIdx] || false;
       }
+      // ✅ FIX: Normalize correct field before comparison (handles all question formats)
+      const qCorrect = (() => {
+        if (Array.isArray(q.correct) && q.correct.length > 0) return q.correct;
+        if (Array.isArray(q.answer)  && q.answer.length  > 0) return q.answer;
+        return (q.options || [])
+          .map((o, i) => (o.isCorrect ? (o.id || String(i)) : null))
+          .filter(Boolean);
+      })();
       const isCorrect =
-        q.correct.length === userAns.length &&
-        q.correct.every((c) => userAns.includes(c)) &&
-        userAns.every((a) => q.correct.includes(a));
+        qCorrect.length === userAns.length &&
+        qCorrect.every((c) => userAns.includes(c)) &&
+        userAns.every((a) => qCorrect.includes(a));
       if (isCorrect) correct++;
       return {
         question: q.text,
@@ -376,6 +437,8 @@ export default function Quiz({ quizData, setPage, setResultData, showToast }) {
         options: q.options,
         explanation: q.explanation,
         flagged: flaggedStatus,
+        imageUrl: q.imageUrl || null,
+        questionHtml: q.text || null,
       };
     });
 
@@ -383,6 +446,10 @@ export default function Quiz({ quizData, setPage, setResultData, showToast }) {
     const passingScore = mode === "review" ? reviewSettings.passingScore : (exam.passScore || 70);
     const pass = score >= passingScore;
     const timeTaken = Math.round((Date.now() - started) / 1000);
+
+    // isLimited: came from ExamDetail when user has partial access
+    const isLimited = quizData.isLimited || false;
+    const fullExamTotal = quizData.fullExamTotal || quizData.exam?.totalQuestions || null;
 
     const result = {
       examId: exam.id,
@@ -407,12 +474,27 @@ export default function Quiz({ quizData, setPage, setResultData, showToast }) {
       details: isGuest ? null : details,
       date: new Date().toLocaleDateString(),
       passingScore: isGuest ? null : passingScore,
+      isLimited,
+      fullExamTotal: isLimited ? fullExamTotal : null,
     };
 
     if (user && user.uid !== "guest") {
       try {
         await saveResult(result);
         await clearExamProgress(user.uid, exam.id);
+
+        // #21 Update leaderboard stats
+        try {
+          await updateLeaderboardStats(user.uid, {
+            score:          result.score,
+            totalQuestions: result.totalQuestions || questions.length,
+            passed:         result.passed,
+            userName:       user.displayName || profile?.name || "Anonymous",
+            avatar:         user.photoURL    || "",
+            country:        profile?.country || "",
+          });
+        } catch (le) { console.warn("Leaderboard update failed:", le); }
+
       } catch (e) {
         console.error("Save error:", e);
       }
@@ -519,6 +601,37 @@ export default function Quiz({ quizData, setPage, setResultData, showToast }) {
     );
   }
 
+  // ✅ FIX: Guard against empty/missing questions (prevents white screen)
+  if (!questions || questions.length === 0) {
+    return (
+      <div style={{ maxWidth: 600, margin: "80px auto", textAlign: "center", padding: "0 24px" }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
+        <h2 style={{ color: "var(--text)", marginBottom: 12 }}>No Questions Found</h2>
+        <p style={{ color: "var(--text2)", marginBottom: 24, lineHeight: 1.6 }}>
+          This exam has no questions yet. Please add questions from the Admin panel first.
+        </p>
+        <button
+          onClick={() => setPage("exam-detail")}
+          style={{ padding: "12px 28px", background: "var(--accent)", border: "none", borderRadius: 12, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14, fontFamily: "inherit" }}
+        >
+          ← Back
+        </button>
+      </div>
+    );
+  }
+
+  // ✅ FIX: Guard against null current question (prevents white screen crash)
+  if (!q) {
+    return (
+      <div style={{ maxWidth: 600, margin: "80px auto", textAlign: "center", padding: "0 24px" }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🔄</div>
+        <h2 style={{ color: "var(--text)", marginBottom: 12 }}>Loading Question…</h2>
+        <p style={{ color: "var(--text2)", marginBottom: 24 }}>Please wait a moment.</p>
+        <Spinner size={32} color="var(--accent)" />
+      </div>
+    );
+  }
+
   const userAnswerKey = isSegmented ? `${currentPart}-${current}` : current;
   const userAns = answers[userAnswerKey] || [];
   const isRevealed = (mode === "review" || isGuest) && revealed[userAnswerKey];
@@ -575,8 +688,18 @@ export default function Quiz({ quizData, setPage, setResultData, showToast }) {
   }
 
   // ==================== MAIN QUIZ UI ====================
+  // Helper to safely render HTML question text (with images and basic formatting)
+  const renderQuestionText = () => {
+    if (!q.text) return "";
+    // Basic sanitization: remove script tags and on* attributes to prevent XSS
+    let sanitized = q.text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+    sanitized = sanitized.replace(/ on\w+="[^"]*"/gi, "");
+    sanitized = sanitized.replace(/ on\w+='[^']*'/gi, "");
+    return { __html: sanitized };
+  };
+
   return (
-    <div ref={containerRef} style={{ maxWidth: 800, margin: "0 auto", padding: "0 clamp(12px, 3vw, 28px) 40px", userSelect: "none", position: "relative" }}>
+    <div ref={containerRef} data-quiz-container style={{ maxWidth: 800, margin: "0 auto", padding: "0 clamp(12px, 3vw, 28px) 40px", userSelect: "none", position: "relative" }}>
       {/* Top Bar */}
       <div className="glass" style={{ position: "sticky", top: 74, zIndex: 90, borderBottom: "1px solid var(--border)", padding: "12px 0", marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -645,7 +768,29 @@ export default function Quiz({ quizData, setPage, setResultData, showToast }) {
             }}>🚩</button>
           </div>
         </div>
-        <p style={{ fontSize: "clamp(15px, 2vw, 17px)", fontWeight: 600, color: "var(--text)", lineHeight: 1.8, marginBottom: 20 }}>{q.text}</p>
+
+        {/* === UPDATED: Render question text as HTML with images === */}
+        <div
+          style={{
+            fontSize: "clamp(15px, 2vw, 17px)",
+            fontWeight: 600,
+            color: "var(--text)",
+            lineHeight: 1.8,
+            marginBottom: q.imageUrl ? 14 : 20,
+            direction: /[\u0600-\u06FF]/.test(stripHtml(q.text || "")) ? "rtl" : "ltr",
+            textAlign: /[\u0600-\u06FF]/.test(stripHtml(q.text || "")) ? "right" : "left",
+          }}
+        >
+          {/* Images inside question text will be rendered via dangerouslySetInnerHTML */}
+<div className="question-html-content" dangerouslySetInnerHTML={renderQuestionText()} />
+        </div>
+
+        {/* Legacy separate image field (if any) */}
+        {q.imageUrl && (
+          <div style={{ marginBottom: 20, borderRadius: 12, overflow: "hidden", border: "1.5px solid var(--border)" }}>
+            <img src={q.imageUrl} alt="Question illustration" style={{ width: "100%", maxHeight: 320, objectFit: "contain", display: "block", background: "var(--bg3)" }} />
+          </div>
+        )}
 
         {isMultiSelect && (() => {
           const requiredCount = q.correct?.length || 2;
@@ -703,7 +848,7 @@ export default function Quiz({ quizData, setPage, setResultData, showToast }) {
                   {isRevealed && isCorrect ? "✓" : isRevealed && selected ? "✕" : selected ? "✓" : null}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 500, lineHeight: 1.65, color: textColor }}>{opt.text}</div>
+                  <div style={{ fontSize: 14, fontWeight: 500, lineHeight: 1.65, color: textColor, direction: /[\u0600-\u06FF]/.test(opt.text || "") ? "rtl" : "ltr", textAlign: /[\u0600-\u06FF]/.test(opt.text || "") ? "right" : "left" }}>{opt.text}</div>
                   {isRevealed && opt.explanation && <div style={{ fontSize: 12, marginTop: 8, color: isCorrect ? "var(--green)" : "var(--red)", lineHeight: 1.6 }}>{opt.explanation}</div>}
                 </div>
               </div>
@@ -713,7 +858,7 @@ export default function Quiz({ quizData, setPage, setResultData, showToast }) {
         {isRevealed && q.explanation && (
           <div style={{ marginTop: 16, background: "var(--accent-soft)", border: "1.5px solid rgba(37,99,235,0.2)", borderRadius: 12, padding: "14px 16px" }}>
             <div style={{ fontSize: 11, fontWeight: 800, color: "var(--accent)", marginBottom: 6, textTransform: "uppercase" }}>💡 Answer Explanation</div>
-            <div style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.8 }}>{q.explanation}</div>
+            <div style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.8, direction: /[\u0600-\u06FF]/.test(q.explanation || "") ? "rtl" : "ltr" }} dangerouslySetInnerHTML={{ __html: q.explanation }} />
           </div>
         )}
       </div>
@@ -811,6 +956,30 @@ export default function Quiz({ quizData, setPage, setResultData, showToast }) {
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes scaleIn { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }
+        @media print { body { display: none !important; } }
+        .quiz-no-select { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
+        /* Anti-cheat: prevent text selection and drag across entire quiz */
+        [data-quiz-container] *:not(input):not(textarea):not(button) {
+          -webkit-user-select: none !important;
+          -moz-user-select: none !important;
+          -ms-user-select: none !important;
+          user-select: none !important;
+        }
+        [data-quiz-container] img {
+          pointer-events: none;
+          -webkit-user-drag: none;
+          user-drag: none;
+        }
+        /* Ensure images inside question text are responsive and don't break layout */
+        [data-quiz-container] .question-html-content img {
+          max-width: 100%;
+          height: auto;
+          border-radius: 12px;
+          margin: 12px 0;
+          border: 1px solid var(--border);
+          background: var(--bg3);
+          display: block;
+        }
       ` }} />
     </div>
   );

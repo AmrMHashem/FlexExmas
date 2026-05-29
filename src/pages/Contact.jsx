@@ -1,5 +1,7 @@
 import React, { useState, useRef } from "react";
 import { Input, Textarea, Btn, Icon } from "../components/UI";
+import { useAuth } from "../hooks/useAuth";
+import FloatingChat from "../components/FloatingChat";
 
 // ── Contact method card ──
 function ContactCard({ icon, label, value, sub, href, index }) {
@@ -7,6 +9,8 @@ function ContactCard({ icon, label, value, sub, href, index }) {
   return (
     <a
       href={href || "#"}
+      target={href && !href.startsWith("mailto") ? "_blank" : undefined}
+      rel={href && !href.startsWith("mailto") ? "noopener noreferrer" : undefined}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -94,13 +98,50 @@ function FAQItem({ q, a, index }) {
   );
 }
 
+// ── Social icon SVGs ──
+const SocialIcons = {
+  YouTube: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+    </svg>
+  ),
+  Facebook: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+    </svg>
+  ),
+  LinkedIn: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+    </svg>
+  ),
+  TikTok: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34l-.01-8.12a8.27 8.27 0 0 0 4.83 1.54V5.28a4.85 4.85 0 0 1-1.05-.59z"/>
+    </svg>
+  ),
+};
+
+// ── Brand colors for social platforms ──
+const socialBrandColors = {
+  YouTube: "#FF0000",
+  Facebook: "#1877F2",
+  LinkedIn: "#0A66C2",
+  TikTok: "#010101",
+};
+
 export default function Contact({ showToast }) {
-  const [form, setForm] = useState({ name: "", email: "", subject: "", type: "general", message: "" });
+  const { user, profile } = useAuth();
+  const userName  = profile?.name  || user?.displayName || "";
+  const userEmail = user?.email    || "";
+
+  const [form, setForm] = useState({ name: userName, email: userEmail, subject: "", type: "General Inquiry", message: "" });
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
 
   const upd = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
+  // ── Send message: save to Firestore + attempt Brevo email ──────────
   const handleSubmit = async () => {
     if (!form.name || !form.email || !form.subject || !form.message) {
       showToast({ msg: "Please fill in all fields before sending", type: "warning" });
@@ -108,13 +149,56 @@ export default function Contact({ showToast }) {
     }
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 900));
+      // 1. Save to Firestore → يظهر فوراً في Admin → Contacts Panel
+      const { collection: col, addDoc, serverTimestamp } = await import("firebase/firestore");
+      const { db: fdb } = await import("../firebase");
+      await addDoc(col(fdb, "contactMessages"), {
+        name:       form.name,
+        email:      form.email,
+        subject:    form.subject,
+        type:       form.type,
+        message:    form.message,
+        userId:     user?.uid    || null,
+        senderType: user?.uid    ? "member" : "visitor",
+        status:     "unread",
+        createdAt:  serverTimestamp(),
+        adminReply: null,
+        repliedAt:  null,
+      });
+
+      // 2. Try Brevo email relay (optional — لو فشل مش مشكلة، الرسالة اتحفظت)
+      fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from:    `${form.name} <${form.email}>`,
+          to:      "info@flexexams.com",
+          subject: `[FlexExams Contact] ${form.type}: ${form.subject}`,
+          html: `
+            <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+              <h2 style="color:#6366f1">New Contact Message — FlexExams</h2>
+              <table style="width:100%;border-collapse:collapse">
+                <tr><td style="padding:8px;font-weight:bold;color:#555">Name</td><td style="padding:8px">${form.name}</td></tr>
+                <tr><td style="padding:8px;font-weight:bold;color:#555">Email</td><td style="padding:8px">${form.email}</td></tr>
+                <tr><td style="padding:8px;font-weight:bold;color:#555">Topic</td><td style="padding:8px">${form.type}</td></tr>
+                <tr><td style="padding:8px;font-weight:bold;color:#555">Subject</td><td style="padding:8px">${form.subject}</td></tr>
+              </table>
+              <div style="margin-top:16px;padding:16px;background:#f5f5f5;border-radius:8px">
+                <strong>Message:</strong><br/><br/>
+                ${form.message.replace(/\n/g, "<br/>")}
+              </div>
+            </div>
+          `,
+        }),
+      }).catch(() => { /* silent — Firestore save already succeeded */ });
+
       showToast({ msg: "✅ Message sent! We'll get back to you within 24 hours.", type: "success" });
-      setForm({ name: "", email: "", subject: "", type: "general", message: "" });
+      // امسح بس الحقول القابلة للتعديل — الاسم والإيميل يفضلوا
+      setForm(p => ({ ...p, subject: "", message: "" }));
       setSent(true);
       setTimeout(() => setSent(false), 5000);
-    } catch {
-      showToast({ msg: "Something went wrong. Please try again.", type: "error" });
+    } catch (e) {
+      showToast({ msg: `❌ Failed to send: ${e.message}`, type: "error" });
     }
     setLoading(false);
   };
@@ -123,9 +207,9 @@ export default function Contact({ showToast }) {
     {
       icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>,
       label: "Email Support",
-      value: "support@exampro.com",
+      value: "info@flexexams.com",
       sub: "We reply within 24 hours on business days",
-      href: "mailto:support@exampro.com",
+      href: "mailto:info@flexexams.com",
     },
     {
       icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
@@ -156,6 +240,38 @@ export default function Contact({ showToast }) {
   ];
 
   const types = ["General Inquiry", "Technical Support", "Report an Error", "Partnership", "Feedback"];
+
+  // ── Real social media links ──
+  const socials = [
+    {
+      label: "YouTube",
+      handle: "@FlexExams",
+      href: "https://www.youtube.com/@FlexExams",
+      icon: SocialIcons.YouTube,
+      color: socialBrandColors.YouTube,
+    },
+    {
+      label: "Facebook",
+      handle: "FlexExams",
+      href: "https://www.facebook.com/FlexExams",
+      icon: SocialIcons.Facebook,
+      color: socialBrandColors.Facebook,
+    },
+    {
+      label: "LinkedIn",
+      handle: "flexexams",
+      href: "https://www.linkedin.com/company/flexexams",
+      icon: SocialIcons.LinkedIn,
+      color: socialBrandColors.LinkedIn,
+    },
+    {
+      label: "TikTok",
+      handle: "@flexexams",
+      href: "https://www.tiktok.com/@flexexams",
+      icon: SocialIcons.TikTok,
+      color: socialBrandColors.TikTok,
+    },
+  ];
 
   return (
     <div style={{ background: "var(--bg2)" }}>
@@ -217,6 +333,33 @@ export default function Contact({ showToast }) {
           }
           .quick-answers {
             padding: 20px 16px !important;
+          }
+        }
+
+        .social-link-item {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 14px;
+          border-radius: 10px;
+          border: 1px solid var(--border);
+          background: var(--bg3);
+          text-decoration: none;
+          transition: all 0.2s;
+        }
+        .social-link-item:hover {
+          border-color: var(--accent);
+          background: var(--accent-soft);
+          transform: translateX(3px);
+        }
+        .social-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+        @media (max-width: 500px) {
+          .social-grid {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>
@@ -343,8 +486,46 @@ export default function Contact({ showToast }) {
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <Input label="Your Name" type="text" value={form.name} onChange={upd("name")} placeholder="Jane Smith" />
-              <Input label="Email Address" type="email" value={form.email} onChange={upd("email")} placeholder="you@example.com" />
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Your Name</div>
+                <div style={{ position: "relative" }}>
+                  <input
+                    type="text"
+                    value={form.name}
+                    readOnly
+                    style={{
+                      width: "100%", padding: "11px 40px 11px 14px",
+                      borderRadius: 10, boxSizing: "border-box",
+                      border: "1.5px solid var(--border)",
+                      background: "var(--bg3)",
+                      color: "var(--text2)",
+                      fontSize: 14, fontFamily: "inherit",
+                      cursor: "not-allowed", outline: "none",
+                    }}
+                  />
+                  <svg style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", flexShrink: 0 }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Email Address</div>
+                <div style={{ position: "relative" }}>
+                  <input
+                    type="email"
+                    value={form.email}
+                    readOnly
+                    style={{
+                      width: "100%", padding: "11px 40px 11px 14px",
+                      borderRadius: 10, boxSizing: "border-box",
+                      border: "1.5px solid var(--border)",
+                      background: "var(--bg3)",
+                      color: "var(--text2)",
+                      fontSize: 14, fontFamily: "inherit",
+                      cursor: "not-allowed", outline: "none",
+                    }}
+                  />
+                  <svg style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", flexShrink: 0 }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </div>
+              </div>
             </div>
             <Input label="Subject" type="text" value={form.subject} onChange={upd("subject")} placeholder="How can we help you?" />
             <Textarea label="Your Message" value={form.message} onChange={upd("message")} placeholder="Share as much detail as you'd like. The more context, the faster we can help." rows={6} />
@@ -399,7 +580,7 @@ export default function Contact({ showToast }) {
                 { q: "Forgot password?", a: "Use 'Forgot Password' on the login page." },
                 { q: "Download certificate?", a: "Go to My Exams → find your passed exam → Download Certificate." },
                 { q: "Wrong score shown?", a: "Refresh your browser and check again. If persists, contact us." },
-                { q: "Partnership inquiry?", a: "Email us directly at partnerships@exampro.com" },
+                { q: "Partnership inquiry?", a: "Email us directly at info@flexexams.com" },
               ].map(({ q, a }, i) => (
                 <div key={i} style={{
                   padding: "12px 0",
@@ -411,46 +592,70 @@ export default function Contact({ showToast }) {
               ))}
             </div>
 
-            {/* Social links */}
+            {/* ── Social links — UPDATED with real links ── */}
             <div style={{
               background: "var(--bg2)",
               border: "1.5px solid var(--border)",
               borderRadius: 20, padding: "24px",
               boxShadow: "var(--card-shadow)",
             }}>
-              <h3 style={{ fontSize: 14, fontWeight: 800, color: "var(--text)", marginBottom: 16, fontFamily: "'Syne', sans-serif" }}>
-                Follow Us
+              <h3 style={{ fontSize: 14, fontWeight: 800, color: "var(--text)", marginBottom: 6, fontFamily: "'Syne', sans-serif" }}>
+                Follow FlexExams
               </h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {[
-                  { label: "Twitter / X", handle: "@ExamPro", icon: "𝕏" },
-                  { label: "LinkedIn", handle: "ExamPro Official", icon: "in" },
-                  { label: "YouTube", handle: "ExamPro Tutorials", icon: "▶" },
-                ].map(({ label, handle, icon }) => (
-                  <a key={label} href="#" style={{
-                    display: "flex", alignItems: "center", gap: 12,
-                    padding: "10px 14px", borderRadius: 10,
-                    border: "1px solid var(--border)",
-                    background: "var(--bg3)",
-                    textDecoration: "none",
-                    transition: "all 0.2s",
-                  }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--accent-soft)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--bg3)"; }}
+              <p style={{ fontSize: 12, color: "var(--text3)", marginBottom: 16, lineHeight: 1.5 }}>
+                Stay updated with new exams, tips & community highlights.
+              </p>
+              <div className="social-grid">
+                {socials.map(({ label, handle, href, icon, color }) => (
+                  <a
+                    key={label}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="social-link-item"
                   >
                     <div style={{
-                      width: 32, height: 32, borderRadius: 8,
-                      background: "var(--gradient-accent)",
+                      width: 34, height: 34, borderRadius: 9,
+                      background: color,
                       display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0,
+                      color: "#fff", flexShrink: 0,
+                      boxShadow: `0 4px 12px ${color}40`,
                     }}>{icon}</div>
-                    <div>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{label}</div>
-                      <div style={{ fontSize: 11.5, color: "var(--text3)" }}>{handle}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+                      <div style={{ fontSize: 11, color: "var(--text3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{handle}</div>
                     </div>
                   </a>
                 ))}
               </div>
+
+              {/* Direct email link */}
+              <a
+                href="mailto:info@flexexams.com"
+                style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  padding: "10px 14px", borderRadius: 10, marginTop: 10,
+                  border: "1px solid var(--border)",
+                  background: "var(--bg3)",
+                  textDecoration: "none",
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--accent-soft)"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--bg3)"; }}
+              >
+                <div style={{
+                  width: 34, height: 34, borderRadius: 9,
+                  background: "var(--gradient-accent)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "#fff", flexShrink: 0,
+                }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>Email Us</div>
+                  <div style={{ fontSize: 11, color: "var(--text3)" }}>info@flexexams.com</div>
+                </div>
+              </a>
             </div>
           </div>
         </div>
@@ -480,6 +685,7 @@ export default function Contact({ showToast }) {
           </div>
         </div>
       </div>
+      <FloatingChat />
     </div>
   );
 }

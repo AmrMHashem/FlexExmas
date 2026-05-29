@@ -1,60 +1,186 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    function isSignedIn() {
-      return request.auth != null;
-    }
-    
+
+    function isAuth() { return request.auth != null; }
+    function isOwner(userId) { return isAuth() && request.auth.uid == userId; }
+
     function isAdmin() {
-      return isSignedIn() && 
+      return isAuth() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
-    
-    function isOwner(uid) {
-      return request.auth != null && request.auth.uid == uid;
+
+    // ✅ FIX v3: حقل subscription مُحمى — لا يُكتب مباشرة من المستخدم.
+    function notChangingProtectedFields() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'role', 'createdAt', 'uid',
+        'subscription',
+        'points', 'purchases', 'totalScore', 'leaderboardRank', 'referralRewards',
+        'isAdmin', 'billing', 'paymentStatus'
+      ]);
     }
 
-    // ✅ السماح بقراءة الامتحانات النشطة فقط للـ Public
-    match /exams/{document=**} {
-      allow read: if resource.data.isActive == true;
+    // ======================= المستخدمون =======================
+    match /users/{userId} {
+      allow read: if isAdmin() || isOwner(userId);
+      allow create: if isAdmin() || isOwner(userId);
+      allow update: if isAdmin() || (isOwner(userId) && notChangingProtectedFields());
+      allow delete: if isAdmin();
+
+      match /examProgress/{examId} {
+        allow read, write: if isAdmin() || isOwner(userId);
+      }
+    }
+
+    // ======================= الامتحانات =======================
+    match /exams/{examId} {
+      allow read, list: if true;
+      allow create, update, delete: if isAdmin();
+      match /questions/{questionId} {
+        allow read, list: if true;
+        allow create, update, delete: if isAdmin();
+      }
+    }
+
+    // ======================= الأسئلة =======================
+    match /questions/{questionId} {
+      allow read, list: if true;
       allow create, update, delete: if isAdmin();
     }
-    
-    match /questions/{document=**} {
+
+    // ======================= إحصائيات الامتحانات =======================
+    match /examStats/{examId} {
+      allow read, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ======================= النتائج =======================
+    match /results/{resultId} {
+      allow read: if isAdmin() || (isAuth() && request.auth.uid == resource.data.userId);
+      allow list: if isAdmin() || (isAuth() && request.query.filters.size() > 0);
+      allow create: if isAdmin() || (isAuth()
+        && request.auth.uid == request.resource.data.userId
+        && request.resource.data.keys().hasAll(['userId', 'examId', 'score'])
+        && request.resource.data.score is number
+        && request.resource.data.score >= 0
+        && request.resource.data.score <= 100);
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ======================= التقارير =======================
+    match /reports/{reportId} {
+      allow create: if isAdmin() || (isAuth() && request.resource.data.userId == request.auth.uid);
+      allow read, update, delete: if isAdmin();
+    }
+
+    // ======================= الموردون =======================
+    match /vendors/{vendorId} {
+      allow read, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ======================= المواضيع =======================
+    match /topics/{topicId} {
+      allow read, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ======================= الشهادات =======================
+    match /certificates/{certId} {
+      allow read: if true;
+      allow create: if isAdmin() || (isAuth() && request.auth.uid != null && request.resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    // ======================= الإعدادات =======================
+    match /settings/{docId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
     }
 
-    // ✅ Users
-    match /users/{uid} {
-      allow read: if isOwner(uid) || isAdmin();
-      allow create: if isSignedIn() && isOwner(uid);
-      allow update: if isOwner(uid) || isAdmin();
+    // ======================= المعاملات المالية =======================
+    match /transactions/{txId} {
+      allow read: if isAdmin() || (isAuth() && resource.data.userId == request.auth.uid);
+      allow list: if isAdmin() || isAuth();
+      allow create: if isAdmin() || (isAuth()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasAll(['userId', 'type', 'amount', 'status'])
+        && request.resource.data.amount is number
+        && request.resource.data.amount >= 0
+        && (request.resource.data.status == 'completed' || request.resource.data.status == 'pending')
+      );
+      allow update, delete: if isAdmin();
+    }
+
+    // ======================= لوحة المتصدرين =======================
+    match /leaderboard/{userId} {
+      allow read, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ======================= الإحالات =======================
+    match /referrals/{userId} {
+      allow read: if isAdmin() || isOwner(userId);
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ======================= الإشعارات (تم التعديل) =======================
+    match /notifications/{notificationId} {
+      allow read: if isAdmin() || (isAuth() && resource.data.userId == request.auth.uid);
+      // ✅ المستخدم العادي يمكنه إنشاء إشعار لنفسه فقط
+      allow create: if isAdmin() || (isAuth() && request.resource.data.userId == request.auth.uid);
+      // ✅ المستخدم يمكنه تحديث حقل isRead فقط
+      allow update: if isAdmin() || (isAuth() 
+        && resource.data.userId == request.auth.uid 
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']));
+      // ✅ المستخدم يمكنه حذف إشعاراته الخاصة
+      allow delete: if isAdmin() || (isAuth() && resource.data.userId == request.auth.uid);
+    }
+
+    // ======================= طلبات الاسترداد =======================
+    match /refund_requests/{refundId} {
+      allow create: if isAdmin() || (isAuth() && request.resource.data.userId == request.auth.uid);
+      allow read: if isAdmin() || (isAuth() && resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    // ======================= مدفوعات InstaPay =======================
+    match /instapay_payments/{paymentId} {
+      allow create: if isAdmin() || (isAuth() && request.resource.data.userId == request.auth.uid);
+      allow read: if isAdmin() || (isAuth() && resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    // ======================= الاشتراكات =======================
+    match /subscriptions/{userId} {
+      allow read: if isAdmin() || isOwner(userId);
+      allow create, update: if isAdmin() || (isOwner(userId)
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'active'
+        && request.resource.data.keys().hasAll(['userId', 'planId', 'status', 'startDate', 'endDate'])
+      );
       allow delete: if isAdmin();
     }
-    
-    // ✅ Results
-    match /results/{document=**} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn();
-      allow update, delete: if isAdmin();
+
+    // ======================= الكوبونات =======================
+    match /coupons/{couponId} {
+      allow read: if isAuth();
+      allow create, update, delete: if isAdmin();
     }
 
-    // ✅ Reports
-    match /reports/{document=**} {
-      allow read: if isAdmin();
-      allow create: if isSignedIn();
-      allow update, delete: if isAdmin();
+    // ======================= التحليلات =======================
+    match /analytics/{docId} {
+      allow read, create, update, delete: if isAdmin();
     }
 
-    // ✅ Notifications
-    match /notifications/{document=**} {
-      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isAdmin();
-      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    // ======================= سجلات الأدمن =======================
+    match /admin_logs/{logId} {
+      allow read, create, update, delete: if isAdmin();
     }
 
+    // ======================= رفض أي شيء آخر =======================
     match /{document=**} {
       allow read, write: if false;
     }

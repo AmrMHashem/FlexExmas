@@ -3,10 +3,12 @@
  * ✅ مع إضافة شاشة منبثقة تحفيزية للزائر بعد إتمام الاختبار (بالإنجليزية وتحسينات للأجهزة المحمولة)
  */
 
+import { ShareBar } from "../components/SharingSystem";
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { Btn, Tag, ProgressBar } from "../components/UI";
 import { submitQuestionReport } from "../services/firestore";
+import { getUserSubscription, getUserTransactions } from "../services/payment";
 import Certificate from "../components/Certificate";
 
 /* ─── Animated SVG Icons (نفس الكود السابق) ─────────────────────────────── */
@@ -392,14 +394,53 @@ export default function Result({ result, setPage, exams, showToast, setActiveExa
   const [reportFeedback, setReportFeedback] = useState({});
   const [submittingReport, setSubmittingReport] = useState({});
   const [showFlaggedOnly, setShowFlaggedOnly] = useState(false);
-  
-  // حالة المنبثقة التحفيزية للزائر
   const [showGuestPopup, setShowGuestPopup] = useState(true);
+  const [showCelebration, setShowCelebration] = useState(false);
 
-  useEffect(() => { 
-    const t = setTimeout(() => setMounted(true), 50); 
-    return () => clearTimeout(t); 
+  // ✅ NEW: بيانات الاشتراك والمشتريات لإخفاء أزرار الشراء عند الحاجة
+  const [subscription, setSubscription] = useState(null);
+  const [userPurchases, setUserPurchases] = useState([]); // examIds المشتراة
+
+  useEffect(() => {
+    const t = setTimeout(() => setMounted(true), 50);
+    return () => clearTimeout(t);
   }, []);
+
+  // 🎉 Trigger celebration when passed
+  useEffect(() => {
+    if (!mounted) return;
+    const displayScore2 = result?.score ?? result?.guestScore ?? 0;
+    const passing = result?.passingScore || 70;
+    if (displayScore2 >= passing) {
+      const t = setTimeout(() => setShowCelebration(true), 400);
+      return () => clearTimeout(t);
+    }
+  }, [mounted]);
+
+  // ✅ جلب بيانات الاشتراك والمشتريات للمستخدم المسجل
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    const fetchBilling = async () => {
+      try {
+        const [sub, txs] = await Promise.all([
+          getUserSubscription(user.uid).catch(() => null),
+          getUserTransactions(user.uid).catch(() => []),
+        ]);
+        if (cancelled) return;
+        setSubscription(sub);
+        // نستخرج examIds من المعاملات المكتملة
+        const purchasedExamIds = (txs || [])
+          .filter(tx => tx.status === "completed" && tx.examId)
+          .map(tx => tx.examId);
+        setUserPurchases(purchasedExamIds);
+      } catch (e) {
+        console.warn("Could not load billing data in Result:", e.message);
+      }
+    };
+    fetchBilling();
+    return () => { cancelled = true; };
+  }, [user?.uid]);
 
   // منع التمرير خلف المنبثقة عندما تكون ظاهرة
   useEffect(() => {
@@ -424,6 +465,7 @@ export default function Result({ result, setPage, exams, showToast, setActiveExa
     score, correct, total, timeTaken,
     details = [], mode, passingScore,
     guestScore, guestCorrect, guestTotal,
+    isLimited, fullExamTotal,
   } = result;
 
   const color = examColor || "var(--accent)";
@@ -436,6 +478,12 @@ export default function Result({ result, setPage, exams, showToast, setActiveExa
   const effectivePassing = passingScore || 70;
   const displayPass = displayScore >= effectivePassing;
   const canShowCert = displayPass && isExamSim && user;
+
+  // ✅ NEW: هل المستخدم لديه وصول كامل (مشترك أو اشترى هذا الاختبار)؟
+  const hasActiveSubscription = !!(subscription?.isActive);
+  const hasPurchasedThisExam = !!(examId && userPurchases.includes(examId));
+  // إخفاء أزرار الشراء إذا كان المستخدم يملك صلاحية وصول كاملة
+  const shouldShowPurchaseCTA = user && !hasActiveSubscription && !hasPurchasedThisExam;
 
   const safeDetails = details || [];
   const flaggedIndices = safeDetails.reduce((arr, d, idx) => {
@@ -511,7 +559,72 @@ export default function Result({ result, setPage, exams, showToast, setActiveExa
   // إغلاق المنبثقة
   const closePopup = () => setShowGuestPopup(false);
 
+  // 🎉 Celebration overlay component
+  const CONFETTI_COLORS = ["#6366f1","#10b981","#f59e0b","#ec4899","#3b82f6","#a78bfa","#34d399","#fbbf24"];
+  const confettiPieces = Array.from({ length: 60 }, (_, i) => ({
+    id: i,
+    color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+    left: `${Math.random() * 100}%`,
+    width: `${6 + Math.random() * 8}px`,
+    height: `${12 + Math.random() * 10}px`,
+    delay: `${Math.random() * 2.5}s`,
+    duration: `${2.5 + Math.random() * 2}s`,
+    borderRadius: Math.random() > 0.5 ? "50%" : "2px",
+    rotation: `${Math.random() * 360}deg`,
+  }));
+
+  const CelebrationOverlay = () => {
+    if (!showCelebration) return null;
+    return (
+      <div
+        style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 9999, overflow: "hidden" }}
+        onAnimationEnd={() => setTimeout(() => setShowCelebration(false), 4000)}
+      >
+        {confettiPieces.map(p => (
+          <div key={p.id} style={{
+            position: "absolute",
+            top: "-10vh",
+            left: p.left,
+            width: p.width,
+            height: p.height,
+            background: p.color,
+            borderRadius: p.borderRadius,
+            transform: `rotate(${p.rotation})`,
+            animation: `confetti-fall ${p.duration} ${p.delay} ease-in forwards, confetti-sway ${p.duration} ${p.delay} ease-in-out infinite`,
+            opacity: 0.9,
+          }} />
+        ))}
+        {/* Big center burst */}
+        <div style={{
+          position: "fixed", top: "50%", left: "50%",
+          transform: "translate(-50%, -50%)",
+          fontSize: "clamp(60px, 12vw, 100px)",
+          animation: "celebrate-bounce 0.8s 0.3s ease both",
+          pointerEvents: "none",
+          filter: "drop-shadow(0 0 30px rgba(99,102,241,0.6))",
+        }}>
+          🏆
+        </div>
+        {/* Stars */}
+        {["⭐","🌟","✨","🎊","🎉"].map((s, i) => (
+          <div key={s} style={{
+            position: "fixed",
+            top: `${20 + Math.random() * 60}%`,
+            left: `${10 + i * 18}%`,
+            fontSize: `${24 + i * 8}px`,
+            animation: `star-pop 0.6s ${0.2 + i * 0.15}s cubic-bezier(0.16,1,0.3,1) both`,
+            pointerEvents: "none",
+          }}>
+            {s}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
+    <>
+    <CelebrationOverlay />
     <div style={{
       maxWidth: 900,
       margin: "0 auto",
@@ -541,6 +654,24 @@ export default function Result({ result, setPage, exams, showToast, setActiveExa
         @keyframes modalSlideUp {
           from { opacity: 0; transform: translateY(40px) scale(0.96); }
           to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes confetti-fall {
+          0%   { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+          100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+        }
+        @keyframes confetti-sway {
+          0%,100% { margin-left: 0; }
+          50%      { margin-left: 30px; }
+        }
+        @keyframes celebrate-bounce {
+          0%,100% { transform: scale(1); }
+          30%     { transform: scale(1.18); }
+          60%     { transform: scale(0.95); }
+        }
+        @keyframes star-pop {
+          0%   { transform: scale(0) rotate(-30deg); opacity: 0; }
+          60%  { transform: scale(1.3) rotate(10deg); opacity: 1; }
+          100% { transform: scale(1) rotate(0deg); opacity: 1; }
         }
         .result-card { animation: scaleIn 0.45s cubic-bezier(0.16,1,0.3,1) forwards; }
         .q-card { animation: fadeSlideIn 0.35s ease both; }
@@ -575,8 +706,6 @@ export default function Result({ result, setPage, exams, showToast, setActiveExa
             borderRadius: 32,
             boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5)",
             position: "relative",
-                        top: -540,
-
             animation: "modalSlideUp 0.4s cubic-bezier(0.16,1,0.3,1)",
             border: "1px solid var(--border)",
           }}>
@@ -817,11 +946,38 @@ export default function Result({ result, setPage, exams, showToast, setActiveExa
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12, justifyContent: "center", textAlign: "left" }}>
+              {/* Two-score display for limited access */}
+              {isLimited && fullExamTotal && fullExamTotal > displayTotal && (
+                <div style={{ background: "rgba(245,158,11,0.08)", border: "1.5px solid rgba(245,158,11,0.3)", borderRadius: 14, padding: "14px 16px", marginBottom: 8, maxWidth: 380 }}>
+                  {/* Score 1: Attempted Questions */}
+                  <div style={{ fontSize: 10, color: "#f59e0b", fontWeight: 900, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 10 }}>
+                    📊 Your Dual Score
+                  </div>
+                  <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 10 }}>
+                    <div style={{ flex: 1, background: "rgba(99,102,241,0.08)", borderRadius: 10, padding: "10px 12px", border: "1px solid rgba(99,102,241,0.2)" }}>
+                      <div style={{ fontSize: 10, color: "var(--text3)", fontWeight: 700, marginBottom: 4 }}>✅ Score for Attempted</div>
+                      <div style={{ fontSize: 22, fontWeight: 900, color: displayPass ? "#10b981" : "#ef4444" }}>{displayScore}%</div>
+                      <div style={{ fontSize: 10, color: "var(--text3)" }}>{displayCorrect} / {displayTotal} questions</div>
+                    </div>
+                    <div style={{ flex: 1, background: "rgba(239,68,68,0.06)", borderRadius: 10, padding: "10px 12px", border: "1px solid rgba(239,68,68,0.15)" }}>
+                      <div style={{ fontSize: 10, color: "var(--text3)", fontWeight: 700, marginBottom: 4 }}>📋 Full Exam Score</div>
+                      <div style={{ fontSize: 22, fontWeight: 900, color: "var(--text2)" }}>
+                        ~{Math.round((displayCorrect / fullExamTotal) * 100)}%
+                      </div>
+                      <div style={{ fontSize: 10, color: "var(--text3)" }}>of {fullExamTotal} total questions</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text2)", lineHeight: 1.5, padding: "8px 10px", background: "rgba(245,158,11,0.06)", borderRadius: 8, fontWeight: 600 }}>
+                    💡 Sign up now to unlock all questions and achieve a full score!
+                  </div>
+                </div>
+              )}
               {[
-                { icon: "checkCircle", label: "Correct", value: `${displayCorrect} / ${displayTotal}`, icolor: displayPass ? "#10b981" : "var(--text2)" },
+                { icon: "checkCircle", label: isLimited && fullExamTotal > displayTotal ? `Correct (of ${displayTotal} attempted)` : "Correct", value: `${displayCorrect} / ${displayTotal}`, icolor: displayPass ? "#10b981" : "var(--text2)" },
+                isLimited && fullExamTotal > displayTotal ? { icon: "target", label: `Full Exam Total`, value: `${fullExamTotal} questions`, icolor: "var(--text3)" } : null,
                 { icon: "clock", label: "Time Taken", value: formatTime(timeTaken), icolor: color },
                 { icon: "target", label: "Passing Score", value: `${effectivePassing}%`, icolor: "var(--text3)" },
-              ].map(stat => (
+              ].filter(Boolean).map(stat => (
                 <div key={stat.label} className="result-stat" style={{
                   display: "flex", alignItems: "center", gap: 10,
                   background: "var(--bg3, rgba(255,255,255,.04))",
@@ -850,9 +1006,53 @@ export default function Result({ result, setPage, exams, showToast, setActiveExa
             <Btn variant="ghost" onClick={() => setPage("exams")} style={{ gap: 8 }}>
               <AnimIcon type="grid" size={16} color="var(--text2)" /> Browse Exams
             </Btn>
-            <Btn variant="ghost" onClick={handleRetake} style={{ gap: 8 }}>
-              <AnimIcon type="refresh" size={16} color="var(--text2)" /> Retake Exam
-            </Btn>
+            {/* ── Purchase / Unlock CTA ── */}
+            {/* ✅ FIX: يظهر دائماً — للزائر (تسجيل) وللمستخدم المسجل (شراء) */}
+            {!user ? (
+              /* زائر: يرى زر التسجيل */
+              <button
+                onClick={() => setPage("auth", { mode: "register" })}
+                style={{
+                  padding: "12px 22px", borderRadius: 12, border: "none",
+                  background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                  color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer",
+                  display: "flex", alignItems: "center", gap: 8, fontFamily: "inherit",
+                  boxShadow: "0 6px 20px rgba(99,102,241,0.35)",
+                }}
+              >
+                🔓 Sign Up &amp; Unlock Full Access
+              </button>
+            ) : shouldShowPurchaseCTA ? (
+              /* مستخدم مسجل بدون اشتراك أو شراء: يرى أزرار الشراء */
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+                {examId && (
+                  <button
+                    onClick={() => setPage("checkout", { examId, examTitle, examPrice: examObj?.pricing?.price || 9.99 })}
+                    style={{
+                      padding: "12px 22px", borderRadius: 12, border: "none",
+                      background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                      color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer",
+                      display: "flex", alignItems: "center", gap: 8, fontFamily: "inherit",
+                      boxShadow: "0 6px 20px rgba(99,102,241,0.3)",
+                    }}
+                  >
+                    💳 Purchase This Exam
+                  </button>
+                )}
+                <button
+                  onClick={() => setPage("pricing")}
+                  style={{
+                    padding: "12px 22px", borderRadius: 12, border: "none",
+                    background: "linear-gradient(135deg,#ec4899,#f43f5e)",
+                    color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer",
+                    display: "flex", alignItems: "center", gap: 8, fontFamily: "inherit",
+                    boxShadow: "0 6px 20px rgba(236,72,153,0.3)",
+                  }}
+                >
+                  👑 Unlock Full Access — All Exams
+                </button>
+              </div>
+            ) : null /* مشترك أو اشترى الاختبار: لا يرى أزرار الشراء */}
           </div>
         </div>
 
@@ -876,6 +1076,14 @@ export default function Result({ result, setPage, exams, showToast, setActiveExa
               mode={mode}
               passed={displayPass}
             />
+            {/* #19 Share Certificate */}
+            <div style={{ marginTop: 16, display: "flex", justifyContent: "center" }}>
+              <ShareBar
+                type="certificate"
+                text={`🏆 I earned my ${examTitle || "FlexExams"} certificate with ${displayScore}%! Join me on FlexExams:`}
+                url={`${window.location.origin}/verify?exam=${examId}&user=${user?.uid}`}
+              />
+            </div>
           </div>
         )}
 
@@ -985,9 +1193,28 @@ export default function Result({ result, setPage, exams, showToast, setActiveExa
                             Q{displayNumber}{d.domain && ` · ${d.domain}`}
                             {d.flagged && <span style={{ marginLeft: 8, color: "var(--gold)" }}>🚩 Flagged</span>}
                           </div>
-                          <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.6, color: "var(--text)" }}>
-                            {d.question}
-                          </div>
+                          {/* Question text — render as HTML if it contains tags */}
+                          {d.questionHtml && /<[a-z][\s\S]*>/i.test(d.questionHtml) ? (
+                            <div
+                              className="question-html-content"
+                              style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.6, color: "var(--text)" }}
+                              dangerouslySetInnerHTML={{ __html: d.questionHtml }}
+                            />
+                          ) : (
+                            <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.6, color: "var(--text)" }}>
+                              {d.question}
+                            </div>
+                          )}
+                          {/* Legacy imageUrl field */}
+                          {d.imageUrl && (
+                            <div style={{ marginTop: 12, borderRadius: 10, overflow: "hidden", border: "1.5px solid var(--border)" }}>
+                              <img
+                                src={d.imageUrl}
+                                alt="Question illustration"
+                                style={{ width: "100%", maxHeight: 280, objectFit: "contain", display: "block", background: "var(--bg3)" }}
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -1083,5 +1310,6 @@ export default function Result({ result, setPage, exams, showToast, setActiveExa
         )}
       </div>
     </div>
+    </>
   );
 }

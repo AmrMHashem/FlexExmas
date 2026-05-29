@@ -1,188 +1,186 @@
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<head>
 
-    <!-- ═══════════════════════════════════════════
-         PRIMARY SEO
-    ══════════════════════════════════════════════ -->
-    <title>FlexExams – #1 IT Certification Practice Tests | AWS, CCNA, Security+, PMP</title>
+  <!-- =========================
+       BASIC META
+  ========================== -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
-    <meta name="description" content="Pass your IT certification exam on the first try. FlexExams offers real exam-style questions, timed mock tests, AI explanations, and verified certificates for AWS, CCNA, Security+, PMP, CompTIA, Azure and 50+ certifications." />
-    <meta name="keywords" content="AWS certification practice test, CCNA exam questions, Security+ practice exam, PMP exam simulator, CompTIA practice test, Azure certification questions, IT certification prep, exam simulator online, real exam questions" />
-    <meta name="author" content="FlexExams" />
-    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
-    <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large" />
-    <meta name="bingbot" content="index, follow" />
-    <meta name="language" content="English" />
-    <meta name="rating" content="general" />
+  <!-- TITLE -->
+  <title>FlexExams — Pass Any Certification Exam Faster, With Real Practice Questions</title>
 
-    <!-- Canonical -->
-    <link rel="canonical" href="https://www.flexexams.com/" />
-    <link rel="alternate" hreflang="en" href="https://www.flexexams.com/" />
-    <link rel="alternate" hreflang="x-default" href="https://www.flexexams.com/" />
+  <!-- DESCRIPTION -->
+  <meta name="description" content="The most advanced certification exam practice platform built for IT, cloud, security, and professional exams. Train with real exam-style questions, timed simulations, and adaptive practice tests so you pass faster and with confidence. The Sharpest Exam Simulator on the Web." />
 
-    <!-- ═══════════════════════════════════════════
-         OPEN GRAPH
-    ══════════════════════════════════════════════ -->
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="FlexExams" />
-    <meta property="og:title" content="FlexExams – IT Certification Practice Tests | Pass First Try" />
-    <meta property="og:description" content="Real exam questions, timed tests, and AI explanations for 50+ certifications including AWS, CCNA, Security+, PMP." />
-    <meta property="og:url" content="https://www.flexexams.com/" />
-    <meta property="og:image" content="https://www.flexexams.com/og-image.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+  <!-- KEYWORDS (secondary signal) -->
+  <meta name="keywords" content="FlexExams, flex exams, flexexam, IT certification practice, AWS exam, CCNA practice test, Security+ practice, PMP exam prep, certification mock test" />
 
-    <!-- ═══════════════════════════════════════════
-         TWITTER CARD
-    ══════════════════════════════════════════════ -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="FlexExams – Pass AWS, CCNA & Security+ Exams" />
-    <meta name="twitter:description" content="Practice real exam questions with AI explanations for 50+ IT certifications." />
-    <meta name="twitter:image" content="https://www.flexexams.com/og-image.png" />
+  <!-- SEO CONTROL -->
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
 
-    <!-- ═══════════════════════════════════════════
-         PERFORMANCE — RESOURCE HINTS
-    ══════════════════════════════════════════════ -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
-    <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
+  <!-- CANONICAL -->
+  <link rel="canonical" href="https://www.flexexams.com/" />
 
-    <link rel="dns-prefetch" href="//i.ibb.co" />
-    <link rel="dns-prefetch" href="//i.postimg.cc" />
-    <link rel="dns-prefetch" href="//firebase.googleapis.com" />
-    <link rel="dns-prefetch" href="//www.google-analytics.com" />
+  <!-- =========================
+       OPEN GRAPH (Facebook / LinkedIn / Google Preview)
+  ========================== -->
+  <meta property="og:type"        content="website" />
+  <meta property="og:site_name"   content="FlexExams" />
+  <meta property="og:title"       content="FlexExams — Master Any Certification Exam, With Real Practice Questions" />
+  <meta property="og:description" content="Real exam simulations for 50+ IT certifications. Timed tests, instant feedback, and AI-powered explanations. Start free today." />
+  <meta property="og:url"         content="https://www.flexexams.com/" />
+  <meta property="og:image"       content="https://www.flexexams.com/og-image.png" />
+  <meta property="og:image:secure_url" content="https://www.flexexams.com/og-image.png" />
+  <meta property="og:image:type"  content="image/png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt"   content="FlexExams — IT Certification Practice Platform" />
+  <meta property="og:locale"      content="en_US" />
 
-    <!-- ═══════════════════════════════════════════
-         FONT LOADING — NON-BLOCKING
-    ══════════════════════════════════════════════ -->
-    <link rel="preload" as="style"
-      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap" />
-    <link rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap"
-      media="print" onload="this.media='all'" />
-    <noscript>
-      <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap" />
-    </noscript>
+  <!-- =========================
+       TWITTER CARD
+  ========================== -->
+  <meta name="twitter:card"        content="summary_large_image" />
+  <meta name="twitter:site"        content="@FlexExams" />
+  <meta name="twitter:creator"     content="@FlexExams" />
+  <meta name="twitter:title"       content="FlexExams — Master Any Certification Exam, With Real Practice Questions." />
+  <meta name="twitter:description" content="Real exam simulations for 50+ IT certifications. Timed tests, instant feedback, and AI-powered explanations." />
+  <meta name="twitter:image"       content="https://www.flexexams.com/og-image.png" />
+  <meta name="twitter:image:alt"   content="FlexExams — IT Certification Practice Platform" />
 
-    <!-- ═══════════════════════════════════════════
-         THEME & PWA
-    ══════════════════════════════════════════════ -->
-    <meta name="theme-color" content="#0d1223" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <!-- =========================
+       BRAND SIGNALS
+  ========================== -->
+  <meta name="application-name"  content="FlexExams" />
+  <meta name="author"            content="FlexExams" />
+  <meta name="generator"         content="FlexExams Platform v5.0" />
+  <meta name="theme-color"       content="#0d1223" />
 
-    <link rel="icon" href="/favicon.svg" />
+  <!-- =========================
+       FAVICON & ICONS
+  ========================== -->
+  <link rel="icon"             href="/favicon.ico" sizes="any" />
+  <link rel="icon"             href="/favicon.svg" type="image/svg+xml" />
+  <link rel="icon"             type="image/png" sizes="32x32" href="/icons/icon-32x32.png" />
+  <link rel="icon"             type="image/png" sizes="16x16" href="/icons/icon-16x16.png" />
+  <link rel="apple-touch-icon" href="/icons/icon-180x180.png" />
+  <link rel="mask-icon"        href="/favicon.svg" color="#4f46e5" />
 
-    <!-- ═══════════════════════════════════════════
-         STRUCTURED DATA
-    ══════════════════════════════════════════════ -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "FlexExams",
-      "url": "https://www.flexexams.com",
-      "logo": "https://www.flexexams.com/logo.png",
-      "description": "IT certification practice platform with real exam questions and AI explanations.",
-      "foundingDate": "2024"
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="/site.webmanifest" />
+
+  <!-- =========================
+       SCHEMA — ORGANIZATION
+  ========================== -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "@id": "https://www.flexexams.com/#organization",
+    "name": "FlexExams",
+    "alternateName": ["FlexExams", "Flex Exams", "flexexam"],
+    "url": "https://www.flexexams.com",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.flexexams.com/icons/icon-512x512.png",
+      "width": 512,
+      "height": 512
+    },
+    "image": "https://www.flexexams.com/og-image.png",
+    "description": "IT certification practice platform with real exam questions, timed tests, and instant explanations for 50+ certifications.",
+    "foundingDate": "2026",
+    "sameAs": [
+      "https://twitter.com/FlexExams",
+      "https://linkedin.com/company/flexexams"
+    ],
+    "contactPoint": {
+      "@type": "ContactPoint",
+      "contactType": "customer support",
+      "url": "https://www.flexexams.com/contact"
     }
-    </script>
+  }
+  </script>
 
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "FlexExams",
-      "url": "https://www.flexexams.com",
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": "https://www.flexexams.com/exams?q={search_term_string}",
-        "query-input": "required name=search_term_string"
-      }
-    }
-    </script>
-
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "FlexExams",
-      "applicationCategory": "EducationalApplication",
-      "operatingSystem": "Web",
-      "description": "Practice IT certification exams with real questions and AI explanations.",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD"
+  <!-- SCHEMA — WEBSITE + SITELINKS SEARCH -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "@id": "https://www.flexexams.com/#website",
+    "name": "FlexExams",
+    "alternateName": "FlexExams — IT Certification Practice",
+    "url": "https://www.flexexams.com",
+    "publisher": {
+      "@id": "https://www.flexexams.com/#organization"
+    },
+    "potentialAction": {
+      "@type": "SearchAction",
+      "target": {
+        "@type": "EntryPoint",
+        "urlTemplate": "https://www.flexexams.com/exams?q={search_term_string}"
       },
-      "aggregateRating": {
-        "@type": "AggregateRating",
-        "ratingValue": "4.9",
-        "reviewCount": "12847"
-      }
+      "query-input": "required name=search_term_string"
     }
-    </script>
+  }
+  </script>
 
-    <!-- ═══════════════════════════════════════════
-         CRITICAL CSS — بدون تعديلات على حجم الصور
-    ══════════════════════════════════════════════ -->
-    <style>
-      /* Reset أساسي */
-      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-      html { scroll-behavior: smooth; overflow-x: hidden; }
+  <!-- SCHEMA — WEBPAGE (HOME) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "@id": "https://www.flexexams.com/#webpage",
+    "url": "https://www.flexexams.com/",
+    "name": "FlexExams — Master Any Certification Exam, With Real Practice Questions.",
+    "description": "Prepare for 50+ IT certifications with real exam-style questions, timed practice tests, and instant results.",
+    "isPartOf": { "@id": "https://www.flexexams.com/#website" },
+    "about": { "@id": "https://www.flexexams.com/#organization" },
+    "primaryImageOfPage": {
+      "@type": "ImageObject",
+      "url": "https://www.flexexams.com/og-image.png"
+    }
+  }
+  </script>
 
-      body {
-        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        background: #0d1223;
-        color: #eef1fb;
-        min-height: 100vh;
-        overflow-x: hidden;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-      }
+  <!-- SCHEMA — SOFTWARE APPLICATION (for rich results) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "FlexExams",
+    "operatingSystem": "Web, iOS, Android",
+    "applicationCategory": "EducationApplication",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "4.3",
+      "ratingCount": "1827"
+    },
+    "url": "https://www.flexexams.com",
+    "publisher": {
+      "@id": "https://www.flexexams.com/#organization"
+    }
+  }
+  </script>
 
-      [data-theme="light"] body {
-        background: #ffffff;
-        color: #0f172a;
-      }
+  <!-- =========================
+       PERFORMANCE
+  ========================== -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="dns-prefetch" href="//i.ibb.co" />
+  <link rel="dns-prefetch" href="//firestore.googleapis.com" />
 
-      #root { min-height: 100vh; }
+</head>
 
-      /* تم إزالة max-width و height: auto — الصور تعرض بحجمها الطبيعي، مع منع الفراغات السفلية فقط */
-      img { display: block; }
-
-      #root:empty::after {
-        content: '';
-        display: block;
-        width: 100%;
-        height: 100vh;
-        background: #0d1223;
-      }
-      [data-theme="light"] #root:empty::after {
-        background: #ffffff;
-      }
-    </style>
-
-    <script>
-      (function() {
-        try {
-          var t = localStorage.getItem('theme') || 'dark';
-          document.documentElement.setAttribute('data-theme', t);
-          var tc = document.querySelector('meta[name="theme-color"]');
-          if (tc) tc.setAttribute('content', t === 'dark' ? '#0d1223' : '#ffffff');
-        } catch(e) {}
-      })();
-    </script>
-  </head>
-
-  <body>
-    <div id="root"></div>
-    <script type="module" src="./src/main.jsx"></script>
-  </body>
+<body>
+  <div id="root"></div>
+  <script type="module" src="./src/main.jsx"></script>
+</body>
 </html>

@@ -3,7 +3,7 @@
  * Fixes: Firestore read, error handling, visual polish
  */
 import React, { useEffect, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, getDocs, query, collection, where } from "firebase/firestore";
 import { db } from "../firebase";
 
 const STATUS = { LOADING: "loading", VALID: "valid", INVALID: "invalid", ERROR: "error" };
@@ -82,16 +82,42 @@ export default function CertificateVerify({ certId, setPage }) {
     let cancelled = false;
     (async () => {
       try {
+        // ✅ FIX الجذري: نبحث أولاً بالـ Document ID (الطريقة الأسرع)
         const ref = doc(db, "certificates", id);
         const snap = await getDoc(ref);
 
         if (cancelled) return;
 
         if (snap.exists()) {
+          // وجدناه مباشرة بالـ Document ID
           setCertData(snap.data());
           setStatus(STATUS.VALID);
         } else {
-          setStatus(STATUS.INVALID);
+          // ✅ FIX: لم يوجد بالـ Document ID — نبحث بحقل certId داخل المستندات
+          // (بعض الشهادات القديمة قد يختلف فيها certId عن Document ID)
+          let found = false;
+          try {
+            const fallbackQuery = query(
+              collection(db, "certificates"),
+              where("certId", "==", id)
+            );
+            const fallbackSnap = await getDocs(fallbackQuery);
+
+            if (cancelled) return;
+
+            if (!fallbackSnap.empty) {
+              setCertData(fallbackSnap.docs[0].data());
+              setStatus(STATUS.VALID);
+              found = true;
+            }
+          } catch (fallbackErr) {
+            console.warn("Fallback certId query failed:", fallbackErr?.message);
+            // نكمل — سنعرض INVALID
+          }
+
+          if (!found && !cancelled) {
+            setStatus(STATUS.INVALID);
+          }
         }
       } catch (err) {
         if (cancelled) return;
@@ -296,7 +322,7 @@ export default function CertificateVerify({ certId, setPage }) {
                 }}>{id || "—"}</code>
               </div>
               <div style={{ fontSize: 13.5, color: "var(--text3, #94a3b8)", lineHeight: 1.7, maxWidth: 360 }}>
-                Please double-check the ID from the certificate or QR code. If you believe this is an error, contact our support team at <strong>support@FlexExams.com</strong>.
+                Please double-check the ID from the certificate or QR code. If you believe this is an error, contact our support team at <strong>info@FlexExams.com</strong>
               </div>
             </div>
           )}

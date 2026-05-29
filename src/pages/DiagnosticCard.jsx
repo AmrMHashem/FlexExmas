@@ -99,7 +99,7 @@ function DiagnosticCardInner({ setPage }) {
           </h2>
 
           <p style={{ fontSize: "clamp(13px,1.5vw,15px)", color: "rgba(255,255,255,0.82)", lineHeight: 1.65, marginBottom: 18, maxWidth: 480 }}>
-            Take our 50-question multi-domain assessment. Get a personalized skill map, career matches with salary data, and a curated study roadmap.
+            Take our 70-question multi-domain assessment. Get a personalized skill map, career matches with salary data, and a curated study roadmap.
           </p>
 
           {/* Domain chips */}
@@ -122,7 +122,7 @@ function DiagnosticCardInner({ setPage }) {
           {/* Stats row */}
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
             {[
-              { v: "50", l: "Questions" },
+              { v: "70", l: "Questions" },
               { v: "7", l: "Domains" },
               { v: "8+", l: "Career Paths" },
               { v: "No timer", l: "Relaxed" },

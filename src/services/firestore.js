@@ -13,6 +13,7 @@ import {
 } from "../firebase";
 
 import { generateCertId } from "../utils/pdfCertificate";
+import { sendNotification } from "./payment";
 
 // ======================
 // IN-MEMORY CACHE
@@ -471,16 +472,30 @@ export async function getEnrolledCountForExam(examId) {
 }
 
 // ─── QUESTIONS ───────────────────────────────────────────────────────────────
-export async function getQuestions(examId) {
-  const snap = await getDocs(
-    query(
-      collection(db, "questions"),
-      where("examId", "==", examId),
-      orderBy("order", "asc")
-    )
+export const getQuestions = async (examId) => {
+  const q = query(
+    collection(db, "questions"),
+    where("examId", "==", examId)
   );
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-}
+  const snap = await getDocs(q);
+  return snap.docs.map(d => {
+    const data = d.data();
+
+    // ✅ FIX: Normalize "correct" field for Quiz.jsx compatibility.
+    let correct = data.correct;
+    if (!correct || !Array.isArray(correct) || correct.length === 0) {
+      if (Array.isArray(data.answer) && data.answer.length > 0) {
+        correct = data.answer;
+      } else {
+        correct = (data.options || [])
+          .map((o, i) => (o.isCorrect ? (o.id || String(i)) : null))
+          .filter(Boolean);
+      }
+    }
+
+    return { id: d.id, ...data, correct };
+  });
+};
 
 export async function addQuestions(examId, questions) {
   const existing = await getQuestions(examId);
@@ -520,11 +535,16 @@ export async function deleteQuestion(questionId) {
 
   await deleteDoc(questionRef);
 
-  const remainingQuestions = await getQuestions(examId);
-  await updateDoc(doc(db, "exams", examId), {
-    totalQuestions: remainingQuestions.length,
-    updatedAt: serverTimestamp(),
-  });
+  if (examId) {
+    try {
+      await updateDoc(doc(db, "exams", examId), {
+        totalQuestions: increment(-1),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (e) {
+      console.warn("⚠️ Could not update totalQuestions on delete:", e.message);
+    }
+  }
 }
 
 // ─── RESULTS ─────────────────────────────────────────────────────────────────
@@ -604,20 +624,25 @@ export async function saveResult(data) {
     }
   }
 
-  // حفظ الشهادة إذا كان الاختبار في وضع المحاكاة والنتيجة نجاح
-  if (data.mode === "examSimulation" && data.pass === true) {
+  if (
+    data.mode === "examSimulation" &&
+    data.pass === true &&
+    data.userId &&
+    data.userId !== "guest" &&
+    data.userId.trim() !== ""
+  ) {
     try {
       const certId = generateCertId();
       await saveCertificate({
         certId,
         userId: data.userId,
-        userName: data.userName,
+        userName: data.userName || "Valued Candidate",
         examId: data.examId,
         examTitle: data.examTitle,
         score: data.score,
         date: data.date || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
       });
-      console.log("🎓 Certificate saved automatically for user", data.userId);
+      console.log("🎓 Certificate saved automatically for user", data.userId, "certId:", certId);
     } catch (certErr) {
       console.error("❌ Failed to save certificate:", certErr);
     }
@@ -705,11 +730,32 @@ export async function getAllReports() {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-export async function updateReportStatus(reportId, status) {
-  await updateDoc(doc(db, "reports", reportId), {
+export async function updateReportStatus(reportId, status, adminUid = null, note = "") {
+  const rRef  = doc(db, "reports", reportId);
+  const rSnap = await getDoc(rRef);
+
+  await updateDoc(rRef, {
     status,
-    updatedAt: serverTimestamp(),
+    reviewNote:  note,
+    reviewedBy:  adminUid || null,
+    reviewedAt:  serverTimestamp(),
+    updatedAt:   serverTimestamp(),
   });
+
+  // ✅ Always send notification on any status change
+  if (rSnap.exists() && rSnap.data().userId) {
+    const { userId, questionText } = rSnap.data();
+    await sendNotification(userId, {
+      type:  `report_${status}`,
+      title: status === "resolved"
+        ? "✅ Report Resolved"
+        : status === "dismissed"
+        ? "📋 Report Dismissed"
+        : "📋 Report Update",
+      body:  note || (status === "resolved" ? "Your report has been resolved." : status === "dismissed" ? "Your report has been dismissed." : "Your report status was updated."),
+      data:  { reportId, status, questionText: (questionText || "").slice(0, 80) },
+    });
+  }
 }
 
 export async function deleteReport(reportId) {
@@ -840,22 +886,34 @@ export async function getUserExamStats(userId, examId) {
 // ─── CERTIFICATES ───────────────────────────────────────────────────────────
 export async function saveCertificate({ certId, userId, userName, examId, examTitle, score, date }) {
   try {
+    if (!userId || userId === "guest" || userId.trim() === "") {
+      console.warn("⚠️ saveCertificate: skipped — no valid userId (guest user)");
+      return null;
+    }
+    if (!certId || certId.trim() === "") {
+      console.error("❌ saveCertificate: certId is missing");
+      throw new Error("certId is required");
+    }
+
     const certRef = doc(db, "certificates", certId);
     const snap = await getDoc(certRef);
 
     if (snap.exists()) return certId;
 
+    const nowDate = date || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
     await setDoc(certRef, {
       certId,
-      userId: userId || "",
+      userId,
       userName: userName || "Valued Candidate",
       examId: examId || "",
       examTitle: examTitle || "Professional Certification Exam",
       score: score ?? 0,
-      date: date || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+      date: nowDate,
       issuedAt: serverTimestamp(),
     });
 
+    console.log("✅ Certificate saved:", certId, "for user:", userId);
     return certId;
   } catch (err) {
     console.error("❌ Error saving certificate:", err);
@@ -865,9 +923,20 @@ export async function saveCertificate({ certId, userId, userName, examId, examTi
 
 export async function getUserCertificates(userId) {
   try {
-    const q = query(collection(db, "certificates"), where("userId", "==", userId));
+    if (!userId || userId === "guest") return [];
+    const q = query(
+      collection(db, "certificates"),
+      where("userId", "==", userId)
+    );
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return snapshot.docs.map(d => {
+      const data = d.data();
+      return {
+        id: d.id,
+        ...data,
+        certId: data.certId || d.id,
+      };
+    });
   } catch (error) {
     console.error("Error getting user certificates:", error);
     return [];
@@ -943,5 +1012,108 @@ export async function getExamDashboardData(userId, examId, options = {}) {
       enrolling: false,
       unenrolling: false,
     };
+  }
+}
+
+// ─── AUTO WEEKLY COUNTERS UPDATE ────────────────────────────────
+const WEEKLY_UPDATE_KEY = "flexexams_last_weekly_update";
+
+export async function runWeeklyCountersUpdate() {
+  try {
+    const lastRun = localStorage.getItem(WEEKLY_UPDATE_KEY);
+    const now     = Date.now();
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+    if (lastRun && now - parseInt(lastRun) < WEEK_MS) return false;
+
+    console.log("🔄 Running weekly counters update…");
+
+    const examsSnap = await getDocs(collection(db, "exams"));
+    const examIds   = examsSnap.docs.map(d => d.id);
+
+    const updatePromises = examIds.map(async (examId) => {
+      try {
+        const enrolledQ  = query(
+          collection(db, "users"),
+          where("enrolledExams", "array-contains", examId)
+        );
+        const enrolledSnap = await getDocs(enrolledQ);
+        const enrolledCount = enrolledSnap.size;
+
+        const attemptsQ  = query(
+          collection(db, "results"),
+          where("examId", "==", examId)
+        );
+        const attemptsSnap = await getDocs(attemptsQ);
+        const attemptsCount = attemptsSnap.size;
+
+        await updateDoc(doc(db, "exams", examId), {
+          enrolledCount: enrolledCount,
+          attempts:      attemptsCount,
+          countersUpdatedAt: serverTimestamp(),
+        });
+      } catch (e) {
+        // ignore per-exam errors
+      }
+    });
+
+    await Promise.allSettled(updatePromises);
+
+    localStorage.setItem(WEEKLY_UPDATE_KEY, String(now));
+    console.log(`✅ Weekly update done — ${examIds.length} exams updated`);
+    return true;
+  } catch (e) {
+    console.error("Weekly update failed:", e);
+    return false;
+  }
+}
+
+// ======================
+// ✅ EXAM STATISTICS
+// ======================
+export async function getExamStatistics(examId) {
+  try {
+    const statsRef = doc(db, "examStats", examId);
+    const statsSnap = await getDoc(statsRef);
+    if (statsSnap.exists()) {
+      return statsSnap.data();
+    }
+    return null;
+  } catch (error) {
+    console.error("Error fetching exam statistics:", error);
+    return null;
+  }
+}
+
+export async function updateExamStatistics(examId) {
+  try {
+    const questionsSnap = await getDocs(
+      query(collection(db, "questions"), where("examId", "==", examId))
+    );
+    const questions = questionsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const total = questions.length;
+    const topicsDist = {};
+    questions.forEach(q => {
+      const domain = q.domain || "Uncategorized";
+      topicsDist[domain] = (topicsDist[domain] || 0) + 1;
+    });
+
+    const examDoc = await getExam(examId);
+    const duration = examDoc?.duration || 0;
+    const passScore = examDoc?.passScore || 70;
+
+    await setDoc(doc(db, "examStats", examId), {
+      totalQuestions: total,
+      topicsDistribution: topicsDist,
+      duration: duration,
+      passScore: passScore,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    
+    console.log(`✅ Exam statistics updated for ${examId}`);
+    return true;
+  } catch (error) {
+    console.error("Error updating exam statistics:", error);
+    return false;
   }
 }

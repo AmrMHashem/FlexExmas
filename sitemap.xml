@@ -1,146 +1,76 @@
-<!DOCTYPE html>
-<html lang="en" dir="ltr">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
+        xsi:schemaLocation="
+          http://www.sitemaps.org/schemas/sitemap/0.9
+          http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
 
-    <!-- ═══════════════════════════════════════════
-         PRIMARY SEO
-    ═══════════════════════════════════════════ -->
-    <title>FlexExams – #1 IT Certification Practice Tests | AWS, CCNA, Security+, PMP</title>
+  <!-- ═══════════════════════════════════════════
+       FlexExams Sitemap — v2.0
+       https://www.flexexams.com/sitemap.xml
+       Last updated: 2026-05-05
+  ═══════════════════════════════════════════ -->
 
-    <meta name="description" content="Pass IT certification exams faster with FlexExams. Real exam-style questions, timed tests, AI explanations, and verified certificates for AWS, CCNA, Security+, PMP & 50+ certifications." />
+  <!-- Homepage — Highest Priority -->
+  <url>
+    <loc>https://www.flexexams.com/</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://www.flexexams.com/og-image.png</image:loc>
+      <image:title>FlexExams — Certification Exam Practice Platform</image:title>
+      <image:caption>The world's sharpest IT certification exam simulator</image:caption>
+    </image:image>
+  </url>
 
-    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
-    <meta name="googlebot" content="index, follow" />
-    <meta name="bingbot" content="index, follow" />
+  <!-- Exams Catalog -->
+  <url>
+    <loc>https://www.flexexams.com/exams</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
 
-    <meta name="author" content="FlexExams" />
+  <!-- Topic Pages -->
+  <url>
+    <loc>https://www.flexexams.com/topics</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
 
-    <!-- FIXED: unified domain -->
-    <link rel="canonical" href="https://www.flexexams.com/" />
+  <!-- Certification Category Pages -->
+  <url>
+    <loc>https://www.flexexams.com/certifications</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
 
-    <!-- ═══════════════════════════════════════════
-         OPEN GRAPH
-    ═══════════════════════════════════════════ -->
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="FlexExams" />
-    <meta property="og:title" content="FlexExams – #1 IT Certification Practice Tests" />
-    <meta property="og:description" content="Real exam questions, AI explanations & certificates for 50+ IT certifications." />
-    <meta property="og:url" content="https://www.flexexams.com/" />
-    <meta property="og:image" content="https://www.flexexams.com/og-image.png" />
+  <!-- Certificate Verification -->
+  <url>
+    <loc>https://www.flexexams.com/verify</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
 
-    <!-- ═══════════════════════════════════════════
-         TWITTER
-    ═══════════════════════════════════════════ -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="FlexExams – IT Certification Practice Tests" />
-    <meta name="twitter:description" content="Practice AWS, CCNA, Security+, PMP & more with real exam questions." />
-    <meta name="twitter:image" content="https://www.flexexams.com/og-image.png" />
+  <!-- About Page -->
+  <url>
+    <loc>https://www.flexexams.com/about</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
 
-    <!-- ═══════════════════════════════════════════
-         PERFORMANCE
-    ═══════════════════════════════════════════ -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- Contact Page -->
+  <url>
+    <loc>https://www.flexexams.com/contact</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
 
-    <link rel="dns-prefetch" href="https://firestore.googleapis.com" />
-    <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
-
-    <!-- ═══════════════════════════════════════════
-         STRUCTURED DATA (CLEAN + IMPROVED)
-    ═══════════════════════════════════════════ -->
-
-    <!-- Organization -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "FlexExams",
-      "url": "https://www.flexexams.com",
-      "logo": "https://www.flexexams.com/logo.png"
-    }
-    </script>
-
-    <!-- WebSite -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "FlexExams",
-      "url": "https://www.flexexams.com",
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": "https://www.flexexams.com/exams?q={search_term_string}",
-        "query-input": "required name=search_term_string"
-      }
-    }
-    </script>
-
-    <!-- WebPage (🔥 IMPORTANT ADDITION) -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebPage",
-      "name": "FlexExams Home",
-      "url": "https://www.flexexams.com/",
-      "description": "IT certification practice platform with real exam questions and AI explanations."
-    }
-    </script>
-
-    <!-- Software App -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "FlexExams",
-      "applicationCategory": "EducationalApplication",
-      "operatingSystem": "Web",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD"
-      }
-    }
-    </script>
-
-    <!-- FAQ -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "FAQPage",
-      "mainEntity": [
-        {
-          "@type": "Question",
-          "name": "Is FlexExams free?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Yes, free practice tests are available."
-          }
-        }
-      ]
-    }
-    </script>
-
-    <!-- ═══════════════════════════════════════════
-         CRITICAL CSS
-    ═══════════════════════════════════════════ -->
-    <style>
-      body {
-        margin: 0;
-        font-family: Arial, sans-serif;
-        background: #0d1223;
-        color: #fff;
-      }
-      #root {
-        min-height: 100vh;
-      }
-    </style>
-
-  </head>
-
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
-</html>
+</urlset>

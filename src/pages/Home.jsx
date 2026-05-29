@@ -8,10 +8,11 @@ import React from "react";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { getVendors, getTopics } from "../services/firestore";
-import { addFavorite, removeFavorite, getFavorites, mergeGuestFavorites } from "../services/firestore";
+import { addFavorite, removeFavorite, getFavorites, mergeGuestFavorites, getUserResults } from "../services/firestore";
 import { getUserEnrollments } from "../services/enrollments";
 import { Spinner } from "../components/UI";
 import DiagnosticCard from "./DiagnosticCard";
+import FloatingChat from "../components/FloatingChat";
 
 const GUEST_FAV_KEY = "FlexExams_guest_favorites";
 function getGuestFavorites() {
@@ -36,7 +37,7 @@ function WelcomePopup({ user, profile }) {
   return (
     <div className="welcome-popup" style={{ position:"fixed", top:88, right:24, zIndex:9999, maxWidth:340, animation:"welcomeIn 0.5s cubic-bezier(0.16,1,0.3,1) both" }}>
       <style>{`@keyframes welcomeIn{from{opacity:0;transform:translateX(60px) scale(0.9)}to{opacity:1;transform:translateX(0) scale(1)}}`}</style>
-      <div style={{ background:"rgba(255,255,255,0.1)", backdropFilter:"blur(28px)", border:"1.5px solid rgba(255,255,255,0.22)", borderRadius:22, padding:"18px 20px", boxShadow:"0 20px 60px rgba(79,70,229,0.28)" }}>
+      <div style={{ background:"rgba(69, 12, 107, 0.52)", backdropFilter:"blur(28px)", border:"1.5px solid rgba(255,255,255,0.22)", borderRadius:22, padding:"18px 20px", boxShadow:"0 20px 60px rgba(79,70,229,0.28)" }}>
         <div style={{ display:"flex", alignItems:"center", gap:14, position:"relative" }}>
           <div style={{ width:50, height:50, borderRadius:16, background:"linear-gradient(135deg,#7c3aed,#4f46e5)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, fontWeight:900, color:"#fff" }}>{name[0]?.toUpperCase()}</div>
           <div style={{ flex:1 }}>
@@ -584,7 +585,7 @@ const ExamCard = React.memo(function ExamCard({ exam, onClick, isFeatured, isFav
         <h4 style={{ fontSize:15, fontWeight:800, marginBottom:5, color:"var(--text)", lineHeight:1.3 }}>{exam.title}</h4>
         <p style={{ fontSize:12, color:"var(--text3)", lineHeight:1.5, marginBottom:10, flex:1 }}>{exam.subtitle||exam.description||"Practice with real exam questions"}</p>
         <div style={{ display:"flex", gap:10, fontSize:11, color:"var(--text3)", paddingTop:10, borderTop:"2px solid var(--border)", flexWrap:"wrap" }}>
-          <span style={{ display:"flex", alignItems:"center", gap:3 }}><PI type="question" size={10} color="var(--text3)" />{exam.totalQuestions||0} Q</span>
+          <span style={{ display:"flex", alignItems:"center", gap:3 }}><PI type="question" size={10} color="var(--text3)" />{exam.totalQuestions || exam.questionsCount || 0} Q</span>
           <span style={{ display:"flex", alignItems:"center", gap:3 }}><PI type="clock" size={10} color="var(--text3)" />{exam.duration||60}m</span>
           <span style={{ display:"flex", alignItems:"center", gap:3 }}><PI type="trending" size={10} color="var(--text3)" />{(exam.attempts||0).toLocaleString()}</span>
         </div>
@@ -664,6 +665,52 @@ function TopicCardHome({ topic, examCount, onViewAll }) {
   );
 }
 
+// ── User Personal Stats Grid ──
+function UserStatsGrid({ results = [], enrolledExamIds = [] }) {
+  const passed = results.filter(r => r.pass).length;
+  const totalAttempts = results.length;
+  const avgScore = totalAttempts > 0
+    ? Math.round(results.filter(r => typeof r.score === "number").reduce((s, r) => s + r.score, 0) / Math.max(results.filter(r => typeof r.score === "number").length, 1))
+    : 0;
+  const certCount = results.filter(r => r.pass && r.certificateId).length;
+
+  const cards = [
+    { icon: "📚", label: "Enrolled Exams", value: enrolledExamIds.length, color: "var(--accent)", suffix: "" },
+    { icon: "📋", label: "Total Attempts", value: totalAttempts, color: "var(--purple)", suffix: "" },
+    { icon: "✅", label: "Exams Passed", value: passed, color: "var(--green)", suffix: "" },
+    { icon: "🎯", label: "Avg. Score", value: avgScore, color: "var(--gold)", suffix: "%" },
+    { icon: "🏆", label: "Certificates", value: certCount, color: "#f59e0b", suffix: "" },
+    { icon: "📈", label: "Pass Rate", value: totalAttempts > 0 ? Math.round((passed / totalAttempts) * 100) : 0, color: "#06b6d4", suffix: "%" },
+  ];
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 16 }}>
+      {cards.map((c, i) => (
+        <div key={i} style={{
+          background: "var(--bg2)", border: "1.5px solid var(--border)",
+          borderRadius: 18, padding: "24px 20px",
+          display: "flex", flexDirection: "column", alignItems: "center",
+          textAlign: "center", gap: 10, transition: "all 0.25s",
+          boxShadow: "var(--card-shadow)",
+        }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = c.color; e.currentTarget.style.transform = "translateY(-3px)"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.transform = ""; }}
+        >
+          <div style={{
+            width: 52, height: 52, borderRadius: 16,
+            background: `${c.color}18`, border: `1.5px solid ${c.color}40`,
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24,
+          }}>{c.icon}</div>
+          <div style={{ fontSize: "clamp(26px,3vw,36px)", fontWeight: 900, color: c.color, lineHeight: 1, fontFamily: "'Syne',sans-serif" }}>
+            {c.value}{c.suffix}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text2)", fontWeight: 600, lineHeight: 1.3 }}>{c.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Home({ setPage, setActiveExam, exams: propExams = [], showToast }) {
   const { user, profile } = useAuth();
   const exams = useMemo(() => propExams.filter(e => e.isActive !== false), [propExams]);
@@ -674,6 +721,7 @@ export default function Home({ setPage, setActiveExam, exams: propExams = [], sh
   const [visibleCount, setVisibleCount] = useState(6);
   const [favorites, setFavorites] = useState([]);
   const [enrolledExamIds, setEnrolledExamIds] = useState([]);
+  const [results, setResults] = useState([]);
   const hasMergedRef = useRef(false);
 
   useEffect(() => {
@@ -692,13 +740,14 @@ export default function Home({ setPage, setActiveExam, exams: propExams = [], sh
     const load = async () => {
       if (user) {
         const guestFavs = getGuestFavorites();
-        const [ids, favIds] = await Promise.all([
+        const [ids, favIds, userResults] = await Promise.all([
           getUserEnrollments(user.uid).catch(()=>[]),
           (guestFavs.length > 0 && !hasMergedRef.current)
             ? mergeGuestFavorites(user.uid, guestFavs).then(merged => { localStorage.removeItem(GUEST_FAV_KEY); hasMergedRef.current = true; return merged; }).catch(()=>getFavorites(user.uid).catch(()=>[]))
             : getFavorites(user.uid).catch(()=>[]),
+          getUserResults(user.uid).catch(()=>[]),
         ]);
-        if (!cancelled) { setEnrolledExamIds(ids); setFavorites(favIds); }
+        if (!cancelled) { setEnrolledExamIds(ids); setFavorites(favIds); setResults(userResults); }
       } else {
         if (!cancelled) setFavorites(getGuestFavorites());
       }
@@ -707,7 +756,7 @@ export default function Home({ setPage, setActiveExam, exams: propExams = [], sh
     return () => { cancelled = true; };
   }, [user]);
 
-  const handleExamClick = useCallback((exam) => { setActiveExam(exam); setPage("exam-detail"); }, [setActiveExam, setPage]);
+  const handleExamClick = useCallback((exam) => { setPage("exam-detail", { exam }); }, [setPage]);
 
   const handleToggleFavorite = useCallback(async (examId, isCurrentlyFav) => {
     if (!user) {
@@ -826,29 +875,60 @@ export default function Home({ setPage, setActiveExam, exams: propExams = [], sh
           <div className="hero-grid" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"clamp(32px,6vw,80px)", alignItems:"start", overflow:"visible" }}>
             <div className="hero-mobile-center" style={{ position:"relative", zIndex:10 }}>
               <div className="fade-up" style={{ display:"inline-flex", alignItems:"center", gap:8, background:"var(--accent-soft)", border:"2px solid var(--accent)", borderRadius:100, padding:"7px 18px", marginBottom:28, fontSize:12.5, color:"var(--accent)", fontWeight:600 }}>
-                <PI type="sparkle" size={13} color="var(--accent)" /> Trusted by 100,000+ professionals worldwide
+                <PI type="sparkle" size={13} color="var(--accent)" /> The Sharpest Exam Simulator on the Web
               </div>
               <WelcomePopup user={user} profile={profile} />
-              <h1 className="fade-up delay-1" style={{ fontSize:"clamp(38px,5.5vw,58px)", fontWeight:900, lineHeight:1.05, marginBottom:22, color:"var(--text)", letterSpacing:"-2.5px" }}>
-                Practice Smart.<br />
-                <span style={{ background:"linear-gradient(135deg,#8681dc,#8c69ca)", WebkitBackgroundClip:"text", backgroundClip:"text", color:"transparent" }}>Pass with Confidence.</span>
-              </h1>
-              <p className="fade-up delay-2" style={{ fontSize:"clamp(15px,1.8vw,17px)", color:"var(--text2)", maxWidth:500, lineHeight:1.8, marginBottom:32 }}>
-                FlexExams gives you <strong style={{ color:"var(--text)", fontWeight:700 }}>real exam-style questions</strong> from the world's top 50+ certifications — so when you sit the actual test, nothing surprises you.
-              </p>
+             <h1
+  className="fade-up delay-1"
+  style={{
+    fontSize: "clamp(38px,5.5vw,58px)",
+    fontWeight: 900,
+    lineHeight: 1.05,
+    marginBottom: 22,
+    color: "var(--text)",
+    letterSpacing: "-2.5px"
+  }}
+>
+  Master Any Certification Exam<br />
+  <span
+    style={{
+      background: "linear-gradient(135deg,#8681dc,#8c69ca)",
+      WebkitBackgroundClip: "text",
+      backgroundClip: "text",
+      color: "transparent"
+    }}
+  >
+    With Real Practice Questions.
+  </span>
+</h1>
+
+<p
+  className="fade-up delay-2"
+  style={{
+    fontSize: "clamp(15px,1.8vw,17px)",
+    color: "var(--text2)",
+    maxWidth: 520,
+    lineHeight: 1.8,
+    marginBottom: 32
+  }}
+>
+  The most advanced <strong style={{ color: "var(--text)", fontWeight: 700 }}>
+  certification exam practice platform</strong> built for IT, cloud, security, and professional exams.  
+  Train with <strong style={{ color: "var(--text)", fontWeight: 700 }}>real exam-style questions, timed simulations, and adaptive practice tests</strong> so you pass faster and with confidence.
+</p>
               <div className="fade-up delay-3" style={{ marginBottom:26, position:"relative", zIndex:100 }}>
                 <ExamSearch exams={exams} onSelect={handleExamClick} setPage={setPage} setActiveExam={setActiveExam} />
               </div>
               <div className="hero-actions fade-up delay-4" style={{ display:"flex", gap:12, flexWrap:"wrap", marginBottom:36, position:"relative", zIndex:1 }}>
-                <button onClick={()=>setPage(user?"exams":"topics")} style={{ padding:"14px 34px", borderRadius:50, border:"none", background:"linear-gradient(135deg,#6366f1,#a855f7,#ec4899)", color:"#fff", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:8, boxShadow:"0 12px 40px rgba(139,92,246,0.45)", transition:"all 0.3s" }}
+                <button onClick={()=>setPage(user?"exams":"exams")} style={{ padding:"14px 34px", borderRadius:50, border:"none", background:"linear-gradient(135deg,#6366f1,#a855f7,#ec4899)", color:"#fff", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:8, boxShadow:"0 12px 40px rgba(139,92,246,0.45)", transition:"all 0.3s" }}
                   onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px) scale(1.03)";e.currentTarget.style.boxShadow="0 20px 50px rgba(139,92,246,0.6)";}}
                   onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="0 12px 40px rgba(139,92,246,0.45)";}}>
-                  <PI type="rocket" size={17} color="#fff" /> {user?"Explore Exams":"Explore Topics"}
+                  <PI type="rocket" size={17} color="#fff" /> {user?"Explore Exams":"Explore Exams"}
                 </button>
-                <button onClick={()=>setPage("exams")} style={{ padding:"14px 26px", borderRadius:50, border:"2px solid rgba(139,92,246,0.5)", background:"rgba(139,92,246,0.1)", color:"var(--text)", fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:8, transition:"all 0.25s", backdropFilter:"blur(8px)" }}
+                <button onClick={()=>setPage("topics")} style={{ padding:"14px 26px", borderRadius:50, border:"2px solid rgba(139,92,246,0.5)", background:"rgba(139,92,246,0.1)", color:"var(--text)", fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:8, transition:"all 0.25s", backdropFilter:"blur(8px)" }}
                   onMouseEnter={e=>{e.currentTarget.style.background="rgba(139,92,246,0.2)";e.currentTarget.style.transform="translateY(-2px)";}}
                   onMouseLeave={e=>{e.currentTarget.style.background="rgba(139,92,246,0.1)";e.currentTarget.style.transform="";}}>
-                  Browse Exams <PI type="arrow" size={15} color="currentColor" />
+                  Browse Topics <PI type="arrow" size={15} color="currentColor" />
                 </button>
               </div>
             </div>
@@ -869,12 +949,24 @@ export default function Home({ setPage, setActiveExam, exams: propExams = [], sh
       {/* STATS */}
       <section style={{ borderBottom:"2px solid var(--border)", padding:"64px clamp(20px,5vw,60px)" }}>
         <div style={{ maxWidth:1200, margin:"0 auto" }}>
-          <div className="stats-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))", gap:20 }}>
-            <StatCard num="50" suffix="+" label="Certifications" iconType="certificate" accentColor="var(--accent)" />
-            <StatCard num="100" suffix="K+" label="Active Learners" iconType="users" accentColor="var(--green)" />
-            <StatCard num="500" suffix="K+" label="Tests Completed" iconType="check" accentColor="var(--purple)" />
-            <StatCard num="98" suffix="%" label="Exam Pass Rate" iconType="target" accentColor="var(--gold)" />
-          </div>
+          {user ? (
+            /* ── Member: Personal Stats ── */
+            <>
+              <div style={{ textAlign:"center", marginBottom:28 }}>
+                <div style={{ fontSize:11, fontWeight:800, color:"var(--accent)", textTransform:"uppercase", letterSpacing:"0.12em", marginBottom:8 }}>Your Progress</div>
+                <h2 style={{ fontSize:"clamp(20px,2.5vw,30px)", fontWeight:900, color:"var(--text)", letterSpacing:"-0.5px", fontFamily:"'Syne',sans-serif" }}>Your Learning Journey</h2>
+              </div>
+              <UserStatsGrid results={results} enrolledExamIds={enrolledExamIds} />
+            </>
+          ) : (
+            /* ── Guest: Platform Stats ── */
+            <div className="stats-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))", gap:20 }}>
+              <StatCard num="50" suffix="+" label="Certifications" iconType="certificate" accentColor="var(--accent)" />
+              <StatCard num="100" suffix="K+" label="Active Learners" iconType="users" accentColor="var(--green)" />
+              <StatCard num="500" suffix="K+" label="Tests Completed" iconType="check" accentColor="var(--purple)" />
+              <StatCard num="98" suffix="%" label="Exam Pass Rate" iconType="target" accentColor="var(--gold)" />
+            </div>
+          )}
         </div>
       </section>
 
@@ -1030,7 +1122,7 @@ export default function Home({ setPage, setActiveExam, exams: propExams = [], sh
         <div style={{ maxWidth:1200, margin:"0 auto" }}>
           <div style={{ textAlign:"center", marginBottom:64 }}>
             <div style={{ display:"inline-flex", alignItems:"center", gap:8, background:"rgba(99,102,241,0.1)", border:"1.5px solid rgba(99,102,241,0.3)", borderRadius:100, padding:"6px 18px", marginBottom:18, fontSize:11, color:"var(--accent)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em" }}><PI type="sparkle" size={11} color="var(--accent)" /> Why Choose FlexExams</div>
-            <h2 style={{ fontSize:"clamp(26px,3.5vw,40px)", fontWeight:900, color:"var(--text)", letterSpacing:"-1.5px" }}>Everything Engineered for Your Exam Success</h2>
+            <h2 style={{ fontSize:"clamp(26px,3.5vw,40px)", fontWeight:900, color:"var(--text)", letterSpacing:"-1.5px" }}>Built for the Exam. Not Just the Theory.</h2>
           </div>
           <div className="features-grid" style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:24 }}>
             {features.map((f,i)=>(
@@ -1055,8 +1147,8 @@ export default function Home({ setPage, setActiveExam, exams: propExams = [], sh
             <div className="cta-grid" style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:40, alignItems:"center", position:"relative" }}>
               <div>
                 <div style={{ fontSize:11, fontWeight:800, color:"rgba(255,255,255,0.8)", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:14 }}>Your Journey Starts Now</div>
-                <h2 style={{ fontSize:"clamp(24px,4vw,42px)", fontWeight:900, color:"#fff", letterSpacing:"-1.5px", marginBottom:16, lineHeight:1.15 }}>The job you want is on the other side of this certification.</h2>
-                <p style={{ fontSize:15, color:"rgba(255,255,255,0.9)", lineHeight:1.7, maxWidth:560 }}>Stop procrastinating. Every day you wait is a day your competition doesn't. Join 100,000+ professionals who decided to act.</p>
+                <h2 style={{ fontSize:"clamp(24px,4vw,42px)", fontWeight:900, color:"#fff", letterSpacing:"-1.5px", marginBottom:16, lineHeight:1.15 }}>One exam stands between you and the career you're building.</h2>
+                <p style={{ fontSize:15, color:"rgba(255,255,255,0.9)", lineHeight:1.7, maxWidth:560 }}>While others practice, you decide where you’ll stand on exam day.</p>
               </div>
               <div className="cta-actions" style={{ display:"flex", flexDirection:"column", gap:12, flexShrink:0 }}>
                 {user ? (
@@ -1079,6 +1171,7 @@ export default function Home({ setPage, setActiveExam, exams: propExams = [], sh
           </div>
         </div>
       </div>
+      <FloatingChat />
     </div>
   );
 }

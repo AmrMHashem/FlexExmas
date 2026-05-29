@@ -13,6 +13,7 @@ import {
   serverTimestamp,
 } from "../firebase";
 import { createUserProfile, getUserProfile } from "../services/firestore";
+import { processReferralOnRegister } from "../components/ReferralSystem";
 
 const AuthContext = createContext(null);
 
@@ -72,6 +73,14 @@ export function AuthProvider({ children }) {
       countryCode: locationData.countryCode,
       lastLogin: new Date().toISOString(),
     });
+
+    // #20 Process referral code from URL (?ref=REFXXXXXX)
+    const urlParams = new URLSearchParams(window.location.search);
+    const refCode   = urlParams.get("ref");
+    if (refCode) {
+      processReferralOnRegister(cred.user.uid, refCode).catch(() => {});
+    }
+
     const prof = await getUserProfile(cred.user.uid);
     setProfile(prof);
     return cred.user;
