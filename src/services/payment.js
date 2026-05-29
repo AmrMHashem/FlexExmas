@@ -33,7 +33,7 @@ export const FAWATERAK_BASE_URL = "https://fawaterk.com/api/v2";
 
 // ─── Instapay Config ─────────────────────────────────────────────
 export const INSTAPAY_ACCOUNT =
-  import.meta.env.VITE_INSTAPAY_ACCOUNT || "flexexams@instapay";
+  import.meta.env.VITE_INSTAPAY_ACCOUNT || "amr_mhashem@instapay";
 export const INSTAPAY_PHONE =
   import.meta.env.VITE_INSTAPAY_PHONE || "+20XXXXXXXXXX";
 
