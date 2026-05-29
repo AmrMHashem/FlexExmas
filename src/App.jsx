@@ -37,13 +37,10 @@ const Admin             = lazy(() => import("./pages/Admin"));
 const Favorites         = lazy(() => import("./pages/Favorites"));
 const CertificateVerify = lazy(() => import("./pages/Certificateverify"));
 const CareerDiagnostic  = lazy(() => import("./pages/CareerDiagnostic"));
-<<<<<<< HEAD
 const Pricing           = lazy(() => import("./pages/Pricing"));
 const Leaderboard       = lazy(() => import("./pages/Leaderboard"));
 const Checkout          = lazy(() => import("./pages/Checkout"));
 const Terms             = lazy(() => import("./pages/Terms"));   // ✅ إضافة Terms
-=======
->>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
 
 // ── Page fallback spinner ─────────────────────────────────────────
 const PageFallback = () => (
@@ -90,14 +87,11 @@ const ROUTE_MAP = {
   "/favorites":          "favorites",
   "/verify":             "verify",
   "/career-diagnostic":  "career-diagnostic",
-<<<<<<< HEAD
   "/pricing":            "pricing",
   "/leaderboard":        "leaderboard",
   "/referral":           "referral",
   "/checkout":           "checkout",
   "/terms":              "terms",          // ✅ إضافة Terms
-=======
->>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
 };
 
 // ─────────────────────────────────────────────────────────────────
@@ -195,7 +189,6 @@ const PAGE_META = {
     description: "Discover the best IT certification path for your career goals with our free Career Diagnostic tool.",
     path: "/career-diagnostic",
   },
-<<<<<<< HEAD
   leaderboard: { title: "Leaderboard — FlexExams", path: "/leaderboard" },
   referral:    { title: "Referral Program — FlexExams", path: "/referral" },
   pricing: {
@@ -213,8 +206,6 @@ const PAGE_META = {
     description: "Read FlexExams terms of service, privacy policy, and cookie policy. Learn how we protect your data and what rights you have.",
     path: "/terms",
   },
-=======
->>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
 };
 
 // ─────────────────────────────────────────────────────────────────
@@ -580,10 +571,7 @@ function AppInner() {
   const [examsLoaded, setExamsLoaded]  = useState(false);
   const [toast, setToast]              = useState(null);
   const [verifyCertId, setVerifyCertId] = useState(null);
-<<<<<<< HEAD
   const [checkoutData, setCheckoutData] = useState(null);
-=======
->>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
   const [, startTransition]            = useTransition();
 
   const showToast = useCallback((t) => {
@@ -591,7 +579,6 @@ function AppInner() {
     setTimeout(() => setToast(null), 4000);
   }, []);
 
-<<<<<<< HEAD
   // Weekly counters auto-update function
   const runWeeklyCountersUpdate = useCallback(async () => {
     try {
@@ -714,56 +701,6 @@ function AppInner() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exams, startTransition]);
 
-=======
-  // Dynamic SEO per page
-  usePageSEO(page, activeExam);
-
-  // ── nav — دالة التنقل المركزية (History API) ─────────────────
-  const nav = useCallback(
-    (p, opts) => {
-      startTransition(() => {
-        if (p === "auth") {
-          setAuthMode(opts?.mode || "login");
-          pushPath("/auth");
-          setPage("auth");
-          return;
-        }
-
-        if (p === "exams") {
-          setActiveFilter({
-            vendor: opts?.vendorFilter || null,
-            topic:  opts?.topicFilter  || null,
-          });
-          pushPath("/exams");
-          setPage("exams");
-          return;
-        }
-
-        if (p === "exam-detail") {
-          const exam = opts?.exam || opts;
-          if (exam && (exam.title || exam.name || exam.id)) {
-            const slug = slugify(exam.title || exam.name || String(exam.id));
-            setActiveExam(exam);
-            pushPath(`/exam/${slug}`);
-            setPage("exam-detail");
-            requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
-            return;
-          }
-        }
-
-        // باقي الصفحات
-        const meta = PAGE_META[p];
-        const path = meta ? meta.path : `/${p}`;
-        pushPath(path);
-        setPage(p);
-      });
-
-      requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
-    },
-    [startTransition]
-  );
-
->>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
   const startQuiz = useCallback(
     (data) => {
       setQuizData(data);
@@ -870,7 +807,6 @@ function AppInner() {
       clearTimeout(t);
     };
   }, [examsLoaded, isLoading, pendingSlug, showToast]);
-<<<<<<< HEAD
 
   // ── refreshExams — يُعاد استدعاؤه بعد أي تعديل على الأسئلة ──
   const refreshExams = useCallback(async () => {
@@ -888,20 +824,14 @@ function AppInner() {
       console.warn("refreshExams failed:", err);
     }
   }, [activeExam]);
-=======
->>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
 
   if (isLoading) return <LoadingScreen />;
 
   return (
     <>
-<<<<<<< HEAD
       <NavBar page={page} setPage={nav} showToast={showToast} extraLinks={[{page:"leaderboard",label:"🏆 Leaderboard"},{page:"referral",label:"🎁 Referral"}]} />
 
       {/* Pricing button is now inside NavBar right actions */}
-=======
-      <NavBar page={page} setPage={nav} showToast={showToast} />
->>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
 
       <main
         key={page}
@@ -937,11 +867,8 @@ function AppInner() {
 
           {page === "contact" && <Contact showToast={showToast} />}
 
-<<<<<<< HEAD
           {page === "terms" && <Terms />}   {/* ✅ إضافة صفحة Terms */}
 
-=======
->>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
           {page === "exam-detail" && activeExam && (
             <ExamDetail
               exam={activeExam}
@@ -973,11 +900,7 @@ function AppInner() {
           )}
 
           {page === "auth" && (
-<<<<<<< HEAD
             <Auth setPage={nav} showToast={showToast} initialMode={authMode} onAuthSuccess={handleReturnAfterAuth} />
-=======
-            <Auth setPage={nav} showToast={showToast} initialMode={authMode} />
->>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
           )}
 
           {page === "dashboard" && (
@@ -1001,11 +924,7 @@ function AppInner() {
           )}
 
           {page === "admin" && (
-<<<<<<< HEAD
             <Admin showToast={showToast} setPage={nav} onQuestionsChange={refreshExams} />
-=======
-            <Admin showToast={showToast} setPage={nav} />
->>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
           )}
 
           {page === "favorites" && (
@@ -1025,7 +944,6 @@ function AppInner() {
             <CareerDiagnostic setPage={nav} exams={exams} />
           )}
 
-<<<<<<< HEAD
           {page === "pricing" && (
             <Pricing setPage={nav} showToast={showToast} />
           )}
@@ -1048,8 +966,6 @@ function AppInner() {
             />
           )}
 
-=======
->>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
         </Suspense>
       </main>
 

@@ -110,55 +110,6 @@ function TimelineStep({ year, title, desc, index }) {
   );
 }
 
-// ── Social platform card ──
-function SocialCard({ icon, label, handle, href, color, followerLabel, delay }) {
-  const [hovered, setHovered] = useState(false);
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: "flex", alignItems: "center", gap: 16,
-        padding: "18px 20px", borderRadius: 16,
-        border: `1.5px solid ${hovered ? color : "var(--border)"}`,
-        background: hovered ? `${color}12` : "var(--bg2)",
-        textDecoration: "none",
-        transition: "all 0.25s cubic-bezier(0.16,1,0.3,1)",
-        transform: hovered ? "translateY(-2px)" : "none",
-        boxShadow: hovered ? `0 12px 32px ${color}25` : "none",
-        animation: `fadeUp 0.5s ${delay}ms both`,
-      }}
-    >
-      <div style={{
-        width: 44, height: 44, borderRadius: 12,
-        background: color,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        color: "#fff", flexShrink: 0,
-        boxShadow: hovered ? `0 6px 20px ${color}50` : `0 4px 12px ${color}30`,
-        transition: "box-shadow 0.25s",
-      }}>{icon}</div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 3 }}>{label}</div>
-        <div style={{ fontSize: 12, color: hovered ? color : "var(--text3)", transition: "color 0.2s" }}>{handle}</div>
-      </div>
-      {followerLabel && (
-        <div style={{
-          fontSize: 11, fontWeight: 700,
-          color: hovered ? color : "var(--text3)",
-          background: hovered ? `${color}15` : "var(--bg3)",
-          border: `1px solid ${hovered ? color + "40" : "var(--border)"}`,
-          borderRadius: 99, padding: "3px 10px",
-          whiteSpace: "nowrap", transition: "all 0.2s",
-        }}>{followerLabel}</div>
-      )}
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={hovered ? color : "var(--text3)"} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transition: "stroke 0.2s" }}><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
-    </a>
-  );
-}
-
 export default function About() {
   const features = [
     {
@@ -252,58 +203,6 @@ export default function About() {
     { name: "IT Security & Cybersecurity", icon: "🔐" },
     { name: "Cloud & DevOps", icon: "⚙️" },
     { name: "Networking & Infrastructure", icon: "📡" },
-  ];
-
-  // ── Real social channels ──
-  const socials = [
-    {
-      label: "YouTube",
-      handle: "@FlexExams",
-      href: "https://www.youtube.com/@FlexExams",
-      color: "#FF0000",
-      followerLabel: "Videos",
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-        </svg>
-      ),
-    },
-    {
-      label: "Facebook",
-      handle: "facebook.com/FlexExams",
-      href: "https://www.facebook.com/FlexExams",
-      color: "#1877F2",
-      followerLabel: "Follow",
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-        </svg>
-      ),
-    },
-    {
-      label: "LinkedIn",
-      handle: "linkedin.com/company/flexexams",
-      href: "https://www.linkedin.com/company/flexexams",
-      color: "#0A66C2",
-      followerLabel: "Connect",
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-        </svg>
-      ),
-    },
-    {
-      label: "TikTok",
-      handle: "@flexexams",
-      href: "https://www.tiktok.com/@flexexams",
-      color: "#010101",
-      followerLabel: "Watch",
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34l-.01-8.12a8.27 8.27 0 0 0 4.83 1.54V5.28a4.85 4.85 0 0 1-1.05-.59z"/>
-        </svg>
-      ),
-    },
   ];
 
   return (
@@ -549,80 +448,6 @@ export default function About() {
         </div>
       </div>
 
-      {/* ── Social Media Section — NEW ── */}
-      <div style={{ background: "var(--bg)", padding: "80px 24px" }}>
-        <div style={{ maxWidth: 860, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 48 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 14 }}>
-              Community
-            </div>
-            <h2 style={{
-              fontSize: "clamp(24px, 3vw, 38px)",
-              fontWeight: 900, color: "var(--text)",
-              fontFamily: "'Syne', sans-serif", letterSpacing: "-1px",
-              marginBottom: 14,
-            }}>
-              Follow FlexExams
-            </h2>
-            <p style={{ fontSize: 15, color: "var(--text2)", lineHeight: 1.7, maxWidth: 500, margin: "0 auto" }}>
-              Stay connected for new exam releases, study tips, and community success stories across all platforms.
-            </p>
-          </div>
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
-            gap: 14,
-          }}>
-            {socials.map((s, i) => <SocialCard key={s.label} {...s} delay={i * 80} />)}
-          </div>
-
-          {/* Email CTA */}
-          <div style={{
-            marginTop: 32,
-            background: "var(--bg2)",
-            border: "1.5px solid var(--border)",
-            borderRadius: 20, padding: "28px 32px",
-            display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap",
-            boxShadow: "var(--card-shadow)",
-          }}>
-            <div style={{
-              width: 52, height: 52, borderRadius: 16, flexShrink: 0,
-              background: "var(--gradient-accent)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: "#fff",
-            }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-            </div>
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 4, fontFamily: "'Syne', sans-serif" }}>
-                Have a question or partnership idea?
-              </div>
-              <div style={{ fontSize: 13, color: "var(--text3)" }}>
-                Reach us anytime at <strong style={{ color: "var(--accent)" }}>info@flexexams.com</strong> — we reply within 24 hours.
-              </div>
-            </div>
-            <a
-              href="mailto:info@flexexams.com"
-              style={{
-                padding: "11px 24px", borderRadius: 12,
-                background: "var(--gradient-accent)", border: "none",
-                color: "#fff", fontSize: 14, fontWeight: 700,
-                cursor: "pointer", fontFamily: "inherit",
-                textDecoration: "none",
-                display: "inline-flex", alignItems: "center", gap: 8,
-                transition: "opacity 0.2s, transform 0.2s",
-                flexShrink: 0,
-              }}
-              onMouseEnter={e => { e.currentTarget.style.opacity = "0.88"; e.currentTarget.style.transform = "translateY(-1px)"; }}
-              onMouseLeave={e => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.transform = ""; }}
-            >
-              Email Us
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
-            </a>
-          </div>
-        </div>
-      </div>
-
       {/* ── CTA ── */}
       <div style={{
         background: "var(--gradient-accent)", padding: "80px 24px",
@@ -651,7 +476,6 @@ export default function About() {
             Start with a free exam preview — no account required. See exactly what FlexExams offers before you commit.
           </p>
           <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
-<<<<<<< HEAD
             <a href="#" style={{
               padding: "14px 32px", borderRadius: 50,
               background: "#fff", border: "none",
@@ -672,53 +496,6 @@ export default function About() {
             }}>
               💬 Chat With Us
             </a>
-=======
-      <button style={{
-  padding: "14px 32px", borderRadius: 50,
-  background: "#fff", border: "none",
-  color: "#4f46e5", fontSize: 15, fontWeight: 800,
-  cursor: "pointer", fontFamily: "inherit",
-  boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
-  transition: "all 0.25s",
-  display: "flex", alignItems: "center", gap: 8,
-}}
-onClick={() => window.history.pushState(null, "", "/exams")}
-onMouseEnter={e => {
-  e.currentTarget.style.transform = "translateY(-2px)";
-  e.currentTarget.style.boxShadow = "0 16px 40px rgba(0,0,0,0.25)";
-}}
-onMouseLeave={e => {
-  e.currentTarget.style.transform = "";
-  e.currentTarget.style.boxShadow = "0 8px 32px rgba(0,0,0,0.2)";
-}}
->
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-  </svg>
-  Browse Exams
-</button>
-            <button style={{
-  padding: "14px 28px", borderRadius: 50,
-  background: "rgba(255,255,255,0.15)", border: "2px solid rgba(255,255,255,0.4)",
-  color: "#fff", fontSize: 15, fontWeight: 700,
-  cursor: "pointer", fontFamily: "inherit",
-  backdropFilter: "blur(8px)",
-  transition: "all 0.25s",
-}}
-onClick={() => window.history.pushState(null, "", "/my-exams")}
-onMouseEnter={e => {
-  e.currentTarget.style.background = "rgba(255,255,255,0.25)";
-  e.currentTarget.style.transform = "translateY(-2px)";
-}}
-onMouseLeave={e => {
-  e.currentTarget.style.background = "rgba(255,255,255,0.15)";
-  e.currentTarget.style.transform = "";
-}}
->
-  View Certifications
-</button>
->>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
           </div>
         </div>
       </div>

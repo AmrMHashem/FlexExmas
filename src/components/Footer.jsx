@@ -16,7 +16,6 @@ export default function Footer({ setPage }) {
   ];
 
   const socials = [
-<<<<<<< HEAD
     {
       label: "YouTube",
       href: "https://www.youtube.com/@FlexExams",
@@ -27,27 +26,6 @@ export default function Footer({ setPage }) {
         </svg>
       ),
     },
-=======
-{
-  label: "YouTube",
-  href: "https://www.youtube.com/@FlexExams",
-  svg: (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M22.5 7.5a3 3 0 0 0-2.1-2.1C18.6 5 12 5 12 5s-6.6 0-8.4.4A3 3 0 0 0 1.5 7.5 31 31 0 0 0 1 12a31 31 0 0 0 .5 4.5 3 3 0 0 0 2.1 2.1C5.4 19 12 19 12 19s6.6 0 8.4-.4a3 3 0 0 0 2.1-2.1A31 31 0 0 0 23 12a31 31 0 0 0-.5-4.5z"/>
-      <polygon points="10,15 16,12 10,9" />
-    </svg>
-  ),
-},
->>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
     {
       label: "Facebook",
       href: "https://facebook.com/FlexExams",
@@ -77,15 +55,12 @@ export default function Footer({ setPage }) {
     },
   ];
 
-<<<<<<< HEAD
   // دالة مساعدة لتوجيه صفحة الشروط مع تحديد التاب المطلوب
   const navigateToTermsWithTab = (tabId) => {
     sessionStorage.setItem("flexexams_terms_tab", tabId);
     setPage("terms");
   };
 
-=======
->>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
   return (
     <footer
       style={{
@@ -337,11 +312,7 @@ export default function Footer({ setPage }) {
             </div>
           </div>
 
-<<<<<<< HEAD
           {/* Column 4: WhatsApp Direct */}
-=======
-          {/* Column 4: Newsletter */}
->>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
           <div>
             <h4
               style={{
@@ -400,55 +371,10 @@ export default function Footer({ setPage }) {
               ⏱ Usually replies within 30 min<br />
               📅 9AM – 11PM Cairo time
             </div>
-
-            {/* Connect with us section */}
-            <div style={{ marginTop: 16 }}>
-              <div style={{
-                fontSize: 10,
-                fontWeight: 800,
-                color: "var(--text)",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                marginBottom: 8,
-              }}>
-                Connect With Us
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                {[
-                  { label: "youtube.com/@FlexExams", href: "https://www.youtube.com/@FlexExams" },
-                  { label: "facebook.com/FlexExams", href: "https://facebook.com/FlexExams" },
-                  { label: "linkedin.com/company/flexexams", href: "https://linkedin.com/company/flexexams" },
-                  { label: "@flexexams (TikTok)", href: "https://tiktok.com/@flexexams" },
-                ].map(({ label, href }) => (
-                  <a
-                    key={label}
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      fontSize: 10.5,
-                      color: "var(--text3)",
-                      textDecoration: "none",
-                      transition: "color 0.15s",
-                      padding: "2px 0",
-                      display: "block",
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text3)")}
-                  >
-                    {label}
-                  </a>
-                ))}
-              </div>
-            </div>
           </div>
         </div>
 
-<<<<<<< HEAD
         {/* Bottom bar - الروابط المعدلة */}
-=======
-        {/* Bottom bar */}
->>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
         <div
           style={{
             borderTop: "1px solid var(--border)",

@@ -118,8 +118,4 @@ Allow: /
 # SITEMAPS
 # ═══════════════════════════════════════════════
 
-<<<<<<< HEAD
 Sitemap: https://www.flexexams.com/sitemap.xml
-=======
-Sitemap: https://www.flexexams.com/sitemap.xml
->>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
