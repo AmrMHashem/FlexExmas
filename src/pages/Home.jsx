@@ -665,6 +665,7 @@ function TopicCardHome({ topic, examCount, onViewAll }) {
   );
 }
 
+<<<<<<< HEAD
 // ── User Personal Stats Grid ──
 function UserStatsGrid({ results = [], enrolledExamIds = [] }) {
   const passed = results.filter(r => r.pass).length;
@@ -711,6 +712,8 @@ function UserStatsGrid({ results = [], enrolledExamIds = [] }) {
   );
 }
 
+=======
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
 export default function Home({ setPage, setActiveExam, exams: propExams = [], showToast }) {
   const { user, profile } = useAuth();
   const exams = useMemo(() => propExams.filter(e => e.isActive !== false), [propExams]);

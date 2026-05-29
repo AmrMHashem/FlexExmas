@@ -568,6 +568,22 @@ export default function Auth({ setPage, showToast, initialMode, onAuthSuccess })
       `}</style>
 
       <div className="auth-root" style={{ display: "flex", minHeight: "calc(100vh - 74px)", alignItems: "stretch" }}>
+<<<<<<< HEAD
+=======
+        {/* Left side - Form */}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "32px clamp(16px, 5vw, 48px)", position: "relative" }}>
+          <div className="form-animated" style={{ width: "100%", maxWidth: 448, position: "relative", zIndex: 1 }}>
+            {/* Logo */}
+            <div style={{ textAlign: "center", marginBottom: 32 }}>
+              <img src="https://res.cloudinary.com/duimhtfij/image/upload/f_auto,q_auto/login_zavt1m" alt="FlexExams Logo" style={{ width: 80, height: 80, borderRadius: 22, marginBottom: 20, display: "inline"}} />
+              <h1 style={{ fontSize: "clamp(24px, 3.5vw, 30px)", fontWeight: 900, marginBottom: 8 }}>
+                {mode === "login" ? <>Welcome Back, <span style={{ color: "var(--accent)" }}>Champion</span></> : <>Start Your <span style={{ color: "var(--accent)" }}>Journey</span> Today</>}
+              </h1>
+              <p style={{ color: "var(--text2)", fontSize: 14 }}>
+                {mode === "login" ? "Your goals are waiting — sign in and conquer them." : "Join 100,000+ achievers on the path to certification success."}
+              </p>
+            </div>
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
 
         {/* ── Left: Form ── */}
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "32px clamp(16px,5vw,48px)", position: "relative" }}>
@@ -735,8 +751,12 @@ export default function Auth({ setPage, showToast, initialMode, onAuthSuccess })
           <ParticleDots />
           <div style={{ textAlign: "center", position: "relative", zIndex: 1 }}>
             <div style={{ marginBottom: 24 }}>
+<<<<<<< HEAD
               <img src="https://i.ibb.co/DPztDcgx/Chat-GPT-Image-Apr-26-2026-09-45-41-PM.png" alt="FlexExams"
                 style={{ height: 100, objectFit: "cover", display: "inline" }} />
+=======
+              <img src="https://res.cloudinary.com/duimhtfij/image/upload/f_auto,q_auto/FlexExams_nkmt1k" alt="FlexExams" style={{ height: 100, objectFit: "cover",    display: "inline", }} />
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
             </div>
             <h3 style={{ fontSize: 28, fontWeight: 900, marginBottom: 10 }}>
               Study Smarter.<br /><span style={{ color: "var(--accent)" }}>Achieve Faster.</span>

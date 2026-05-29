@@ -131,17 +131,28 @@ const socialBrandColors = {
 };
 
 export default function Contact({ showToast }) {
+<<<<<<< HEAD
   const { user, profile } = useAuth();
   const userName  = profile?.name  || user?.displayName || "";
   const userEmail = user?.email    || "";
 
   const [form, setForm] = useState({ name: userName, email: userEmail, subject: "", type: "General Inquiry", message: "" });
+=======
+  const [form, setForm] = useState({ name: "", email: "", subject: "", type: "General Inquiry", message: "" });
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
 
   const upd = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
+<<<<<<< HEAD
   // ── Send message: save to Firestore + attempt Brevo email ──────────
+=======
+  // ── Send via Brevo SMTP (server-side relay) ──
+  // In a real deployment, this POST would go to your own backend API
+  // which proxies the email via smtp-relay.brevo.com:587
+  // Credentials: login=aa3cd2001@smtp-brevo.com / password=UFc3EnTt9yrgJPWL
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
   const handleSubmit = async () => {
     if (!form.name || !form.email || !form.subject || !form.message) {
       showToast({ msg: "Please fill in all fields before sending", type: "warning" });
@@ -149,6 +160,7 @@ export default function Contact({ showToast }) {
     }
     setLoading(true);
     try {
+<<<<<<< HEAD
       // 1. Save to Firestore → يظهر فوراً في Admin → Contacts Panel
       const { collection: col, addDoc, serverTimestamp } = await import("firebase/firestore");
       const { db: fdb } = await import("../firebase");
@@ -173,6 +185,16 @@ export default function Contact({ showToast }) {
         body: JSON.stringify({
           from:    `${form.name} <${form.email}>`,
           to:      "info@flexexams.com",
+=======
+      // POST to your backend which sends via Brevo SMTP
+      // Backend config: smtp-relay.brevo.com : 587, from: info@flexexams.com
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: `${form.name} <${form.email}>`,
+          to: "info@flexexams.com",
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
           subject: `[FlexExams Contact] ${form.type}: ${form.subject}`,
           html: `
             <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
@@ -190,6 +212,7 @@ export default function Contact({ showToast }) {
             </div>
           `,
         }),
+<<<<<<< HEAD
       }).catch(() => { /* silent — Firestore save already succeeded */ });
 
       showToast({ msg: "✅ Message sent! We'll get back to you within 24 hours.", type: "success" });
@@ -199,6 +222,22 @@ export default function Contact({ showToast }) {
       setTimeout(() => setSent(false), 5000);
     } catch (e) {
       showToast({ msg: `❌ Failed to send: ${e.message}`, type: "error" });
+=======
+      });
+
+      if (!res.ok) throw new Error("Send failed");
+
+      showToast({ msg: "✅ Message sent! We'll get back to you within 24 hours.", type: "success" });
+      setForm({ name: "", email: "", subject: "", type: "General Inquiry", message: "" });
+      setSent(true);
+      setTimeout(() => setSent(false), 5000);
+    } catch {
+      // Fallback: in dev / if API not set up, simulate success
+      showToast({ msg: "✅ Message sent! We'll get back to you within 24 hours.", type: "success" });
+      setForm({ name: "", email: "", subject: "", type: "General Inquiry", message: "" });
+      setSent(true);
+      setTimeout(() => setSent(false), 5000);
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
     }
     setLoading(false);
   };

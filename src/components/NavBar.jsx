@@ -34,7 +34,7 @@ const NI = ({ n, s = 16 }) => {
 
 const LogoMark = React.memo(({ style = {}, size = 100 }) => (
   <img
-    src="https://i.ibb.co/DPztDcgx/Chat-GPT-Image-Apr-26-2026-09-45-41-PM.png"
+    src="https://res.cloudinary.com/duimhtfij/image/upload/f_auto,q_auto/FlexExams_nkmt1k"
     alt="Logo"
     width={90}
     height={90}
@@ -90,6 +90,7 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
 
   // Detect mobile viewport
   useEffect(() => {
+<<<<<<< HEAD
     const checkMobile = () => setIsMobile(window.innerWidth <= 768);
     checkMobile();
     window.addEventListener("resize", checkMobile);
@@ -133,6 +134,8 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
   };
 
   useEffect(() => {
+=======
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
     let ticking = false;
     const onScroll = () => {
       if (ticking) return;
@@ -157,8 +160,17 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
     const handler = (e) => {
       if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false);
     };
+<<<<<<< HEAD
     const id = setTimeout(() => document.addEventListener("pointerdown", handler), 0);
     return () => { clearTimeout(id); document.removeEventListener("pointerdown", handler); };
+=======
+    // استخدم setTimeout مع cleanup لتجنب تسرب الـ event listener
+    const id = setTimeout(() => document.addEventListener("pointerdown", handler), 0);
+    return () => {
+      clearTimeout(id);
+      document.removeEventListener("pointerdown", handler);
+    };
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
   }, [moreOpen]);
 
   useEffect(() => {
@@ -206,13 +218,14 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
   };
 
   const goToAuth = (mode = "login") => {
+    // تأكد من أن setPage يقبل وسيطين (اسم الصفحة وكائن الخيارات) ، إذا لم يفعل فمرر فقط "auth"
     setPage("auth", { mode });
     window.scrollTo({ top: 0, behavior: "smooth" });
     setMobileMenuOpen(false);
   };
 
   const handleLogout = async () => {
-    await logout();
+    await logout(); // انتظر اكتمال تسجيل الخروج
     setPage("home");
     showToast({ msg: "Signed out successfully. See you soon!", type: "info" });
     setMobileMenuOpen(false);
@@ -229,6 +242,7 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
     setMobileMenuOpen(false);
   };
 
+<<<<<<< HEAD
   const handleNotificationClick = async (notificationId) => {
     await markOneRead(notificationId);
     setBellOpen(false);
@@ -238,6 +252,11 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
       window.dispatchEvent(new CustomEvent("dashboard:tab", { detail: "notifications" }));
     }, 100);
   };
+=======
+  // استخدم الحرف الأول بعد إزالة الفراغات الزائدة
+  const displayName = (profile?.name || user?.displayName || "U").trim();
+  const firstChar = displayName[0] || "U";
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
 
   const displayName = (profile?.name || user?.displayName || "U").trim();
   const firstChar = displayName[0] || "U";
@@ -634,7 +653,33 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
                 </button>
               )}
 
+<<<<<<< HEAD
               <ThemeToggle />
+=======
+              {/* Account button */}
+              <button
+                onClick={() => nav("dashboard")}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "6px 12px 6px 8px", borderRadius: 40,
+                  border: `1.5px solid ${isAdmin ? "rgba(245,158,11,0.4)" : "var(--border)"}`,
+                  background: isAdmin ? "rgba(245,158,11,0.08)" : "var(--bg3)",
+                  color: "var(--text)", cursor: "pointer", fontSize: 13,
+                  fontWeight: 600, fontFamily: "inherit", flexShrink: 0, minHeight: 44,
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "var(--card-hover)"; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}
+              >
+                <div style={{
+                  width: 32, height: 32, borderRadius: "50%",
+                  fontSize: 13, fontWeight: 800, color: "#fff",
+                  background: isAdmin ? "linear-gradient(135deg,#F59E0B,#D97706)" : "var(--gradient-accent)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>{firstChar}</div>
+                <span className="hide-small" style={{ fontSize: 13 }}>Account</span>
+              </button>
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
 
               {isLoading ? (
                 <div style={{ width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -874,8 +919,29 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
         @media (min-width: 769px) { body { padding-top: var(--navbar-height) !important; } }
         .auth-label-full { display: inline; }
         .auth-label-short { display: none; }
+<<<<<<< HEAD
         .desktop-only { display: none; }
         .bottom-tab-bar, .more-backdrop, .more-sheet { display: none; }
+=======
+
+        /* ── Default hide desktop-only elements (shown only on desktop) ── */
+        .desktop-only {
+          display: none;
+        }
+
+        /* ── Desktop: إخفاء الـ Bottom Tab Bar ── */
+        .bottom-tab-bar {
+          display: none;
+        }
+        .more-backdrop {
+          display: none;
+        }
+        .more-sheet {
+          display: none;
+        }
+
+        /* ── Mobile: إظهار الـ Bottom Tab Bar وإخفاء روابط الـ Desktop ── */
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
         @media (max-width: 768px) {
           :root { --navbar-height: 56px; }
           .desktop-links, .desktop-only, .hide-small { display: none !important; }
@@ -892,6 +958,11 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
           .more-sheet { display: block; }
           body { padding-top: var(--navbar-height) !important; padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px)) !important; }
         }
+<<<<<<< HEAD
+=======
+
+        /* ── Desktop: إظهار كل حاجة خاصة بالـ desktop ── */
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
         @media (min-width: 769px) {
           .desktop-links { display: flex !important; flex-wrap: wrap; justify-content: center; gap: 2px; }
           .desktop-only { display: flex !important; }
@@ -909,4 +980,8 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
   );
 });
 
+<<<<<<< HEAD
 export default NavBar;
+=======
+export default NavBar;
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003

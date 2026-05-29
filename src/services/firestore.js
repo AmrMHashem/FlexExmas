@@ -36,6 +36,27 @@ function cacheSet(key, data) {
   return data;
 }
 
+// ======================
+// IN-MEMORY CACHE
+// ======================
+const _cache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function cacheGet(key) {
+  const entry = _cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CACHE_TTL) {
+    _cache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function cacheSet(key, data) {
+  _cache.set(key, { data, ts: Date.now() });
+  return data;
+}
+
 // ========== VENDORS ==========
 export const getVendors = async () => {
   const cached = cacheGet("vendors:all");
@@ -535,6 +556,7 @@ export async function deleteQuestion(questionId) {
 
   await deleteDoc(questionRef);
 
+<<<<<<< HEAD
   if (examId) {
     try {
       await updateDoc(doc(db, "exams", examId), {
@@ -545,6 +567,13 @@ export async function deleteQuestion(questionId) {
       console.warn("⚠️ Could not update totalQuestions on delete:", e.message);
     }
   }
+=======
+  const remainingQuestions = await getQuestions(examId);
+  await updateDoc(doc(db, "exams", examId), {
+    totalQuestions: remainingQuestions.length,
+    updatedAt: serverTimestamp(),
+  });
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
 }
 
 // ─── RESULTS ─────────────────────────────────────────────────────────────────
@@ -624,6 +653,7 @@ export async function saveResult(data) {
     }
   }
 
+<<<<<<< HEAD
   if (
     data.mode === "examSimulation" &&
     data.pass === true &&
@@ -631,6 +661,10 @@ export async function saveResult(data) {
     data.userId !== "guest" &&
     data.userId.trim() !== ""
   ) {
+=======
+  // حفظ الشهادة إذا كان الاختبار في وضع المحاكاة والنتيجة نجاح
+  if (data.mode === "examSimulation" && data.pass === true) {
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
     try {
       const certId = generateCertId();
       await saveCertificate({
@@ -904,16 +938,27 @@ export async function saveCertificate({ certId, userId, userName, examId, examTi
 
     await setDoc(certRef, {
       certId,
+<<<<<<< HEAD
       userId,
+=======
+      userId: userId || "",
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
       userName: userName || "Valued Candidate",
       examId: examId || "",
       examTitle: examTitle || "Professional Certification Exam",
       score: score ?? 0,
+<<<<<<< HEAD
       date: nowDate,
       issuedAt: serverTimestamp(),
     });
 
     console.log("✅ Certificate saved:", certId, "for user:", userId);
+=======
+      date: date || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+      issuedAt: serverTimestamp(),
+    });
+
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
     return certId;
   } catch (err) {
     console.error("❌ Error saving certificate:", err);
@@ -1014,6 +1059,7 @@ export async function getExamDashboardData(userId, examId, options = {}) {
     };
   }
 }
+<<<<<<< HEAD
 
 // ─── AUTO WEEKLY COUNTERS UPDATE ────────────────────────────────
 const WEEKLY_UPDATE_KEY = "flexexams_last_weekly_update";
@@ -1117,3 +1163,5 @@ export async function updateExamStatistics(examId) {
     return false;
   }
 }
+=======
+>>>>>>> ef1bec4ecf58728841e3d701049dd7c1f52c5003
