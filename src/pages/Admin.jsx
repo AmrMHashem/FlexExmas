@@ -2263,7 +2263,16 @@ function ContactsPanel({ showToast, adminUid }) {
 
 export default function Admin({ showToast, setPage }) {
   const { user, isAdmin } = useAuth();
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState(() => {
+    const hash = window.location.hash.replace("#", "");
+    const valid = ["overview","exams","vendors","topics","import","questions","users","analytics","revenue","referral","reports","payments","refunds","notifications","settings"];
+    return valid.includes(hash) ? hash : "overview";
+  });
+
+  const handleSetTab = (t) => {
+    setTab(t);
+    window.location.hash = t;
+  };
 
   // Data state
   const [exams, setExams] = useState([]);
@@ -2922,7 +2931,7 @@ const deleteAllAnalyticsData = async () => {
       {/* ── Tabs ── */}
       <div style={{ display: "flex", gap: 3, marginBottom: 28, background: "var(--bg2)", borderRadius: 16, padding: 6, boxShadow: "0 2px 8px rgba(0,0,0,0.04)", overflowX: "auto" }}>
         {TABS.map(({ key, emoji, label }) => (
-          <button key={key} onClick={() => setTab(key)} style={{
+          <button key={key} onClick={() => handleSetTab(key)} style={{
             flex: "1 0 auto", padding: "9px 14px", borderRadius: 11, border: "none",
             background: tab === key ? "var(--accent)" : "transparent",
             color: tab === key ? "#fff" : "var(--text2)", fontWeight: 700, cursor: "pointer",
@@ -2965,7 +2974,7 @@ const deleteAllAnalyticsData = async () => {
                 return (
                   <div style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 8 }}>
                     {alerts.map((a, i) => (
-                      <div key={i} onClick={() => setTab(a.action)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", background: a.bg, border: `1.5px solid ${a.border}`, borderRadius: 14, cursor: "pointer", transition: "all 0.2s" }}
+                      <div key={i} onClick={() => handleSetTab(a.action)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", background: a.bg, border: `1.5px solid ${a.border}`, borderRadius: 14, cursor: "pointer", transition: "all 0.2s" }}
                         onMouseEnter={e => e.currentTarget.style.opacity = "0.85"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
                         <span style={{ fontSize: 20 }}>{a.icon}</span>
                         <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: a.color }}>{a.text}</span>
@@ -2984,7 +2993,7 @@ const deleteAllAnalyticsData = async () => {
                 <KPICard icon="✅" label="Pass Rate" value={`${stats?.passRate || passRate}%`} sub="Global average" color="#7c3aed" trend={prevPassRate !== null ? passRate - prevPassRate : undefined} />
                 <KPICard icon="📊" label="Avg Score" value={`${avgScore}%`} sub="All exams" color="#0891b2" trend={prevAvgScore !== null ? avgScore - prevAvgScore : undefined} />
                 <KPICard icon="🏆" label="Certificates" value={results.filter(r => r.mode === "examSimulation" && r.pass).length} sub="Issued total" color="#f59e0b" />
-                <KPICard icon="⚠️" label="Pending Reports" value={reports.filter(r => r.status === "pending").length} sub="Need review" color="#dc2626" onClick={() => setTab("reports")} />
+                <KPICard icon="⚠️" label="Pending Reports" value={reports.filter(r => r.status === "pending").length} sub="Need review" color="#dc2626" onClick={() => handleSetTab("reports")} />
                 <KPICard icon="🌍" label="Countries" value={countryStats.length} sub="User locations" color="#6366f1" />
               </div>
 
@@ -3273,7 +3282,7 @@ const monthTxRevenue = transactions?.filter(t => {
                       <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", background: `${ins.color}08`, border: `1px solid ${ins.color}20`, borderRadius: 10 }}>
                         <span style={{ fontSize: 16, flexShrink: 0 }}>{ins.icon}</span>
                         <div style={{ flex: 1, fontSize: 12, color: "var(--text2)", lineHeight: 1.5 }}>{ins.text}</div>
-                        {ins.action && <Btn size="sm" variant="ghost" onClick={() => setTab(ins.tab)} style={{ fontSize: 10, padding: "3px 8px", flexShrink: 0, color: ins.color }}>{ins.action}</Btn>}
+                        {ins.action && <Btn size="sm" variant="ghost" onClick={() => handleSetTab(ins.tab)} style={{ fontSize: 10, padding: "3px 8px", flexShrink: 0, color: ins.color }}>{ins.action}</Btn>}
                       </div>
                     ))}
                   </div>
@@ -4010,7 +4019,7 @@ const monthTxRevenue = transactions?.filter(t => {
                       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>👥 Bulk User Management</div>
                       <div style={{ fontSize: 11, color: "var(--text3)" }}>Advanced user deletion and management available in the Users tab.</div>
                     </div>
-                    <button onClick={() => setTab("users")} style={{ padding: "9px 18px", background: "var(--bg3)", color: "var(--text2)", border: "1.5px solid var(--border)", borderRadius: 10, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0 }}>
+                    <button onClick={() => handleSetTab("users")} style={{ padding: "9px 18px", background: "var(--bg3)", color: "var(--text2)", border: "1.5px solid var(--border)", borderRadius: 10, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0 }}>
                       Go to Users
                     </button>
                   </div>
