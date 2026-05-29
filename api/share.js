@@ -1,4 +1,4 @@
-// api/share.js — v6 (slug inspector)
+// api/share.js — v7 (search by id or title-slug)
 
 const FIREBASE_PROJECT_ID = 'exampro-1e4de';
 const FIREBASE_API_KEY    = 'AIzaSyCHbNx6tveBKqN3BwKzK8Ap23d8DHmUSGs';
@@ -7,6 +7,14 @@ const SOCIAL_BOTS = ['facebookexternalhit','facebot','linkedinbot','twitterbot',
 function isSocialBot(ua=''){return SOCIAL_BOTS.some(b=>ua.toLowerCase().includes(b));}
 function fv(f){if(!f)return '';return f.stringValue??String(f.integerValue??f.doubleValue??'');}
 
+// حول الـ title لـ slug للمقارنة
+function titleToSlug(title=''){
+  return title.toLowerCase()
+    .replace(/[^a-z0-9\s-]/g,'')
+    .trim()
+    .replace(/\s+/g,'-');
+}
+
 export default async function handler(req, res) {
   const slug = req.query.slug || '';
   if (!slug) return res.redirect(302, '/');
@@ -14,43 +22,52 @@ export default async function handler(req, res) {
   const examUrl  = `https://www.flexexams.com/exam/${slug}`;
   const shareUrl = `https://www.flexexams.com/share/exam/${slug}`;
   const ua       = req.headers['user-agent'] || '';
+  const BASE     = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
   let exam = null;
 
   try {
-    const BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+    // ── محاولة 1: الـ slug هو الـ Firestore document ID مباشرة ──
+    const r1 = await fetch(`${BASE}/exams/${slug}?key=${FIREBASE_API_KEY}`);
+    if (r1.ok) {
+      const d1 = await r1.json();
+      const f  = d1?.fields;
+      if (f) {
+        exam = {
+          title:       fv(f.title)||fv(f.name)||'',
+          description: fv(f.description)||fv(f.longDescription)||fv(f.subtitle)||'',
+          image:       fv(f.image)||fv(f.imageUrl)||fv(f.thumbnail)||fv(f.coverImage)||'',
+        };
+      }
+    }
 
-    // ── محاولة 1: ابحث بـ slug ──
-    const r1 = await fetch(`${BASE}:runQuery?key=${FIREBASE_API_KEY}`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({structuredQuery:{from:[{collectionId:'exams'}],where:{fieldFilter:{field:{fieldPath:'slug'},op:'EQUAL',value:{stringValue:slug}}},limit:1}})
-    });
-    const d1 = await r1.json();
-    const f1 = d1?.[0]?.document?.fields;
+    // ── محاولة 2: لو مش ID، ابحث بمطابقة الـ title slug ──
+    if (!exam) {
+      const r2 = await fetch(`${BASE}/exams?key=${FIREBASE_API_KEY}&pageSize=200`);
+      const d2 = await r2.json();
+      const docs = d2?.documents || [];
 
-    if (f1) {
-      exam = {title:fv(f1.title)||fv(f1.name)||fv(f1.examName)||'', description:fv(f1.description)||fv(f1.shortDescription)||'', image:fv(f1.image)||fv(f1.thumbnail)||fv(f1.imageUrl)||fv(f1.coverImage)||''};
+      const matched = docs.find(doc => {
+        const t = fv(doc.fields?.title) || fv(doc.fields?.name) || '';
+        return titleToSlug(t) === slug;
+      });
+
+      if (matched) {
+        const f = matched.fields;
+        exam = {
+          title:       fv(f.title)||fv(f.name)||'',
+          description: fv(f.description)||fv(f.longDescription)||fv(f.subtitle)||'',
+          image:       fv(f.image)||fv(f.imageUrl)||fv(f.thumbnail)||fv(f.coverImage)||'',
+        };
+      }
     }
 
     // ── Debug mode ──
     if (req.query.debug === '1') {
-      // جيب أول 5 exams عشان نشوف الـ slugs الحقيقية
-      const r2 = await fetch(`${BASE}/exams?key=${FIREBASE_API_KEY}&pageSize=5`);
-      const d2 = await r2.json();
-      const samples = (d2?.documents || []).map(doc => ({
-        id: doc.name?.split('/').pop(),
-        slug: fv(doc.fields?.slug),
-        title: fv(doc.fields?.title) || fv(doc.fields?.name),
-        fields: Object.keys(doc.fields || {})
-      }));
-
       res.setHeader('Content-Type','application/json');
-      return res.status(200).json({
-        searchedSlug: slug,
-        examFound: !!f1,
-        firstFiveExams: samples,
-      });
+      return res.status(200).json({ slug, examFound: !!exam, exam });
     }
+
   } catch(e){ console.error('[share]',e); }
 
   const title = exam?.title || 'Certification Exam Practice';
