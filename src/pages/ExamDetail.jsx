@@ -1,5 +1,6 @@
-// pages/ExamDetail.jsx — v8.2 — Fixed: 100% coupon now shows "Claim Free Access" button
-// ✅ When applied coupon makes exam free, show a direct claim button instead of hiding the purchase UI
+// pages/ExamDetail.jsx — v8.3 — Fixed mobile overflow issues
+// ✅ Fixed: horizontal overflow on mobile devices
+// ✅ When applied coupon makes exam free, show a direct claim button
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useAuth } from "../hooks/useAuth";
@@ -192,7 +193,7 @@ const TopicDistributionBar = React.memo(function TopicDistributionBar({ domain, 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SmartStickyPanel — unchanged
+//  SmartStickyPanel — unchanged except mobile width fix
 // ─────────────────────────────────────────────────────────────────────────────
 function SmartStickyPanel({ children, topOffset = 24 }) {
   const [isMobile, setIsMobile] = useState(() =>
@@ -338,7 +339,8 @@ function SmartStickyPanel({ children, topOffset = 24 }) {
   }, [isMobile, init]);
 
   if (isMobile) {
-    return <div style={{ alignSelf: "start" }}>{children}</div>;
+    // FIX: prevent overflow on mobile
+    return <div style={{ alignSelf: "start", width: "100%", maxWidth: "100%", overflowX: "hidden" }}>{children}</div>;
   }
 
   return <div ref={wrapperRef} style={{ alignSelf: "start" }}>{children}</div>;
@@ -519,7 +521,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   const [userAccess, setUserAccess]         = useState(null);
   const [accessLoading, setAccessLoading]   = useState(true);
   const [autoApplyCoupon, setAutoApplyCoupon] = useState(null);
-  const [claimingFree, setClaimingFree]     = useState(false); // for 100% coupon claim
+  const [claimingFree, setClaimingFree]     = useState(false);
 
   const abortControllerRef = useRef(null);
   const cacheRef           = useRef({});
@@ -775,7 +777,6 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     setDownloadingCert(false);
   }, [exam, user, profile, dashboard.userCertificate, showToast]);
 
-  // ── NEW: Handle claiming free exam when 100% coupon applied ───────
   const handleClaimFreeAccess = useCallback(async () => {
     if (!user) {
       showToast({ msg: "Please sign in to claim free access.", type: "warning" });
@@ -785,7 +786,6 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     if (claimingFree) return;
     setClaimingFree(true);
     try {
-      // Create a free transaction record
       const txId = await saveTransaction(user.uid, {
         type: "exam",
         examId: exam.id,
@@ -799,19 +799,13 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
         currency: "USD",
         autoRenew: false,
       });
-      // Grant access
       await grantExamAccess(user.uid, exam.id, txId);
-      // Refresh access & dashboard state
       const newAccess = await checkUserAccess(user.uid, exam.id);
       setUserAccess(newAccess);
-      // Optionally enroll the user automatically
       await enrollUserInExam(user.uid, exam.id);
-      // Update dashboard enrolled status
       setDashboard(prev => ({ ...prev, isEnrolled: true, enrolledCount: prev.enrolledCount + 1 }));
       showToast({ msg: "🎉 Coupon applied! You now have full access to this exam for free.", type: "success" });
-      // Clear the coupon from UI (optional)
       setAppliedCoupon(null);
-      // Remove coupon param from URL
       const url = new URL(window.location.href);
       url.searchParams.delete("couponCode");
       window.history.replaceState({}, "", url.toString());
@@ -846,16 +840,11 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   const totalFullQuestions = fullQuestions.length;
   const totalTopics = Object.keys(fullDomainStats).length;
 
-  // Determine if we should show the direct "Claim Free Access" button
   const shouldShowFreeClaim = !hasFullAccess && !accessLoading && displayPrice === 0 && appliedCoupon !== null;
 
-  // ─────────────────────────────────────────────────────────────────
-  //  Right Panel Content
-  // ─────────────────────────────────────────────────────────────────
   const RightPanelContent = (
-    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, padding: "clamp(20px, 4vw, 28px)" }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, padding: "clamp(20px, 4vw, 28px)", overflowX: "hidden", width: "100%", boxSizing: "border-box" }}>
 
-      {/* Price Badge */}
       {exam.pricing && !hasFullAccess && (
         <div style={{ marginBottom: 18 }}>
           {isFreeExam ? (
@@ -899,7 +888,6 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
         <LastScoreCard lastScore={dashboard.lastScore} examTitle={exam.title} />
       )}
 
-      {/* Coupon Input */}
       {!hasFullAccess && !isFreeExam && !accessLoading && basePrice > 0 && (
         <CouponInput
           examId={exam.id}
@@ -909,7 +897,6 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
         />
       )}
 
-      {/* ✅ FIX: If 100% coupon applied -> show direct Claim Free Access button */}
       {shouldShowFreeClaim ? (
         <div style={{ marginBottom: 20 }}>
           <Btn
@@ -945,7 +932,6 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
         )
       )}
 
-      {/* Study Mode */}
       {user && (
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text3)", marginBottom: 12, textTransform: "uppercase" }}>Study Mode</div>
@@ -1010,7 +996,6 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
         </div>
       )}
 
-      {/* Action Buttons (for enrolled users / start exam) */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {user ? (
           <>
@@ -1078,19 +1063,14 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     </div>
   );
 
-  // ─────────────────────────────────────────────────────────────────
-  //  Render
-  // ─────────────────────────────────────────────────────────────────
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "36px clamp(16px, 4vw, 48px) 72px", overflowX: "hidden" }}>
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "36px clamp(16px, 4vw, 48px) 72px", overflowX: "hidden", width: "100%", boxSizing: "border-box" }}>
 
-      {/* Back */}
       <button onClick={() => setPage("home")}
         style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, marginBottom: 28, minHeight: 40 }}>
         <Icon n="arrow_right" size={14} style={{ transform: "rotate(180deg)" }} /> Back to Exams
       </button>
 
-      {/* Hero */}
       <div style={{ background: `linear-gradient(145deg,var(--surface) 0%,${ec}08 100%)`, border: `1px solid var(--border)`, borderRadius: 28, padding: "clamp(20px, 4vw, 28px)", marginBottom: 32, position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: -80, right: -80, width: 200, height: 200, borderRadius: "50%", background: `radial-gradient(circle,${ec}12,transparent 70%)`, pointerEvents: "none" }} />
         <div style={{ display: "flex", gap: 28, flexWrap: "wrap" }}>
@@ -1130,13 +1110,10 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
         </div>
       </div>
 
-      {/* Main Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 32, alignItems: "start" }} className="exam-detail-grid">
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 380px)", gap: 32, alignItems: "start" }} className="exam-detail-grid">
 
-        {/* Left Column */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 32, minWidth: 0 }}>
 
-          {/* Exam Specification */}
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, padding: "clamp(20px, 4vw, 28px)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
               <h2 style={{ fontSize: "clamp(16px, 4vw, 18px)", fontWeight: 700 }}>Global Exam Specification</h2>
@@ -1188,20 +1165,18 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
           {exam.longDescription && (
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, padding: "clamp(20px, 4vw, 28px)" }}>
               <h2 style={{ fontSize: "clamp(16px, 4vw, 18px)", fontWeight: 700, marginBottom: 16 }}>About This Exam</h2>
-              <div className="exam-long-desc" dangerouslySetInnerHTML={{ __html: exam.longDescription }} />
+              <div className="exam-long-desc" style={{ overflowX: "auto" }} dangerouslySetInnerHTML={{ __html: exam.longDescription }} />
             </div>
           )}
 
           <SuggestedExams currentExam={exam} setPage={setPage} />
         </div>
 
-        {/* Right Panel — SmartStickyPanel */}
         <SmartStickyPanel topOffset={24}>
           {RightPanelContent}
         </SmartStickyPanel>
       </div>
 
-      {/* Resume Modal */}
       {showResumeModal && dashboard.savedProgress && (
         <Modal title="Resume Your Exam" onClose={() => setShowResumeModal(false)}>
           <div style={{ textAlign: "center", padding: "8px 0" }}>
@@ -1229,6 +1204,10 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
           }
           .exam-detail-grid > div:first-child { order: 2; }
           .exam-detail-grid > div:last-child  { order: 1; }
+          .exam-detail-grid > div {
+            max-width: 100%;
+            overflow-x: auto;
+          }
           button, .btn, [role="button"] { min-height: 44px; }
           input, select, textarea { font-size: 16px !important; }
         }
@@ -1240,6 +1219,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
           color: var(--text2);
           line-height: 1.75;
           word-break: break-word;
+          overflow-wrap: break-word;
         }
         .exam-long-desc h2 { font-size: clamp(15px,4vw,17px); font-weight: 800; color: var(--text); margin: 18px 0 8px; }
         .exam-long-desc h3 { font-size: clamp(13px,3.5vw,15px); font-weight: 700; color: var(--text); margin: 14px 0 6px; }
