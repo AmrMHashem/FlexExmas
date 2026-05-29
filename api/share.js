@@ -1,101 +1,111 @@
-// api/share.js — FlexExams Social Share Handler v3
+// api/share.js — FlexExams Social Share Handler v4 (debug + slug fix)
 
 const SOCIAL_BOTS = [
-  'facebookexternalhit', 'facebot', 'linkedinbot', 'twitterbot',
-  'whatsapp', 'telegrambot', 'slackbot', 'discordbot',
-  'googlebot', 'bingbot', 'applebot', 'pinterest',
+  'facebookexternalhit','facebot','linkedinbot','twitterbot',
+  'whatsapp','telegrambot','slackbot','discordbot',
+  'googlebot','bingbot','applebot','pinterest',
 ];
+function isSocialBot(ua=''){return SOCIAL_BOTS.some(b=>ua.toLowerCase().includes(b));}
 
-function isSocialBot(ua = '') {
-  return SOCIAL_BOTS.some(bot => ua.toLowerCase().includes(bot));
+// Firestore field extractor — handles string, integer, double
+function fv(field) {
+  if (!field) return '';
+  return field.stringValue ?? field.integerValue ?? field.doubleValue ?? '';
 }
 
 export default async function handler(req, res) {
-  // الـ slug بييجي كـ query param من الـ route
-  const { slug } = req.query;
-
+  const slug = req.query.slug || req.url?.split('/share/exam/')?.[1]?.replace(/\/$/, '') || '';
   if (!slug) return res.redirect(302, '/');
 
   const examUrl  = `https://www.flexexams.com/exam/${slug}`;
   const shareUrl = `https://www.flexexams.com/share/exam/${slug}`;
   const ua       = req.headers['user-agent'] || '';
 
-  // ── جيب بيانات الاختبار من Firestore REST API ──
-  let exam = null;
-  try {
-    const projectId = process.env.VITE_FIREBASE_PROJECT_ID;
-    const apiKey    = process.env.VITE_FIREBASE_API_KEY;
+  const projectId = process.env.VITE_FIREBASE_PROJECT_ID;
+  const apiKey    = process.env.VITE_FIREBASE_API_KEY;
 
+  let exam = null;
+  let debugInfo = { projectId: projectId ? '✅ set' : '❌ missing', apiKey: apiKey ? '✅ set' : '❌ missing', slug, firestoreResult: null, error: null };
+
+  try {
     if (projectId && apiKey) {
-      const r = await fetch(
+      // محاولة 1: ابحث بالـ slug
+      const r1 = await fetch(
         `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {'Content-Type':'application/json'},
           body: JSON.stringify({
             structuredQuery: {
-              from: [{ collectionId: 'exams' }],
-              where: {
-                fieldFilter: {
-                  field: { fieldPath: 'slug' },
-                  op: 'EQUAL',
-                  value: { stringValue: slug }
-                }
-              },
+              from: [{collectionId:'exams'}],
+              where: {fieldFilter:{field:{fieldPath:'slug'},op:'EQUAL',value:{stringValue:slug}}},
               limit: 1
             }
           })
         }
       );
-      const data = await r.json();
-      const f    = data?.[0]?.document?.fields;
+      const d1 = await r1.json();
+      debugInfo.firestoreResult = JSON.stringify(d1).substring(0, 500);
+
+      const f = d1?.[0]?.document?.fields;
       if (f) {
         exam = {
-          title:       f.title?.stringValue || f.name?.stringValue || '',
-          description: f.description?.stringValue || '',
-          image:       f.image?.stringValue || f.thumbnail?.stringValue || f.imageUrl?.stringValue || '',
+          title:       fv(f.title) || fv(f.name) || fv(f.examName) || '',
+          description: fv(f.description) || fv(f.shortDescription) || '',
+          image:       fv(f.image) || fv(f.thumbnail) || fv(f.imageUrl) || fv(f.coverImage) || '',
         };
+        debugInfo.examFound = true;
+        debugInfo.fields = Object.keys(f);
+      } else {
+        debugInfo.examFound = false;
+        // محاولة 2: جيب أول اختبار عشان نشوف الـ fields الحقيقية
+        const r2 = await fetch(
+          `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/exams?key=${apiKey}&pageSize=1`,
+        );
+        const d2 = await r2.json();
+        const sample = d2?.documents?.[0]?.fields;
+        if (sample) debugInfo.sampleFields = Object.keys(sample);
       }
     }
-  } catch (e) {
-    console.error('[share] Firestore error:', e);
+  } catch(e) {
+    debugInfo.error = e.message;
   }
 
   const title = exam?.title || 'Certification Exam Practice';
-  const desc  = (
-    exam?.description ||
-    `Practice real ${title} exam questions with FlexExams. Timed tests, instant feedback, and AI-powered explanations.`
-  ).substring(0, 200);
+  const desc  = (exam?.description || `Practice real ${title} exam questions with FlexExams. Timed tests, instant feedback, and AI-powered explanations.`).substring(0,200);
   const image = exam?.image || 'https://www.flexexams.com/og-image.png';
   const bot   = isSocialBot(ua);
+
+  // Debug endpoint: /share/exam/slug?debug=1
+  if (req.query.debug === '1') {
+    res.setHeader('Content-Type','application/json');
+    return res.status(200).json(debugInfo);
+  }
 
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>${title} | FlexExams</title>
-  <meta name="description" content="${desc}" />
-
-  <meta property="og:type"         content="website" />
-  <meta property="og:site_name"    content="FlexExams" />
-  <meta property="og:title"        content="${title}" />
-  <meta property="og:description"  content="${desc}" />
-  <meta property="og:url"          content="${shareUrl}" />
-  <meta property="og:image"        content="${image}" />
-  <meta property="og:image:width"  content="1200" />
-  <meta property="og:image:height" content="630" />
-  <meta property="og:image:alt"    content="${title} — FlexExams" />
-  <meta property="og:locale"       content="en_US" />
-
-  <meta name="twitter:card"        content="summary_large_image" />
-  <meta name="twitter:site"        content="@FlexExams" />
-  <meta name="twitter:title"       content="${title}" />
-  <meta name="twitter:description" content="${desc}" />
-  <meta name="twitter:image"       content="${image}" />
-
-  <link rel="canonical" href="${shareUrl}" />
-  ${!bot ? `<script>window.location.replace("${examUrl}");</script>` : '<!-- bot: no redirect -->'}
+  <meta name="description" content="${desc}"/>
+  <meta property="og:type"         content="website"/>
+  <meta property="og:site_name"    content="FlexExams"/>
+  <meta property="og:title"        content="${title}"/>
+  <meta property="og:description"  content="${desc}"/>
+  <meta property="og:url"          content="${shareUrl}"/>
+  <meta property="og:image"        content="${image}"/>
+  <meta property="og:image:width"  content="1200"/>
+  <meta property="og:image:height" content="630"/>
+  <meta property="og:image:alt"    content="${title} — FlexExams"/>
+  <meta property="og:locale"       content="en_US"/>
+  <meta name="twitter:card"        content="summary_large_image"/>
+  <meta name="twitter:site"        content="@FlexExams"/>
+  <meta name="twitter:title"       content="${title}"/>
+  <meta name="twitter:description" content="${desc}"/>
+  <meta name="twitter:image"       content="${image}"/>
+  <link rel="canonical" href="${shareUrl}"/>
+  ${!bot ? `<script>window.location.replace("${examUrl}");</script>` : ''}
 </head>
 <body style="font-family:sans-serif;text-align:center;padding:60px;background:#0d1223;color:#eef1fb">
   <h2 style="color:#a5b4fc">${title}</h2>
@@ -104,7 +114,7 @@ export default async function handler(req, res) {
 </body>
 </html>`;
 
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
+  res.setHeader('Content-Type','text/html; charset=utf-8');
+  res.setHeader('Cache-Control','s-maxage=3600,stale-while-revalidate=86400');
   res.status(200).send(html);
 }
