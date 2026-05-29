@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/share/exam/:slug",
-      "destination": "/api/exam?slug=:slug"
+      "destination": "/api/share"
     },
     {
       "source": "/(.*)",
