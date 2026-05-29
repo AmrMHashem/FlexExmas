@@ -1,8 +1,8 @@
 {
   "routes": [
     {
-      "src": "/share/exam/(?<slug>[^/]+)/?",
-      "dest": "/api/share?slug=$slug"
+      "src": "/exam/([^/]+)/?",
+      "dest": "/api/share?slug=$1"
     },
     {
       "src": "/api/(.*)",
