@@ -1,6 +1,4 @@
-// api/share.js — FlexExams Social Share Handler v2
-// Facebook/bots → يقرأ OG tags مباشرة (بدون redirect)
-// المستخدم العادي → JS redirect للـ exam page
+// api/share.js — FlexExams Social Share Handler v3
 
 const SOCIAL_BOTS = [
   'facebookexternalhit', 'facebot', 'linkedinbot', 'twitterbot',
@@ -9,12 +7,12 @@ const SOCIAL_BOTS = [
 ];
 
 function isSocialBot(ua = '') {
-  const lower = ua.toLowerCase();
-  return SOCIAL_BOTS.some(bot => lower.includes(bot));
+  return SOCIAL_BOTS.some(bot => ua.toLowerCase().includes(bot));
 }
 
 export default async function handler(req, res) {
-  const slug = req.url?.split('/share/exam/')?.[1]?.replace(/\/$/, '') || '';
+  // الـ slug بييجي كـ query param من الـ route
+  const { slug } = req.query;
 
   if (!slug) return res.redirect(302, '/');
 
@@ -22,31 +20,33 @@ export default async function handler(req, res) {
   const shareUrl = `https://www.flexexams.com/share/exam/${slug}`;
   const ua       = req.headers['user-agent'] || '';
 
-  // ── جيب بيانات الاختبار من Firestore ──
+  // ── جيب بيانات الاختبار من Firestore REST API ──
   let exam = null;
   try {
     const projectId = process.env.VITE_FIREBASE_PROJECT_ID;
     const apiKey    = process.env.VITE_FIREBASE_API_KEY;
 
     if (projectId && apiKey) {
-      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`;
-      const r   = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          structuredQuery: {
-            from: [{ collectionId: 'exams' }],
-            where: {
-              fieldFilter: {
-                field: { fieldPath: 'slug' },
-                op: 'EQUAL',
-                value: { stringValue: slug }
-              }
-            },
-            limit: 1
-          }
-        })
-      });
+      const r = await fetch(
+        `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            structuredQuery: {
+              from: [{ collectionId: 'exams' }],
+              where: {
+                fieldFilter: {
+                  field: { fieldPath: 'slug' },
+                  op: 'EQUAL',
+                  value: { stringValue: slug }
+                }
+              },
+              limit: 1
+            }
+          })
+        }
+      );
       const data = await r.json();
       const f    = data?.[0]?.document?.fields;
       if (f) {
@@ -58,17 +58,17 @@ export default async function handler(req, res) {
       }
     }
   } catch (e) {
-    console.error('[share]', e);
+    console.error('[share] Firestore error:', e);
   }
 
   const title = exam?.title || 'Certification Exam Practice';
-  const desc  = (exam?.description || `Practice real ${title} exam questions with FlexExams. Timed tests, instant feedback, and AI-powered explanations.`).substring(0, 200);
+  const desc  = (
+    exam?.description ||
+    `Practice real ${title} exam questions with FlexExams. Timed tests, instant feedback, and AI-powered explanations.`
+  ).substring(0, 200);
   const image = exam?.image || 'https://www.flexexams.com/og-image.png';
   const bot   = isSocialBot(ua);
 
-  // ── HTML مشترك للـ OG tags ──
-  // بالنسبة للـ bots: مفيش redirect — بس meta tags
-  // بالنسبة للمستخدم: JS redirect فوري
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -95,12 +95,12 @@ export default async function handler(req, res) {
   <meta name="twitter:image"       content="${image}" />
 
   <link rel="canonical" href="${shareUrl}" />
-  ${!bot ? `<script>window.location.replace("${examUrl}");</script>` : ''}
+  ${!bot ? `<script>window.location.replace("${examUrl}");</script>` : '<!-- bot: no redirect -->'}
 </head>
 <body style="font-family:sans-serif;text-align:center;padding:60px;background:#0d1223;color:#eef1fb">
   <h2 style="color:#a5b4fc">${title}</h2>
-  <p style="color:#9bb6f0">${desc}</p>
-  <a href="${examUrl}" style="display:inline-block;margin-top:20px;padding:12px 28px;border-radius:10px;background:#4f46e5;color:#fff;text-decoration:none;font-size:15px">Start Practice →</a>
+  <p style="color:#9bb6f0;max-width:500px;margin:0 auto">${desc}</p>
+  <a href="${examUrl}" style="display:inline-block;margin-top:24px;padding:12px 28px;border-radius:10px;background:#4f46e5;color:#fff;text-decoration:none;font-size:15px">Start Practice →</a>
 </body>
 </html>`;
 
