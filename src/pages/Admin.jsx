@@ -29,6 +29,7 @@ import {
   updateTopic,
   deleteTopic,
 } from "../services/firestore";
+import { generateSlug } from "../services/firestore";
 import { parseCSV, rowToQuestion, SAMPLE_CSV } from "../utils/csv";
 import {
   getPlatformSettings,
@@ -4026,6 +4027,11 @@ const monthTxRevenue = transactions?.filter(t => {
         <Modal title={editTarget ? "✏️ Edit Exam" : "➕ Create New Exam"} onClose={() => setShowForm(false)} maxWidth={700}>
           <div style={{ maxHeight: "75vh", overflowY: "auto" }}>
             <Input label="Exam Title" value={form.title} onChange={upd("title")} error={formErr.title} placeholder="e.g., AWS Solutions Architect" />
+            {form.title && (
+              <div style={{ marginBottom: 12, padding: "7px 12px", background: "var(--bg3)", borderRadius: 8, fontSize: 12, color: "var(--text3)", fontFamily: "monospace" }}>
+                🔗 slug: <span style={{ color: "var(--accent)", fontWeight: 700 }}>{generateSlug(form.title)}</span>
+              </div>
+            )}
             <Input label="Subtitle" value={form.subtitle} onChange={upd("subtitle")} placeholder="e.g., SAA-C03" />
             <div style={{ marginBottom: 16 }}>
               <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)", marginBottom: 8, display: "block" }}>Exam Image</label>
