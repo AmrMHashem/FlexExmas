@@ -19,8 +19,8 @@ export default async function handler(req, res) {
   const slug = req.query.slug || '';
   if (!slug) return res.redirect(302, '/');
 
-  const examUrl  = `https://www.flexexams.com/exam/${slug}`;
-  const shareUrl = `https://www.flexexams.com/share/exam/${slug}`;
+const examUrl = `https://www.flexexams.com/exam/${slug}`;
+const shareUrl = `https://www.flexexams.com/exam/${slug}`;
   const ua       = req.headers['user-agent'] || '';
   const BASE     = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
