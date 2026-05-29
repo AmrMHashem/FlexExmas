@@ -2533,11 +2533,12 @@ useEffect(() => {
     if (Object.keys(errs).length) { setFormErr(errs); return; }
     setSaving(true);
     try {
+      const examData = { ...form, slug: generateSlug(form.title) };
       if (editTarget) {
-        await updateExam(editTarget.id, form);
+        await updateExam(editTarget.id, examData);
         showToast({ msg: "✅ Exam updated successfully", type: "success" });
       } else {
-        await createExam(form);
+        await createExam(examData);
         showToast({ msg: "🎉 Exam created successfully", type: "success" });
       }
       await load();
