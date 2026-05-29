@@ -1158,7 +1158,7 @@ function RefundsPanel({ users, exams, transactions = [], showToast, adminUid, on
         // Fallback: delete via firestore directly
         const { doc, deleteDoc } = await import("firebase/firestore");
         const { db: fdb } = await import("../firebase");
-        await Promise.all([...selected].map(id => deleteDoc(doc(fdb, "refundRequests", id)).catch(() => {})));
+        await Promise.all([...selected].map(id => deleteDoc(doc(fdb, "refund_requests", id)).catch(() => {})));
       }
       showToast({ msg: `✅ Deleted ${selected.size} refund request${selected.size > 1 ? "s" : ""}`, type: "success" });
       setSelected(new Set());
