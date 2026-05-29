@@ -403,6 +403,17 @@ export async function getExamCompletionPercentage(userId, examId, totalQuestions
   }
 }
 
+// ─── SLUG GENERATOR ──────────────────────────────────────────────────────────
+export function generateSlug(title = "") {
+  return title
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")   // إزالة الرموز الخاصة
+    .replace(/\s+/g, "-")            // استبدال المسافات بـ -
+    .replace(/-{2,}/g, "-")          // منع تكرار --
+    .replace(/^-+|-+$/g, "");        // إزالة - من البداية والنهاية
+}
+
 // ─── EXAMS ───────────────────────────────────────────────────────────────────
 export async function getExams() {
   const cached = cacheGet("exams:all");
@@ -420,8 +431,10 @@ export async function getExam(id) {
 }
 
 export async function createExam(data) {
+  const slug = data.slug || generateSlug(data.title || "");
   const ref = await addDoc(collection(db, "exams"), {
     ...data,
+    slug,
     vendor: data.vendor || "",
     topic: data.topic || "",
     attempts: 0,
@@ -437,6 +450,9 @@ export async function createExam(data) {
 
 export async function updateExam(id, data) {
   const { category, ...cleanData } = data;
+  if (cleanData.title && !cleanData.slug) {
+    cleanData.slug = generateSlug(cleanData.title);
+  }
   await updateDoc(doc(db, "exams", id), {
     ...cleanData,
     updatedAt: serverTimestamp(),
