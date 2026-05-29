@@ -1,9 +1,5 @@
-// services/payment.js — FlexExams Payment Service v4.0 (Vite compatible)
-// PayPal (Live) + Fawaterak (Egyptian payments) + Instapay (manual) + full subscription management
-// ✅ v4: PayPal switched to LIVE mode
-//        Stripe replaced with Fawaterak (supports Egyptian e-wallets, bank accounts, Visa/MC local & intl)
-//        grantSubscription uses admin-safe path, autoRenew threading fixed,
-//        "Payment recorded, but access grant failed" error eliminated.
+// services/payment.js — FlexExams Payment Service v5.0 (Client-side PayPal)
+// PayPal Live Client ID فقط (لا يوجد Secret في الكود العميل)
 
 import {
   db,
@@ -20,19 +16,14 @@ import {
   serverTimestamp,
 } from "../firebase";
 
-// ✅ Fix for "process is not defined" in Vite
 if (typeof process === "undefined") {
   window.process = { env: {} };
 }
 
-// ─── PayPal Config ────────────────────────────────────────────────
-export const PAYPAL_CLIENT_ID =
-  "AdKUnYoRZxAxRgM0JIztXkOqJ2Z5qo6ysrqruiltE6pLaPgdueGF3wVxpX3Pw1YHkm51rYkRZHxkh3b3";
-export const PAYPAL_MODE = "live"; // ✅ Live production mode
+// ─── PayPal Config (Live Client ID) ────────────────────────────────
+export const PAYPAL_CLIENT_ID = "AdvNWjFutpInZmJWWhndIJpFFDNzAD63RcbHVd18TgqBPPv_3l3iXxiyMIu__qW-InQ6L6n2alqlgP8a";
 
-// ─── Fawaterak Config ─────────────────────────────────────────────
-// Supports: Egyptian e-wallets (Vodafone Cash, Orange, Etisalat, We Pay),
-//           Egyptian bank accounts, local Visa/MC, and international cards
+// ─── Fawaterak Config (اختياري) ───────────────────────────────────
 export const FAWATERAK_API_KEY =
   import.meta.env.VITE_FAWATERAK_API_KEY ||
   "001abdcd21d4e6824906ee8fd838447f2c0b76513e83bafcc3";
@@ -159,17 +150,14 @@ export async function validateCoupon(
   }
 }
 
-// ─── Fawaterak: Create Invoice & Get Payment URL ──────────────────
-// Returns { success, paymentUrl, invoiceId, error }
-// The user is redirected to paymentUrl where they choose their payment method
-// (Vodafone Cash, Orange Money, Etisalat, WePay, bank account, Visa/MC)
+// ─── Fawaterak: Create Invoice ───────────────────────────────────
 export async function createFawaterakInvoice({
-  amount,        // Amount in EGP
-  amountUSD = 0, // Original USD amount for records
+  amount,
+  amountUSD = 0,
   currency = "EGP",
   description,
-  customer,      // { first_name, last_name, email, phone, address }
-  cartItems,     // [{ name, price, quantity }]
+  customer,
+  cartItems,
   userId,
   planId = null,
   examId = null,
@@ -181,7 +169,7 @@ export async function createFawaterakInvoice({
     const response = await fetch(`${FAWATERAK_BASE_URL}/invoiceInitPay`, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${FAWATERAK_API_KEY}`,
+        Authorization: `Bearer ${FAWATERAK_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -189,18 +177,26 @@ export async function createFawaterakInvoice({
         currency,
         customer: {
           first_name: customer.first_name || "Customer",
-          last_name:  customer.last_name  || ".",
-          email:      customer.email      || "noreply@flexexams.com",
-          phone:      customer.phone      || "01000000000",
-          address:    customer.address    || "Egypt",
+          last_name: customer.last_name || ".",
+          email: customer.email || "noreply@flexexams.com",
+          phone: customer.phone || "01000000000",
+          address: customer.address || "Egypt",
         },
         cartItems: cartItems || [
-          { name: description || "FlexExams Payment", price: String(parseFloat(amount).toFixed(2)), quantity: "1" }
+          {
+            name: description || "FlexExams Payment",
+            price: String(parseFloat(amount).toFixed(2)),
+            quantity: "1",
+          },
         ],
         redirectionUrls: {
-          successUrl: successUrl || `${window.location.origin}/?fawaterak=success&userId=${userId}&planId=${planId || ""}&examId=${examId || ""}`,
-          failUrl:    failUrl    || `${window.location.origin}/?fawaterak=fail`,
-          pendingUrl: pendingUrl || `${window.location.origin}/?fawaterak=pending&userId=${userId}&planId=${planId || ""}&examId=${examId || ""}`,
+          successUrl:
+            successUrl ||
+            `${window.location.origin}/?fawaterak=success&userId=${userId}&planId=${planId || ""}&examId=${examId || ""}`,
+          failUrl: failUrl || `${window.location.origin}/?fawaterak=fail`,
+          pendingUrl:
+            pendingUrl ||
+            `${window.location.origin}/?fawaterak=pending&userId=${userId}&planId=${planId || ""}&examId=${examId || ""}`,
         },
         providerKey: FAWATERAK_PROVIDER_KEY,
       }),
@@ -227,12 +223,11 @@ export async function createFawaterakInvoice({
   }
 }
 
-// ─── Fawaterak: Verify Invoice Payment Status ─────────────────────
 export async function verifyFawaterakInvoice(invoiceId) {
   try {
     const response = await fetch(`${FAWATERAK_BASE_URL}/invoices/${invoiceId}`, {
       headers: {
-        "Authorization": `Bearer ${FAWATERAK_API_KEY}`,
+        Authorization: `Bearer ${FAWATERAK_API_KEY}`,
         "Content-Type": "application/json",
       },
     });
@@ -249,8 +244,8 @@ export async function submitInstapayPayment(userId, data) {
   const ref = await addDoc(collection(db, "instapay_payments"), {
     userId,
     referenceId: data.referenceId,
-    amount: data.amount, // EGP amount for verification
-    amountUSD: data.amountUSD || 0, // ✅ Original USD amount paid
+    amount: data.amount,
+    amountUSD: data.amountUSD || 0,
     currency: data.currency || "EGP",
     planId: data.planId || null,
     examId: data.examId || null,
@@ -266,16 +261,10 @@ export async function submitInstapayPayment(userId, data) {
 }
 
 // ─── Send Notification to User ────────────────────────────────────
-// إصلاح 4 مشاكل:
-//   1. dedup كان يحجب رسائل الأدمن المختلفة لأنها كلها type="admin_message" بدون examId/planId
-//   2. serverTimestamp() مش متاح فوراً في client → الـ timestamp بيجي 0 → dedup يتعطل
-//   3. cap query بدون limit ممكن يفشل بـ Firestore index error ويقطع الـ function
-//   4. cap كان يمسح فقط لو "أقدم من شهر" → الإشعارات الجديدة مش بتتمسح أبداً
 export async function sendNotification(userId, { type, title, body, data = {} }) {
   try {
     const { limit: fbLimitFn, deleteDoc: fbDeleteDoc } = await import("firebase/firestore");
 
-    // ── 1. Dedup: آخر 20 إشعار بس ─────────────────────────────────
     const recentSnap = await getDocs(
       query(
         collection(db, "notifications"),
@@ -284,24 +273,21 @@ export async function sendNotification(userId, { type, title, body, data = {} })
         fbLimitFn(20)
       )
     );
-    const recentNotifs = recentSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000; // 5 دقايق بدل ساعة
+    const recentNotifs = recentSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
 
-    const isDuplicate = recentNotifs.some(n => {
-      // serverTimestamp() بياخد وقت للكتابة → نستخدم Date.now() من الـ data لو موجود
+    const isDuplicate = recentNotifs.some((n) => {
       const nDate = n.createdAt?.toDate
         ? n.createdAt.toDate().getTime()
-        : (n.data?.sentAt || 0);
+        : n.data?.sentAt || 0;
 
       if (nDate <= fiveMinutesAgo) return false;
       if (n.type !== type) return false;
 
-      // admin_message: dedup بالعنوان + المحتوى (مش examId/planId اللي دايماً null)
       if (type === "admin_message" || type === "contact_reply") {
         return n.title === title && n.body === body;
       }
 
-      // باقي الأنواع: dedup بـ examId + planId زي الأول
       const sameExam = (n.data?.examId || null) === (data.examId || null);
       const samePlan = (n.data?.planId || null) === (data.planId || null);
       return sameExam && samePlan;
@@ -312,19 +298,16 @@ export async function sendNotification(userId, { type, title, body, data = {} })
       return;
     }
 
-    // ── 2. حفظ الإشعار مع clientTimestamp كـ fallback ──────────────
     await addDoc(collection(db, "notifications"), {
       userId,
-      type:      type || "info",
+      type: type || "info",
       title,
       body,
-      data:      { ...data, sentAt: Date.now() }, // sentAt للـ dedup المستقبلي
-      isRead:    false,
+      data: { ...data, sentAt: Date.now() },
+      isRead: false,
       createdAt: serverTimestamp(),
     });
 
-    // ── 3. Cap: احتفظ بآخر 20 فقط — امسح الزيادة بغض النظر عن العمر ──
-    // نستخدم limit(25) عشان نجيب الكل بدون query ضخمة
     const capSnap = await getDocs(
       query(
         collection(db, "notifications"),
@@ -335,10 +318,9 @@ export async function sendNotification(userId, { type, title, body, data = {} })
     ).catch(() => null);
 
     if (capSnap && capSnap.docs.length > 20) {
-      const toDelete = capSnap.docs.slice(20); // الأقدم (بعد الـ 20)
-      await Promise.all(toDelete.map(d => fbDeleteDoc(d.ref).catch(() => {})));
+      const toDelete = capSnap.docs.slice(20);
+      await Promise.all(toDelete.map((d) => fbDeleteDoc(d.ref).catch(() => {})));
     }
-
   } catch (e) {
     console.error("sendNotification error:", e);
   }
@@ -368,8 +350,8 @@ export async function updateReportStatusWithNotification(
         status === "resolved"
           ? "⚠️ Report Reviewed"
           : status === "dismissed"
-          ? "📋 Report Dismissed"
-          : "📋 Report Update",
+            ? "📋 Report Dismissed"
+            : "📋 Report Update",
       body: note,
       data: {
         reportId,
@@ -395,7 +377,6 @@ export async function cancelTransaction(txId, adminUid, note = "") {
   const tx = txSnap.data();
 
   if (tx.type === "subscription" || tx.planId) {
-    // ✅ Admin writes directly to /subscriptions (not /users) to avoid rules conflict
     await setDoc(
       doc(db, "subscriptions", tx.userId),
       {
@@ -422,14 +403,17 @@ export async function cancelTransaction(txId, adminUid, note = "") {
 
   await sendNotification(tx.userId, {
     type: "transaction_cancelled",
-    title: tx.type === "subscription"
-      ? "🚫 Subscription Cancelled"
-      : tx.examTitle
-        ? `🚫 Exam Access Revoked — ${tx.examTitle}`
-        : "🚫 Transaction Cancelled",
-    body: note || (tx.type === "subscription"
-      ? "Your subscription has been cancelled by the admin. Access has been revoked."
-      : "Your exam purchase has been cancelled. Access has been revoked. Contact support if this is a mistake."),
+    title:
+      tx.type === "subscription"
+        ? "🚫 Subscription Cancelled"
+        : tx.examTitle
+          ? `🚫 Exam Access Revoked — ${tx.examTitle}`
+          : "🚫 Transaction Cancelled",
+    body:
+      note ||
+      (tx.type === "subscription"
+        ? "Your subscription has been cancelled by the admin. Access has been revoked."
+        : "Your exam purchase has been cancelled. Access has been revoked. Contact support if this is a mistake."),
     data: {
       txId,
       type: tx.type,
@@ -440,7 +424,6 @@ export async function cancelTransaction(txId, adminUid, note = "") {
   });
 }
 
-// ─── Cancel Subscription (Admin) ──────────────────────────────────
 export async function cancelSubscription(userId, adminUid, note = "") {
   await setDoc(
     doc(db, "subscriptions", userId),
@@ -489,7 +472,7 @@ export async function approveInstapayPayment(paymentId, adminUid, note = "") {
     paymentMethod: "instapay",
     referenceId: payment.referenceId,
     status: "completed",
-    autoRenew: false, // Instapay is always one-time (manual approval)
+    autoRenew: false,
   });
 
   if (payment.planId) {
@@ -503,10 +486,19 @@ export async function approveInstapayPayment(paymentId, adminUid, note = "") {
     title: payment.examId
       ? `✅ Instapay Approved — Exam Access Granted`
       : `✅ Instapay Subscription Approved`,
-    body: note || (payment.examId
-      ? `Your Instapay payment of $${Number(usdAmount).toFixed(2)} was approved. You now have full access to your exam.`
-      : `Your Instapay payment of $${Number(usdAmount).toFixed(2)} was approved. Your subscription is now active!`),
-    data: { txId, paymentId, amount: usdAmount, examTitle: payment.examTitle || null, examId: payment.examId || null, planId: payment.planId || null },
+    body:
+      note ||
+      (payment.examId
+        ? `Your Instapay payment of $${Number(usdAmount).toFixed(2)} was approved. You now have full access to your exam.`
+        : `Your Instapay payment of $${Number(usdAmount).toFixed(2)} was approved. Your subscription is now active!`),
+    data: {
+      txId,
+      paymentId,
+      amount: usdAmount,
+      examTitle: payment.examTitle || null,
+      examId: payment.examId || null,
+      planId: payment.planId || null,
+    },
   });
 
   return txId;
@@ -527,9 +519,7 @@ export async function rejectInstapayPayment(paymentId, adminUid, note = "") {
     await sendNotification(payment.userId, {
       type: "instapay_rejected",
       title: "❌ Payment Rejected",
-      body:
-        note ||
-        "Your Instapay payment could not be verified. Please contact support.",
+      body: note || "Your Instapay payment could not be verified. Please contact support.",
       data: { paymentId },
     });
   }
@@ -538,10 +528,7 @@ export async function rejectInstapayPayment(paymentId, adminUid, note = "") {
 export async function getAllInstapayPayments() {
   try {
     const snap = await getDocs(
-      query(
-        collection(db, "instapay_payments"),
-        orderBy("submittedAt", "desc")
-      )
+      query(collection(db, "instapay_payments"), orderBy("submittedAt", "desc"))
     );
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   } catch (e) {
@@ -550,7 +537,6 @@ export async function getAllInstapayPayments() {
 }
 
 // ─── Save Transaction ─────────────────────────────────────────────
-// ✅ Duplicate prevention: checks for existing tx with same payment ID first
 export async function saveTransaction(userId, data) {
   const dedupId =
     data.paypalOrderId || data.fawaterakInvoiceId || data.referenceId || null;
@@ -563,17 +549,15 @@ export async function saveTransaction(userId, data) {
           ...(data.paypalOrderId
             ? [where("paypalOrderId", "==", data.paypalOrderId)]
             : data.fawaterakInvoiceId
-            ? [where("fawaterakInvoiceId", "==", data.fawaterakInvoiceId)]
-            : [where("referenceId", "==", data.referenceId)])
+              ? [where("fawaterakInvoiceId", "==", data.fawaterakInvoiceId)]
+              : [where("referenceId", "==", data.referenceId)])
         )
       );
       if (!existing.empty) {
         console.warn("⚠️ saveTransaction: duplicate detected, returning existing txId");
         return existing.docs[0].id;
       }
-    } catch (_) {
-      /* ignore dedup check errors */
-    }
+    } catch (_) {}
   }
 
   const txData = {
@@ -599,9 +583,9 @@ export async function saveTransaction(userId, data) {
   try {
     const txRef = await addDoc(collection(db, "transactions"), txData);
     const isSubscription = data.type === "subscription";
-    // ✅ FIX: include exam title / plan name in notification for more detail
     const examLabel = data.examTitle ? ` for "${data.examTitle}"` : "";
-    const planLabel = data.planId === "monthly" ? "Monthly" : data.planId === "yearly" ? "Yearly" : data.planId || "";
+    const planLabel =
+      data.planId === "monthly" ? "Monthly" : data.planId === "yearly" ? "Yearly" : data.planId || "";
     await sendNotification(userId, {
       type: "payment_success",
       title: isSubscription
@@ -610,7 +594,14 @@ export async function saveTransaction(userId, data) {
       body: isSubscription
         ? `Your ${planLabel} plan is now active. Enjoy unlimited access to all exams!`
         : `Payment of $${Number(data.amount).toFixed(2)} confirmed${examLabel}. You now have full access.`,
-      data: { transactionId: txRef.id, txId: txRef.id, amount: data.amount, type: data.type, examTitle: data.examTitle || null, planId: data.planId || null },
+      data: {
+        transactionId: txRef.id,
+        txId: txRef.id,
+        amount: data.amount,
+        type: data.type,
+        examTitle: data.examTitle || null,
+        planId: data.planId || null,
+      },
     }).catch(() => {});
     return txRef.id;
   } catch (e) {
@@ -629,12 +620,7 @@ export async function saveTransaction(userId, data) {
 }
 
 // ─── Grant Subscription ───────────────────────────────────────────
-export async function grantSubscription(
-  userId,
-  planId,
-  txId,
-  autoRenew = false
-) {
+export async function grantSubscription(userId, planId, txId, autoRenew = false) {
   const existing = await getUserSubscription(userId).catch(() => null);
   let startBase = new Date();
   if (existing?.isActive && existing?.planId === planId) {
@@ -709,28 +695,21 @@ export async function grantExamAccess(userId, examId, txId) {
 export async function checkUserAccess(userId, examId) {
   if (!userId) return { hasAccess: false, accessType: "guest" };
   try {
-    // ─── REFUND BLOCKLIST: check first — overrides everything ───────
-    // If subscription was refunded, block regardless of premium flags
     const subSnap = await getDoc(doc(db, "subscriptions", userId));
     const subData = subSnap.exists() ? subSnap.data() : null;
 
-    // Block subscription access if status is cancelled/refunded
     const subBlocked = subData && ["cancelled", "refunded"].includes(subData.status);
 
-    // Check user doc for refunded exam blocklist
     const snap = await getDoc(doc(db, "users", userId));
     const userData = snap.exists() ? snap.data() : null;
 
-    // refundedExams: array of examIds that were refunded — ALWAYS blocks access
     const refundedExams = userData?.refundedExams || [];
     if (examId && refundedExams.includes(examId)) {
       return { hasAccess: false, accessType: "refunded" };
     }
 
-    // subscriptionRefunded flag — blocks all subscription access
     const subRefunded = userData?.subscriptionRefunded === true;
 
-    // ─── SUBSCRIPTION CHECK (only if not blocked) ────────────────────
     if (!subBlocked && !subRefunded) {
       if (subData?.status === "active" && new Date(subData.endDate) > new Date()) {
         return { hasAccess: true, accessType: "subscription", subscription: subData };
@@ -762,10 +741,8 @@ export async function checkUserAccess(userId, examId) {
 
     if (!userData) return { hasAccess: false, accessType: "free" };
 
-    // ─── EXAM PURCHASE CHECK ─────────────────────────────────────────
     if (examId && userData.purchasedExams) {
       const purchased = userData.purchasedExams;
-      // Support both array and object formats
       const hasPurchased = Array.isArray(purchased)
         ? purchased.includes(examId)
         : !!purchased[examId];
@@ -787,8 +764,7 @@ export async function getUserSubscription(userId) {
     const subSnap = await getDoc(doc(db, "subscriptions", userId));
     if (subSnap.exists()) {
       const sub = subSnap.data();
-      const isActive =
-        sub.status === "active" && new Date(sub.endDate) > new Date();
+      const isActive = sub.status === "active" && new Date(sub.endDate) > new Date();
       return { ...sub, isActive };
     }
 
@@ -797,8 +773,7 @@ export async function getUserSubscription(userId) {
     const data = snap.data();
     const sub = data.subscription;
     if (!sub) return null;
-    const isActive =
-      sub.status === "active" && new Date(sub.endDate) > new Date();
+    const isActive = sub.status === "active" && new Date(sub.endDate) > new Date();
     return { ...sub, isActive };
   } catch (e) {
     return null;
@@ -808,9 +783,7 @@ export async function getUserSubscription(userId) {
 // ─── Get All Transactions (Admin) ─────────────────────────────────
 export async function getAllTransactions() {
   try {
-    const snap = await getDocs(
-      query(collection(db, "transactions"), orderBy("createdAt", "desc"))
-    );
+    const snap = await getDocs(query(collection(db, "transactions"), orderBy("createdAt", "desc")));
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   } catch (e) {
     return [];
@@ -821,11 +794,7 @@ export async function getAllTransactions() {
 export async function getUserTransactions(userId) {
   try {
     const snap = await getDocs(
-      query(
-        collection(db, "transactions"),
-        where("userId", "==", userId),
-        orderBy("createdAt", "desc")
-      )
+      query(collection(db, "transactions"), where("userId", "==", userId), orderBy("createdAt", "desc"))
     );
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   } catch (e) {
@@ -852,7 +821,6 @@ export async function submitRefundRequest(userId, data) {
     reviewNote: "",
   });
 
-  // Update transaction status to refund_pending immediately
   if (data.transactionId) {
     await updateDoc(doc(db, "transactions", data.transactionId), {
       status: "refund_pending",
@@ -861,12 +829,17 @@ export async function submitRefundRequest(userId, data) {
     }).catch(() => {});
   }
 
-  // Send ONE notification
   await sendNotification(userId, {
     type: "refund_pending",
     title: "⏳ Refund Request Submitted",
     body: `Your refund request of $${Number(data.amount || 0).toFixed(2)} has been submitted and is under admin review. You will be notified once a decision is made.`,
-    data: { refundId: ref.id, transactionId: data.transactionId, amount: data.amount, examId: data.examId || null, planId: data.planId || null },
+    data: {
+      refundId: ref.id,
+      transactionId: data.transactionId,
+      amount: data.amount,
+      examId: data.examId || null,
+      planId: data.planId || null,
+    },
   }).catch(() => {});
 
   return ref.id;
@@ -874,12 +847,7 @@ export async function submitRefundRequest(userId, data) {
 
 export async function getAllRefundRequests() {
   try {
-    const snap = await getDocs(
-      query(
-        collection(db, "refund_requests"),
-        orderBy("submittedAt", "desc")
-      )
-    );
+    const snap = await getDocs(query(collection(db, "refund_requests"), orderBy("submittedAt", "desc")));
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   } catch (e) {
     return [];
@@ -893,7 +861,6 @@ export async function updateRefundStatus(refundId, status, adminUid, note = "") 
   const isApproved = status === "approved";
   const isRejected = status === "rejected";
 
-  // 1. Update refund_requests doc
   await updateDoc(doc(db, "refund_requests", refundId), {
     status,
     reviewedAt: serverTimestamp(),
@@ -902,7 +869,6 @@ export async function updateRefundStatus(refundId, status, adminUid, note = "") 
     adminNote: note,
   });
 
-  // 2. Update linked transaction status immediately
   const txStatus = isApproved ? "refunded" : isRejected ? "refund_rejected" : "refund_pending";
   if (refData.transactionId) {
     await updateDoc(doc(db, "transactions", refData.transactionId), {
@@ -913,64 +879,66 @@ export async function updateRefundStatus(refundId, status, adminUid, note = "") 
     }).catch(() => {});
   }
 
-  // 3. Revoke access if approved — write BLOCKLIST flags + delete purchase data
   if (isApproved && refData.userId) {
     try {
       if (refData.planId) {
-        // ── Subscription refund ──
-        // Write to /subscriptions (source of truth for checkUserAccess)
-        await setDoc(doc(db, "subscriptions", refData.userId), {
-          status: "refunded",
-          cancelledAt: new Date().toISOString(),
-          cancelledBy: adminUid,
-          cancelNote: note || "Refund approved",
-          updatedAt: serverTimestamp(),
-        }, { merge: true });
+        await setDoc(
+          doc(db, "subscriptions", refData.userId),
+          {
+            status: "refunded",
+            cancelledAt: new Date().toISOString(),
+            cancelledBy: adminUid,
+            cancelNote: note || "Refund approved",
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
 
-        // Write blocklist flag to /users — survives rules issues because it's additive
-        await setDoc(doc(db, "users", refData.userId), {
-          subscriptionRefunded: true,   // ← checkUserAccess reads this
-          premium: false,
-          premiumPlanId: null,
-          premiumUntil: null,
-          hasActiveSubscription: false,
-          subscriptionStatus: "refunded",
-        }, { merge: true }).catch(() => {
-          // If rules block full write, try just the blocklist flag
+        await setDoc(
+          doc(db, "users", refData.userId),
+          {
+            subscriptionRefunded: true,
+            premium: false,
+            premiumPlanId: null,
+            premiumUntil: null,
+            hasActiveSubscription: false,
+            subscriptionStatus: "refunded",
+          },
+          { merge: true }
+        ).catch(() => {
           updateDoc(doc(db, "users", refData.userId), {
             subscriptionRefunded: true,
             subscriptionStatus: "refunded",
           }).catch(() => {});
         });
-
       } else if (refData.examId) {
-        // ── Exam purchase refund ──
         const userSnap = await getDoc(doc(db, "users", refData.userId));
         const userData = userSnap.exists() ? userSnap.data() : {};
         const purchased = userData.purchasedExams || {};
 
         if (Array.isArray(purchased)) {
-          // Array format: use arrayRemove
           const { arrayRemove, arrayUnion } = await import("firebase/firestore");
           await updateDoc(doc(db, "users", refData.userId), {
             purchasedExams: arrayRemove(refData.examId),
-            refundedExams: arrayUnion(refData.examId),  // ← blocklist
+            refundedExams: arrayUnion(refData.examId),
           });
         } else {
-          // Object format: delete key + add to blocklist
           const updated = { ...purchased };
           delete updated[refData.examId];
           const refundedExams = [...(userData.refundedExams || [])];
           if (!refundedExams.includes(refData.examId)) refundedExams.push(refData.examId);
-          await setDoc(doc(db, "users", refData.userId), {
-            purchasedExams: updated,
-            refundedExams,  // ← blocklist persists even if purchasedExams write fails
-          }, { merge: true });
+          await setDoc(
+            doc(db, "users", refData.userId),
+            {
+              purchasedExams: updated,
+              refundedExams,
+            },
+            { merge: true }
+          );
         }
       }
     } catch (accessErr) {
       console.error("updateRefundStatus: access revoke error", accessErr);
-      // Last resort — at minimum write the blocklist flag
       try {
         if (refData.planId) {
           await updateDoc(doc(db, "users", refData.userId), { subscriptionRefunded: true }).catch(() => {});
@@ -984,15 +952,21 @@ export async function updateRefundStatus(refundId, status, adminUid, note = "") 
     }
   }
 
-  // 4. Send ONE notification to user
   const notifType = isApproved ? "refund_approved" : isRejected ? "refund_rejected" : "refund_update";
-  const notifTitle = isApproved ? "✅ Refund Approved" : isRejected ? "❌ Refund Request Rejected" : "📋 Refund Update";
-  const notifBody = isApproved
-    ? (note ? `Your refund has been approved. ${note} Amount will be credited in 3–5 business days.`
-             : "Your refund has been approved and access has been revoked. Amount will be credited in 3–5 business days.")
+  const notifTitle = isApproved
+    ? "✅ Refund Approved"
     : isRejected
-    ? (note ? `Your refund request was rejected. ${note}` : "Your refund request was reviewed and rejected.")
-    : (note || "Your refund request has been updated.");
+      ? "❌ Refund Request Rejected"
+      : "📋 Refund Update";
+  const notifBody = isApproved
+    ? note
+      ? `Your refund has been approved. ${note} Amount will be credited in 3–5 business days.`
+      : "Your refund has been approved and access has been revoked. Amount will be credited in 3–5 business days."
+    : isRejected
+      ? note
+        ? `Your refund request was rejected. ${note}`
+        : "Your refund request was reviewed and rejected."
+      : note || "Your refund request has been updated.";
 
   await sendNotification(refData.userId, {
     type: notifType,
@@ -1028,9 +1002,7 @@ export async function grantLeaderboardReward(userId, adminUid, planId = "yearly"
   await sendNotification(userId, {
     type: "leaderboard_reward",
     title: "🏆 Leaderboard Reward!",
-    body:
-      note ||
-      `Congratulations! You've been awarded a free ${planId} subscription as a leaderboard reward.`,
+    body: note || `Congratulations! You've been awarded a free ${planId} subscription as a leaderboard reward.`,
     data: { adminUid, planId, txId },
   });
 
@@ -1068,11 +1040,9 @@ export function checkRefundEligibility(transaction, usagePercent = 0) {
   const purchaseDate = transaction.createdAt?.toDate
     ? transaction.createdAt.toDate()
     : new Date(transaction.createdAt);
-  const daysSince =
-    (Date.now() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24);
+  const daysSince = (Date.now() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24);
 
-  if (daysSince > 7)
-    return { eligible: false, reason: "Refund window has expired (7 days)" };
+  if (daysSince > 7) return { eligible: false, reason: "Refund window has expired (7 days)" };
   if (usagePercent > 15)
     return {
       eligible: false,
@@ -1081,7 +1051,7 @@ export function checkRefundEligibility(transaction, usagePercent = 0) {
 
   return { eligible: true };
 }
-// ─── Revoke Exam Access (Admin helper) ───────────────────────────
+
 export async function revokeExamAccess(userId, examId) {
   const userSnap = await getDoc(doc(db, "users", userId));
   if (!userSnap.exists()) return;
