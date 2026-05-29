@@ -1,12 +1,19 @@
 {
-  "rewrites": [
+  "routes": [
     {
-      "source": "/share/exam/:slug",
-      "destination": "/api/share"
+      "src": "/share/exam/(?<slug>[^/]+)/?",
+      "dest": "/api/share?slug=$slug"
     },
     {
-      "source": "/(.*)",
-      "destination": "/"
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }
