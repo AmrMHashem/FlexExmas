@@ -1,4 +1,7 @@
-// api/share.js — FlexExams Social Share Handler v4 (debug + slug fix)
+// api/share.js — FlexExams Social Share Handler v5 (hardcoded config)
+
+const FIREBASE_PROJECT_ID = 'exampro-1e4de';
+const FIREBASE_API_KEY    = 'AIzaSyCHbNx6tveBKqN3BwKzK8Ap23d8DHmUSGs';
 
 const SOCIAL_BOTS = [
   'facebookexternalhit','facebot','linkedinbot','twitterbot',
@@ -7,80 +10,64 @@ const SOCIAL_BOTS = [
 ];
 function isSocialBot(ua=''){return SOCIAL_BOTS.some(b=>ua.toLowerCase().includes(b));}
 
-// Firestore field extractor — handles string, integer, double
 function fv(field) {
   if (!field) return '';
-  return field.stringValue ?? field.integerValue ?? field.doubleValue ?? '';
+  return field.stringValue ?? String(field.integerValue ?? field.doubleValue ?? '');
 }
 
 export default async function handler(req, res) {
-  const slug = req.query.slug || req.url?.split('/share/exam/')?.[1]?.replace(/\/$/, '') || '';
+  const slug = req.query.slug || '';
   if (!slug) return res.redirect(302, '/');
 
   const examUrl  = `https://www.flexexams.com/exam/${slug}`;
   const shareUrl = `https://www.flexexams.com/share/exam/${slug}`;
   const ua       = req.headers['user-agent'] || '';
 
-  const projectId = process.env.VITE_FIREBASE_PROJECT_ID;
-  const apiKey    = process.env.VITE_FIREBASE_API_KEY;
-
   let exam = null;
-  let debugInfo = { projectId: projectId ? '✅ set' : '❌ missing', apiKey: apiKey ? '✅ set' : '❌ missing', slug, firestoreResult: null, error: null };
-
   try {
-    if (projectId && apiKey) {
-      // محاولة 1: ابحث بالـ slug
-      const r1 = await fetch(
-        `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({
-            structuredQuery: {
-              from: [{collectionId:'exams'}],
-              where: {fieldFilter:{field:{fieldPath:'slug'},op:'EQUAL',value:{stringValue:slug}}},
-              limit: 1
-            }
-          })
-        }
-      );
-      const d1 = await r1.json();
-      debugInfo.firestoreResult = JSON.stringify(d1).substring(0, 500);
-
-      const f = d1?.[0]?.document?.fields;
-      if (f) {
-        exam = {
-          title:       fv(f.title) || fv(f.name) || fv(f.examName) || '',
-          description: fv(f.description) || fv(f.shortDescription) || '',
-          image:       fv(f.image) || fv(f.thumbnail) || fv(f.imageUrl) || fv(f.coverImage) || '',
-        };
-        debugInfo.examFound = true;
-        debugInfo.fields = Object.keys(f);
-      } else {
-        debugInfo.examFound = false;
-        // محاولة 2: جيب أول اختبار عشان نشوف الـ fields الحقيقية
-        const r2 = await fetch(
-          `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/exams?key=${apiKey}&pageSize=1`,
-        );
-        const d2 = await r2.json();
-        const sample = d2?.documents?.[0]?.fields;
-        if (sample) debugInfo.sampleFields = Object.keys(sample);
+    const r = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery?key=${FIREBASE_API_KEY}`,
+      {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          structuredQuery: {
+            from: [{collectionId:'exams'}],
+            where: {fieldFilter:{field:{fieldPath:'slug'},op:'EQUAL',value:{stringValue:slug}}},
+            limit: 1
+          }
+        })
       }
+    );
+    const data = await r.json();
+    const f    = data?.[0]?.document?.fields;
+    if (f) {
+      exam = {
+        title: fv(f.title) || fv(f.name) || fv(f.examName) || '',
+        description: fv(f.description) || fv(f.shortDescription) || '',
+        image: fv(f.image) || fv(f.thumbnail) || fv(f.imageUrl) || fv(f.coverImage) || '',
+      };
+    }
+
+    // Debug mode
+    if (req.query.debug === '1') {
+      res.setHeader('Content-Type','application/json');
+      return res.status(200).json({
+        slug,
+        examFound: !!f,
+        fields: f ? Object.keys(f) : [],
+        exam,
+        rawSample: f ? JSON.stringify(f).substring(0,800) : null
+      });
     }
   } catch(e) {
-    debugInfo.error = e.message;
+    console.error('[share]', e);
   }
 
   const title = exam?.title || 'Certification Exam Practice';
   const desc  = (exam?.description || `Practice real ${title} exam questions with FlexExams. Timed tests, instant feedback, and AI-powered explanations.`).substring(0,200);
   const image = exam?.image || 'https://www.flexexams.com/og-image.png';
   const bot   = isSocialBot(ua);
-
-  // Debug endpoint: /share/exam/slug?debug=1
-  if (req.query.debug === '1') {
-    res.setHeader('Content-Type','application/json');
-    return res.status(200).json(debugInfo);
-  }
 
   const html = `<!DOCTYPE html>
 <html lang="en">
