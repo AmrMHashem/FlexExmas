@@ -612,44 +612,79 @@ function InstapayForm({ amount, description, userId, planId, examId, onSuccess, 
           Send Payment via Instapay
         </div>
 
-        <a
-          href={instapayDeepLink}
-          onClick={(e) => {
-            setTimeout(() => {
-              if (!document.hasFocus()) return;
-              alert("📱 Instapay app not installed?\n\nUse the account details below to send payment manually.");
-            }, 800);
-          }}
-          style={{
-            display: "block",
-            background: "linear-gradient(135deg,#009639,#007a2f)",
-            textAlign: "center",
-            padding: "14px",
-            borderRadius: 12,
-            color: "#fff",
-            fontWeight: 800,
-            fontSize: 15,
-            textDecoration: "none",
-            marginBottom: 16,
-            transition: "all 0.3s",
-            border: "none",
-            cursor: "pointer",
-            boxShadow: "0 6px 20px rgba(0,150,57,0.3)",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "linear-gradient(135deg,#007a2f,#005a24)";
-            e.currentTarget.style.transform = "translateY(-2px)";
-            e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,150,57,0.4)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "linear-gradient(135deg,#009639,#007a2f)";
-            e.currentTarget.style.transform = "translateY(0)";
-            e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,150,57,0.3)";
-          }}
-        >
-          <Icon name="external" size={16} color="#fff" style={{ marginRight: 8, verticalAlign: "middle" }} />
-          Pay {Number(amountEGP).toLocaleString()} EGP via Instapay App
-        </a>
+        <button
+  onClick={() => {
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const amountEGPNum = Number(amountEGP);
+    const receiver = INSTAPAY_ACCOUNT;
+
+    let deepLink = '';
+    let fallbackUrl = '';
+
+    if (isAndroid) {
+      // Android intent مع package صحيح
+      deepLink = `intent://pay?receiver=${encodeURIComponent(receiver)}&amount=${amountEGPNum}#Intent;scheme=instapay;package=com.egyptianbanks.instapay;end;`;
+      fallbackUrl = 'https://play.google.com/store/apps/details?id=com.egyptianbanks.instapay';
+    } else if (isIOS) {
+      deepLink = `instapay://pay?receiver=${encodeURIComponent(receiver)}&amount=${amountEGPNum}`;
+      fallbackUrl = 'https://apps.apple.com/eg/app/instapay-egypt/id1592108795';
+    } else {
+      deepLink = `instapay://pay?receiver=${encodeURIComponent(receiver)}&amount=${amountEGPNum}`;
+      fallbackUrl = '';
+    }
+
+    // محاولة فتح التطبيق
+    window.location.href = deepLink;
+
+    // بعد 2 ثانية، إذا لم يتم فتح التطبيق (لا يزال المتصفح مرئياً)، اعرض رسالة
+    setTimeout(() => {
+      if (!document.hidden) {
+        const userConfirmed = confirm(
+          `⚠️ لم يتم العثور على تطبيق Instapay.\n\n` +
+          `الرجاء تحويل المبلغ يدوياً إلى:\n` +
+          `📱 الحساب: ${receiver}\n` +
+          `💰 المبلغ: ${amountEGPNum} EGP\n\n` +
+          `بعد التحويل، عد لإدخال رقم المرجع.\n\n` +
+          (fallbackUrl ? `هل تريد تنزيل التطبيق الآن؟` : `يمكنك متابعة الدفع يدوياً.`)
+        );
+        if (userConfirmed && fallbackUrl) {
+          window.open(fallbackUrl, '_blank');
+        }
+      }
+    }, 2000);
+  }}
+  style={{
+    display: "block",
+    background: "linear-gradient(135deg,#009639,#007a2f)",
+    textAlign: "center",
+    padding: "14px",
+    borderRadius: 12,
+    color: "#fff",
+    fontWeight: 800,
+    fontSize: 15,
+    textDecoration: "none",
+    marginBottom: 16,
+    transition: "all 0.3s",
+    border: "none",
+    cursor: "pointer",
+    width: "100%",
+    boxShadow: "0 6px 20px rgba(0,150,57,0.3)",
+  }}
+  onMouseEnter={(e) => {
+    e.currentTarget.style.background = "linear-gradient(135deg,#007a2f,#005a24)";
+    e.currentTarget.style.transform = "translateY(-2px)";
+    e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,150,57,0.4)";
+  }}
+  onMouseLeave={(e) => {
+    e.currentTarget.style.background = "linear-gradient(135deg,#009639,#007a2f)";
+    e.currentTarget.style.transform = "translateY(0)";
+    e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,150,57,0.3)";
+  }}
+>
+  <Icon name="external" size={16} color="#fff" style={{ marginRight: 8, verticalAlign: "middle" }} />
+  Pay {Number(amountEGP).toLocaleString()} EGP via Instapay App
+</button>
 
         {copyRow("Instapay Account / Receiver", INSTAPAY_ACCOUNT, copied, () => copyText(INSTAPAY_ACCOUNT, setCopied))}
 
