@@ -1,11 +1,8 @@
-// firestore.js — FlexExams v6.0 — Zero-Waste Firebase Edition
-// ✅ Memory cache + sessionStorage cache with TTL
-// ✅ Request deduplication (in-flight promises)
-// ✅ limit() on all heavy queries
-// ✅ Quota-exceeded error handler
-// ✅ No onSnapshot anywhere
-// ✅ Minimal reads — batch wherever possible
+// firestore.js — Full file with getExamDashboardData added + in-memory cache for vendors/topics/exams
 
+// ======================
+// IMPORTS
+// ======================
 import {
   db,
   collection, doc, setDoc, getDoc, getDocs,
@@ -13,302 +10,161 @@ import {
   query, where, orderBy, limit,
   serverTimestamp, increment,
   arrayUnion, arrayRemove,
-  markQuotaExceeded,
 } from "../firebase";
 
 import { generateCertId } from "../utils/pdfCertificate";
 import { sendNotification } from "./payment";
 
-// firestore.js — FIXED VERSION
-
 // ======================
-// CACHE LAYER
+// IN-MEMORY CACHE
 // ======================
-const _mem = new Map();         // memory cache (tab-lifetime)
-const _inFlight = new Map();    // in-flight deduplication
+const _cache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// ✅ FIX: Increased TTL for better cache hit rate
-const TTL = {
-  exams:    20 * 60 * 1000,   // ✅ INCREASED: 20 min (was 10)
-  vendors:  20 * 60 * 1000,   // ✅ INCREASED: 20 min (was 15)
-  topics:   20 * 60 * 1000,   // ✅ INCREASED: 20 min (was 15)
-  user:     10 * 60 * 1000,   // ✅ INCREASED: 10 min (was 5)
-  results:  5 * 60 * 1000,    // unchanged
-  notifs:   3 * 60 * 1000,    // unchanged
-  lb:       10 * 60 * 1000,   // ✅ INCREASED: 10 min (was 5)
-  progress: 2 * 60 * 1000,    // ✅ INCREASED: 2 min (was 1)
-  default:  10 * 60 * 1000,   // ✅ INCREASED: 10 min (was 5)
+function cacheGet(key) {
+  const entry = _cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CACHE_TTL) {
+    _cache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function cacheSet(key, data) {
+  _cache.set(key, { data, ts: Date.now() });
+  return data;
+}
+
+// ========== VENDORS ==========
+export const getVendors = async () => {
+  const cached = cacheGet("vendors:all");
+  if (cached) return cached;
+  try {
+    const querySnapshot = await getDocs(collection(db, "vendors"));
+    const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return cacheSet("vendors:all", data);
+  } catch (error) {
+    console.error("Error getting vendors:", error);
+    throw error;
+  }
 };
 
-function getTTL(key) {
-  if (key.startsWith("exams"))    return TTL.exams;
-  if (key.startsWith("vendors"))  return TTL.vendors;
-  if (key.startsWith("topics"))   return TTL.topics;
-  if (key.startsWith("user"))     return TTL.user;
-  if (key.startsWith("results"))  return TTL.results;
-  if (key.startsWith("notifs"))   return TTL.notifs;
-  if (key.startsWith("lb"))       return TTL.lb;
-  if (key.startsWith("progress")) return TTL.progress;
-  return TTL.default;
-}
-
-function memGet(key) {
-  const e = _mem.get(key);
-  if (!e) return null;
-  if (Date.now() - e.ts > getTTL(key)) { 
-    _mem.delete(key); 
-    return null; 
-  }
-  return e.data;
-}
-
-function memSet(key, data) {
-  _mem.set(key, { data, ts: Date.now() });
-  return data;
-}
-
-export function memInvalidate(prefix) {
-  for (const k of _mem.keys()) {
-    if (k.startsWith(prefix)) _mem.delete(k);
-  }
-}
-
-// ✅ FIX: Improved sessionStorage caching
-function ssGet(key) {
-  try {
-    const raw = sessionStorage.getItem("fx_" + key);
-    if (!raw) return null;
-    const { data, ts, ttl } = JSON.parse(raw);
-    if (Date.now() - ts > ttl) { 
-      sessionStorage.removeItem("fx_" + key); 
-      return null; 
-    }
-    return data;
-  } catch { 
-    return null; 
-  }
-}
-
-function ssSet(key, data, ttlMs) {
-  try {
-    sessionStorage.setItem("fx_" + key, JSON.stringify({ 
-      data, 
-      ts: Date.now(), 
-      ttl: ttlMs 
-    }));
-  } catch { 
-    // Storage full — don't crash
-  }
-  return data;
-}
-
-// ✅ FIX: Improved dedupe with timeout
-function dedupe(key, fn, timeoutMs = 30000) {
-  if (_inFlight.has(key)) {
-    return _inFlight.get(key);
-  }
-  
-  const p = Promise.race([
-    fn(),
-    new Promise((_, reject) => 
-      setTimeout(() => reject(new Error(`Request timeout for ${key}`)), timeoutMs)
-    )
-  ]).finally(() => {
-    _inFlight.delete(key);
-  });
-  
-  _inFlight.set(key, p);
-  return p;
-}
-
-// ✅ FIX: Better error handling for quota
-async function fsCall(fn) {
-  try {
-    return await fn();
-  } catch (err) {
-    if (
-      err?.code === "resource-exhausted" ||
-      err?.message?.includes("Quota exceeded") ||
-      err?.message?.includes("quota")
-    ) {
-      console.error("🔴 Firestore quota exceeded!", err);
-      markQuotaExceeded();
-    }
-    throw err;
-  }
-}
-
-// ======================
-// EXAMS (with improved caching)
-// ======================
-export async function getExams() {
-  return dedupe("exams:all", async () => {
-    // ✅ FIX: Check memory cache first (fastest)
-    const memCached = memGet("exams:all");
-    if (memCached) return memCached;
-    
-    // ✅ FIX: Check sessionStorage second (still fast)
-    const ssCached = ssGet("exams:all");
-    if (ssCached) return memSet("exams:all", ssCached);
-
-    // Firestore as last resort
-    const snap = await fsCall(() => 
-      getDocs(query(collection(db, "exams"), orderBy("createdAt", "desc")))
-    );
-    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    
-    // Cache in both memory and sessionStorage
-    ssSet("exams:all", data, TTL.exams);
-    return memSet("exams:all", data);
-  });
-}
-
-export async function getExam(id) {
-  const cKey = `exams:${id}`;
-  const cached = memGet(cKey);
-  if (cached) return cached;
-  
-  const snap = await fsCall(() => getDoc(doc(db, "exams", id)));
-  return snap.exists() ? memSet(cKey, { id: snap.id, ...snap.data() }) : null;
-}
-
-// Rest of firestore.js remains the same...
-// (Only cache layer was modified)
-// sessionStorage helpers (survive page refresh within same tab)
-function ssGet(key) {
-  try {
-    const raw = sessionStorage.getItem("fx_" + key);
-    if (!raw) return null;
-    const { data, ts, ttl } = JSON.parse(raw);
-    if (Date.now() - ts > ttl) { sessionStorage.removeItem("fx_" + key); return null; }
-    return data;
-  } catch { return null; }
-}
-function ssSet(key, data, ttlMs) {
-  try {
-    sessionStorage.setItem("fx_" + key, JSON.stringify({ data, ts: Date.now(), ttl: ttlMs }));
-  } catch { /* storage full — ignore */ }
-  return data;
-}
-
-// Deduplicated fetch — returns same Promise if identical key is in-flight
-function dedupe(key, fn) {
-  if (_inFlight.has(key)) return _inFlight.get(key);
-  const p = fn().finally(() => _inFlight.delete(key));
-  _inFlight.set(key, p);
-  return p;
-}
-
-// Wrap every Firestore call to catch quota errors
-async function fsCall(fn) {
-  try {
-    return await fn();
-  } catch (err) {
-    if (
-      err?.code === "resource-exhausted" ||
-      err?.message?.includes("Quota exceeded") ||
-      err?.message?.includes("quota")
-    ) {
-      markQuotaExceeded();
-    }
-    throw err;
-  }
-}
-
-// ======================
-// VENDORS
-// ======================
-export const getVendors = () =>
-  dedupe("vendors:all", async () => {
-    const cached = memGet("vendors:all") || ssGet("vendors:all");
-    if (cached) return cached;
-    const snap = await fsCall(() => getDocs(collection(db, "vendors")));
-    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    ssSet("vendors:all", data, TTL.vendors);
-    return memSet("vendors:all", data);
-  });
-
 export const createVendor = async (vendorData) => {
-  const ref = await fsCall(() => addDoc(collection(db, "vendors"), {
-    name: vendorData.name || "",
-    logo: vendorData.logo || "🏢",
-    image: vendorData.image || null,
-    color: vendorData.color || "#3b82f6",
-    tag: vendorData.tag || "",
-    description: vendorData.description || "",
-    suggestion: vendorData.suggestion || "",
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  }));
-  memInvalidate("vendors");
-  return ref.id;
+  try {
+    const docRef = await addDoc(collection(db, "vendors"), {
+      name: vendorData.name || "",
+      logo: vendorData.logo || "🏢",
+      image: vendorData.image || null,
+      color: vendorData.color || "#3b82f6",
+      tag: vendorData.tag || "",
+      description: vendorData.description || "",
+      suggestion: vendorData.suggestion || "",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return docRef.id;
+  } catch (error) {
+    console.error("Error creating vendor:", error);
+    throw error;
+  }
 };
 
 export const updateVendor = async (vendorId, vendorData) => {
-  await fsCall(() => updateDoc(doc(db, "vendors", vendorId), { ...vendorData, updatedAt: serverTimestamp() }));
-  memInvalidate("vendors");
+  try {
+    await updateDoc(doc(db, "vendors", vendorId), {
+      ...vendorData,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error("Error updating vendor:", error);
+    throw error;
+  }
 };
 
 export const deleteVendor = async (vendorId) => {
-  await fsCall(() => deleteDoc(doc(db, "vendors", vendorId)));
-  memInvalidate("vendors");
+  try {
+    await deleteDoc(doc(db, "vendors", vendorId));
+  } catch (error) {
+    console.error("Error deleting vendor:", error);
+    throw error;
+  }
 };
 
-// ======================
-// TOPICS
-// ======================
-export const getTopics = () =>
-  dedupe("topics:all", async () => {
-    const cached = memGet("topics:all") || ssGet("topics:all");
-    if (cached) return cached;
-    const snap = await fsCall(() => getDocs(collection(db, "topics")));
-    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    ssSet("topics:all", data, TTL.topics);
-    return memSet("topics:all", data);
-  });
+// ========== TOPICS ==========
+export const getTopics = async () => {
+  const cached = cacheGet("topics:all");
+  if (cached) return cached;
+  try {
+    const querySnapshot = await getDocs(collection(db, "topics"));
+    const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return cacheSet("topics:all", data);
+  } catch (error) {
+    console.error("Error getting topics:", error);
+    throw error;
+  }
+};
 
 export const createTopic = async (topicData) => {
-  const ref = await fsCall(() => addDoc(collection(db, "topics"), {
-    name: topicData.name || "",
-    icon: topicData.icon || "📚",
-    color: topicData.color || "#3b82f6",
-    tag: topicData.tag || "",
-    description: topicData.description || "",
-    suggestion: topicData.suggestion || "",
-    keywords: topicData.keywords || [],
-    stats: topicData.stats || { jobs: "", growth: "", avgSalary: "" },
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  }));
-  memInvalidate("topics");
-  return ref.id;
+  try {
+    const docRef = await addDoc(collection(db, "topics"), {
+      name: topicData.name || "",
+      icon: topicData.icon || "📚",
+      color: topicData.color || "#3b82f6",
+      tag: topicData.tag || "",
+      description: topicData.description || "",
+      suggestion: topicData.suggestion || "",
+      keywords: topicData.keywords || [],
+      stats: topicData.stats || {
+        jobs: "",
+        growth: "",
+        avgSalary: "",
+      },
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return docRef.id;
+  } catch (error) {
+    console.error("Error creating topic:", error);
+    throw error;
+  }
 };
 
 export const updateTopic = async (topicId, topicData) => {
-  await fsCall(() => updateDoc(doc(db, "topics", topicId), { ...topicData, updatedAt: serverTimestamp() }));
-  memInvalidate("topics");
+  try {
+    await updateDoc(doc(db, "topics", topicId), {
+      ...topicData,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error("Error updating topic:", error);
+    throw error;
+  }
 };
 
 export const deleteTopic = async (topicId) => {
-  await fsCall(() => deleteDoc(doc(db, "topics", topicId)));
-  memInvalidate("topics");
+  try {
+    await deleteDoc(doc(db, "topics", topicId));
+  } catch (error) {
+    console.error("Error deleting topic:", error);
+    throw error;
+  }
 };
 
-// ======================
-// USERS
-// ======================
+// ─── USERS ───────────────────────────────────────────────────────────────────
 export async function createUserProfile(uid, data) {
   const ref = doc(db, "users", uid);
-  const snap = await fsCall(() => getDoc(ref));
+  const snap = await getDoc(ref);
+
   if (snap.exists()) {
     const existing = snap.data();
-    await fsCall(() => updateDoc(ref, {
+    await updateDoc(ref, {
       name: data.name || existing.name,
       email: data.email || existing.email,
       updatedAt: serverTimestamp(),
-    }));
+    });
   } else {
-    await fsCall(() => setDoc(ref, {
+    await setDoc(ref, {
       ...data,
       role: "student",
       country: data.country || "Unknown",
@@ -316,644 +172,964 @@ export async function createUserProfile(uid, data) {
       createdAt: serverTimestamp(),
       favorites: [],
       enrolledExams: [],
-      stats: { totalAttempts: 0, totalPassed: 0, averageScore: 0 },
-    }));
+      stats: {
+        totalAttempts: 0,
+        totalPassed: 0,
+        averageScore: 0,
+      }
+    });
   }
-  memInvalidate(`user:${uid}`);
 }
 
 export async function getUserProfile(uid) {
-  const cKey = `user:${uid}:profile`;
-  const cached = memGet(cKey);
-  if (cached) return cached;
-  const snap = await fsCall(() => getDoc(doc(db, "users", uid)));
-  if (snap.exists()) return memSet(cKey, { id: snap.id, ...snap.data() });
+  const snap = await getDoc(doc(db, "users", uid));
+  if (snap.exists()) {
+    const data = snap.data();
+    return { id: snap.id, ...data };
+  }
   return null;
 }
 
 export async function refreshUserRole(uid) {
-  memInvalidate(`user:${uid}`);
-  const snap = await fsCall(() => getDoc(doc(db, "users", uid)));
+  const snap = await getDoc(doc(db, "users", uid));
   return snap.exists() ? snap.data().role : "student";
 }
 
 export async function getAllUsers() {
-  // Admin only — no cache (needs fresh data), but limit 500
-  const snap = await fsCall(() => getDocs(
-    query(collection(db, "users"), orderBy("createdAt", "desc"), limit(500))
-  ));
+  const snap = await getDocs(
+    query(collection(db, "users"), orderBy("createdAt", "desc"))
+  );
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 export async function updateUserRole(uid, role) {
-  await fsCall(() => updateDoc(doc(db, "users", uid), { role, updatedAt: serverTimestamp() }));
-  memInvalidate(`user:${uid}`);
+  await updateDoc(doc(db, "users", uid), {
+    role,
+    updatedAt: serverTimestamp()
+  });
 }
 
 export async function updateUserProfile(uid, data) {
-  await fsCall(() => updateDoc(doc(db, "users", uid), { ...data, updatedAt: serverTimestamp() }));
-  memInvalidate(`user:${uid}`);
+  await updateDoc(doc(db, "users", uid), {
+    ...data,
+    updatedAt: serverTimestamp()
+  });
 }
 
 export async function addFavorite(userId, examId) {
-  await fsCall(() => setDoc(doc(db, "users", userId), { favorites: arrayUnion(examId) }, { merge: true }));
-  memInvalidate(`user:${userId}`);
+  await setDoc(doc(db, "users", userId),
+    { favorites: arrayUnion(examId) },
+    { merge: true }
+  );
 }
 
 export async function removeFavorite(userId, examId) {
-  await fsCall(() => setDoc(doc(db, "users", userId), { favorites: arrayRemove(examId) }, { merge: true }));
-  memInvalidate(`user:${userId}`);
+  await setDoc(doc(db, "users", userId),
+    { favorites: arrayRemove(examId) },
+    { merge: true }
+  );
 }
 
 export async function getFavorites(userId) {
-  const cKey = `user:${userId}:favs`;
-  const cached = memGet(cKey);
-  if (cached) return cached;
-  const snap = await fsCall(() => getDoc(doc(db, "users", userId)));
-  return memSet(cKey, snap.exists() ? (snap.data().favorites || []) : []);
+  const snap = await getDoc(doc(db, "users", userId));
+  return snap.exists() ? (snap.data().favorites || []) : [];
 }
 
+// ========== MERGE GUEST FAVORITES ==========
 export async function mergeGuestFavorites(userId, guestFavIds) {
-  if (!userId || !guestFavIds?.length) return [];
-  const currentFavs = await getFavorites(userId);
-  const newFavs = guestFavIds.filter(id => !currentFavs.includes(id));
-  if (newFavs.length === 0) return currentFavs;
-  await fsCall(() => setDoc(doc(db, "users", userId), { favorites: arrayUnion(...newFavs) }, { merge: true }));
-  memInvalidate(`user:${userId}`);
-  return [...currentFavs, ...newFavs];
+  if (!userId || !guestFavIds || guestFavIds.length === 0) {
+    return [];
+  }
+  try {
+    const currentFavs = await getFavorites(userId);
+    const newFavs = guestFavIds.filter(id => !currentFavs.includes(id));
+    if (newFavs.length === 0) return currentFavs;
+    for (const examId of newFavs) {
+      await addFavorite(userId, examId);
+    }
+    console.log(`Merged ${newFavs.length} guest favorites for user ${userId}`);
+    return [...currentFavs, ...newFavs];
+  } catch (error) {
+    console.error("Error merging guest favorites:", error);
+    throw error;
+  }
 }
 
 export async function getCountryStats() {
-  // Limit to avoid reading entire users collection — use cached exam count instead
-  const snap = await fsCall(() => getDocs(
-    query(collection(db, "users"), limit(300))
-  ));
+  const snap = await getDocs(collection(db, "users"));
   const stats = {};
-  snap.docs.forEach(d => {
-    const country = d.data().country || "Unknown";
+
+  snap.docs.forEach(doc => {
+    const data = doc.data();
+    const country = data.country || "Unknown";
     stats[country] = (stats[country] || 0) + 1;
   });
+
   return Object.entries(stats)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 15)
     .map(([country, count]) => ({ country, count }));
 }
 
-// ======================
-// ENROLLMENT
-// ======================
+// ─── ENROLLMENT ─────────────────────────────────────────────────────────────
 export async function enrollUserInExam(userId, examId) {
-  await fsCall(() => updateDoc(doc(db, "users", userId), { enrolledExams: arrayUnion(examId) }));
-  memInvalidate(`user:${userId}`);
+  try {
+    const userRef = doc(db, "users", userId);
+    await updateDoc(userRef, {
+      enrolledExams: arrayUnion(examId),
+    });
+    return true;
+  } catch (err) {
+    console.error("Enrollment error:", err);
+    throw err;
+  }
 }
 
 export async function getEnrolledExams(userId) {
-  const cKey = `user:${userId}:enrolled`;
-  const cached = memGet(cKey);
-  if (cached) return cached;
-  const snap = await fsCall(() => getDoc(doc(db, "users", userId)));
-  return memSet(cKey, snap.exists() ? (snap.data().enrolledExams || []) : []);
+  try {
+    const userRef = doc(db, "users", userId);
+    const userSnap = await getDoc(userRef);
+
+    if (userSnap.exists()) {
+      return userSnap.data().enrolledExams || [];
+    }
+    return [];
+  } catch (err) {
+    console.error("Error fetching enrolled exams:", err);
+    return [];
+  }
 }
 
 export async function checkIfEnrolled(userId, examId) {
-  const enrolled = await getEnrolledExams(userId);
-  return enrolled.includes(examId);
+  try {
+    const enrolledExams = await getEnrolledExams(userId);
+    return enrolledExams.includes(examId);
+  } catch (err) {
+    console.error("Error checking enrollment:", err);
+    return false;
+  }
 }
 
 export async function unenrollUserFromExam(userId, examId) {
-  try { await clearExamProgress(userId, examId); } catch { /* best-effort */ }
-  await fsCall(() => updateDoc(doc(db, "users", userId), { enrolledExams: arrayRemove(examId) }));
-  memInvalidate(`user:${userId}`);
-  return true;
+  try {
+    console.log("🔍 Starting unenroll process...");
+    try {
+      await clearExamProgress(userId, examId);
+      console.log("✅ Progress cleared");
+    } catch (clearErr) {
+      console.warn("⚠️ Progress clear warning:", clearErr.message);
+    }
+
+    const userRef = doc(db, "users", userId);
+    await updateDoc(userRef, {
+      enrolledExams: arrayRemove(examId),
+    });
+    console.log("✅ Removed from enrolledExams");
+
+    return true;
+  } catch (err) {
+    console.error("❌ Unenrollment error:", err);
+    throw new Error(err.message || "Failed to unenroll from exam");
+  }
 }
 
-// ======================
-// EXAM PROGRESS
-// ======================
+// ─── EXAM PROGRESS ─────────────────────────────────────────────────────────────
 export async function saveExamProgress(userId, examId, progressData) {
-  const progressRef = doc(db, "users", userId, "examProgress", examId);
-  const dataToSave = {
-    examId, userId,
-    currentPart: progressData.currentPart || 0,
-    currentQuestion: progressData.currentQuestion || 0,
-    answers: progressData.answers || {},
-    flagged: progressData.flagged || {},
-    revealed: progressData.revealed || {},
-    totalParts: progressData.totalParts || 1,
-    totalAnswered: Object.keys(progressData.answers || {}).length,
-    timeLeft: progressData.timeLeft ?? null,
-    timestamp: new Date().toISOString(),
-    updatedAt: serverTimestamp(),
-  };
-  await fsCall(() => setDoc(progressRef, dataToSave, { merge: true }));
-  memInvalidate(`progress:${userId}:${examId}`);
-  return true;
+  try {
+    const progressRef = doc(db, "users", userId, "examProgress", examId);
+
+    const dataToSave = {
+      examId,
+      userId,
+      currentPart: progressData.currentPart || 0,
+      currentQuestion: progressData.currentQuestion || 0,
+      answers: progressData.answers || {},
+      flagged: progressData.flagged || {},
+      revealed: progressData.revealed || {},
+      totalParts: progressData.totalParts || 1,
+      totalAnswered: Object.keys(progressData.answers || {}).length,
+      timeLeft: progressData.timeLeft != null ? progressData.timeLeft : null,
+      timestamp: new Date().toISOString(),
+      updatedAt: serverTimestamp(),
+    };
+
+    await setDoc(progressRef, dataToSave, { merge: true });
+
+    console.log("✅ Progress saved successfully");
+    return true;
+  } catch (err) {
+    console.error("❌ Error saving exam progress:", err);
+    throw new Error(err.message || "Failed to save progress");
+  }
 }
 
 export async function getExamProgress(userId, examId) {
-  const cKey = `progress:${userId}:${examId}`;
-  const cached = memGet(cKey);
-  if (cached) return cached;
-  const snap = await fsCall(() => getDoc(doc(db, "users", userId, "examProgress", examId)));
-  return snap.exists() ? memSet(cKey, snap.data()) : null;
+  try {
+    const progressRef = doc(db, "users", userId, "examProgress", examId);
+    const progressSnap = await getDoc(progressRef);
+
+    if (progressSnap.exists()) {
+      return progressSnap.data();
+    }
+
+    return null;
+  } catch (err) {
+    console.error("❌ Error fetching exam progress:", err);
+    return null;
+  }
 }
 
 export async function clearExamProgress(userId, examId) {
-  await fsCall(() => deleteDoc(doc(db, "users", userId, "examProgress", examId)));
-  memInvalidate(`progress:${userId}:${examId}`);
-  return true;
+  try {
+    const progressRef = doc(db, "users", userId, "examProgress", examId);
+    await deleteDoc(progressRef);
+    return true;
+  } catch (err) {
+    console.error("❌ Error clearing exam progress:", err);
+    throw new Error(err.message || "Failed to clear progress");
+  }
 }
 
 export async function getExamCompletionPercentage(userId, examId, totalQuestions) {
-  const progress = await getExamProgress(userId, examId);
-  if (!progress?.answers) return 0;
-  return Math.round((Object.keys(progress.answers).length / totalQuestions) * 100);
+  try {
+    const progress = await getExamProgress(userId, examId);
+    if (!progress || !progress.answers) return 0;
+
+    const answeredCount = Object.keys(progress.answers).length;
+    return Math.round((answeredCount / totalQuestions) * 100);
+  } catch (err) {
+    console.error("❌ Error calculating completion percentage:", err);
+    return 0;
+  }
 }
 
-// ======================
-// SLUG
-// ======================
+// ─── SLUG GENERATOR ──────────────────────────────────────────────────────────
 export function generateSlug(title = "") {
-  return title.toLowerCase().trim()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-{2,}/g, "-")
-    .replace(/^-+|-+$/g, "");
+  return title
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")   // إزالة الرموز الخاصة
+    .replace(/\s+/g, "-")            // استبدال المسافات بـ -
+    .replace(/-{2,}/g, "-")          // منع تكرار --
+    .replace(/^-+|-+$/g, "");        // إزالة - من البداية والنهاية
 }
 
-// ======================
-// EXAMS
-// ======================
+// ─── EXAMS ───────────────────────────────────────────────────────────────────
 export async function getExams() {
-  return dedupe("exams:all", async () => {
-    const memCached = memGet("exams:all");
-    if (memCached) return memCached;
-    const ssCached = ssGet("exams:all");
-    if (ssCached) return memSet("exams:all", ssCached);
-
-    const snap = await fsCall(() => getDocs(
-      query(collection(db, "exams"), orderBy("createdAt", "desc"))
-    ));
-    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    ssSet("exams:all", data, TTL.exams);
-    return memSet("exams:all", data);
-  });
+  const cached = cacheGet("exams:all");
+  if (cached) return cached;
+  const snap = await getDocs(
+    query(collection(db, "exams"), orderBy("createdAt", "desc"))
+  );
+  const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return cacheSet("exams:all", data);
 }
 
 export async function getExam(id) {
-  const cKey = `exams:${id}`;
-  const cached = memGet(cKey);
-  if (cached) return cached;
-  const snap = await fsCall(() => getDoc(doc(db, "exams", id)));
-  return snap.exists() ? memSet(cKey, { id: snap.id, ...snap.data() }) : null;
+  const snap = await getDoc(doc(db, "exams", id));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
 export async function createExam(data) {
   const slug = data.slug || generateSlug(data.title || "");
-  const ref = await fsCall(() => addDoc(collection(db, "exams"), {
-    ...data, slug,
+  const ref = await addDoc(collection(db, "exams"), {
+    ...data,
+    slug,
     vendor: data.vendor || "",
     topic: data.topic || "",
-    attempts: 0, rating: 5.0, totalQuestions: 0, isActive: true,
+    attempts: 0,
+    rating: 5.0,
+    totalQuestions: 0,
+    isActive: true,
     image: data.image || null,
-    createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
-  }));
-  memInvalidate("exams");
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
   return ref.id;
 }
 
 export async function updateExam(id, data) {
   const { category, ...cleanData } = data;
-  if (cleanData.title && !cleanData.slug) cleanData.slug = generateSlug(cleanData.title);
-  await fsCall(() => updateDoc(doc(db, "exams", id), { ...cleanData, updatedAt: serverTimestamp() }));
-  memInvalidate("exams");
+  if (cleanData.title && !cleanData.slug) {
+    cleanData.slug = generateSlug(cleanData.title);
+  }
+  await updateDoc(doc(db, "exams", id), {
+    ...cleanData,
+    updatedAt: serverTimestamp(),
+  });
 }
 
 export async function deleteExam(id) {
-  await fsCall(() => deleteDoc(doc(db, "exams", id)));
-  const qSnap = await fsCall(() => getDocs(query(collection(db, "questions"), where("examId", "==", id))));
+  await deleteDoc(doc(db, "exams", id));
+  const qSnap = await getDocs(
+    query(collection(db, "questions"), where("examId", "==", id))
+  );
   await Promise.all(qSnap.docs.map(d => deleteDoc(d.ref)));
-  memInvalidate("exams");
 }
 
 export async function incrementExamAttempts(examId) {
-  await fsCall(() => updateDoc(doc(db, "exams", examId), {
-    attempts: increment(1), updatedAt: serverTimestamp(),
-  }));
-  memInvalidate(`exams:${examId}`);
-}
-
-export async function getEnrolledCountForExam(examId) {
-  // Use stored counter from exam doc — avoids full users scan
-  const exam = await getExam(examId);
-  return exam?.enrolledCount ?? 0;
-}
-
-// ======================
-// QUESTIONS
-// ======================
-export const getQuestions = async (examId) => {
-  const cKey = `questions:${examId}`;
-  const cached = memGet(cKey);
-  if (cached) return cached;
-  const ssCached = ssGet(cKey);
-  if (ssCached) return memSet(cKey, ssCached);
-
-  const snap = await fsCall(() => getDocs(
-    query(collection(db, "questions"), where("examId", "==", examId))
-  ));
-  const data = snap.docs.map(d => {
-    const q = d.data();
-    let correct = q.correct;
-    if (!correct || !Array.isArray(correct) || correct.length === 0) {
-      if (Array.isArray(q.answer) && q.answer.length > 0) correct = q.answer;
-      else correct = (q.options || []).map((o, i) => o.isCorrect ? (o.id || String(i)) : null).filter(Boolean);
-    }
-    return { id: d.id, ...q, correct };
+  await updateDoc(doc(db, "exams", examId), {
+    attempts: increment(1),
+    updatedAt: serverTimestamp(),
   });
+}
 
-  ssSet(cKey, data, TTL.exams);
-  return memSet(cKey, data);
+// ✅ جذرية 1: دالة لجلب عدد المستخدمين المسجلين في الاختبار (candidates)
+export async function getEnrolledCountForExam(examId) {
+  try {
+    const usersRef = collection(db, "users");
+    const q = query(usersRef, where("enrolledExams", "array-contains", examId));
+    const snapshot = await getDocs(q);
+    return snapshot.size;
+  } catch (error) {
+    console.error("Error getting enrolled count:", error);
+    return 0;
+  }
+}
+
+// ─── QUESTIONS ───────────────────────────────────────────────────────────────
+export const getQuestions = async (examId) => {
+  const q = query(
+    collection(db, "questions"),
+    where("examId", "==", examId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(d => {
+    const data = d.data();
+
+    // ✅ FIX: Normalize "correct" field for Quiz.jsx compatibility.
+    let correct = data.correct;
+    if (!correct || !Array.isArray(correct) || correct.length === 0) {
+      if (Array.isArray(data.answer) && data.answer.length > 0) {
+        correct = data.answer;
+      } else {
+        correct = (data.options || [])
+          .map((o, i) => (o.isCorrect ? (o.id || String(i)) : null))
+          .filter(Boolean);
+      }
+    }
+
+    return { id: d.id, ...data, correct };
+  });
 };
 
 export async function addQuestions(examId, questions) {
   const existing = await getQuestions(examId);
   let order = existing.length;
-  await Promise.all(questions.map(q =>
-    fsCall(() => addDoc(collection(db, "questions"), {
-      ...q, examId, order: order++, createdAt: serverTimestamp(),
-    }))
-  ));
-  await fsCall(() => updateDoc(doc(db, "exams", examId), {
-    totalQuestions: existing.length + questions.length, updatedAt: serverTimestamp(),
-  }));
-  memInvalidate(`questions:${examId}`);
-  memInvalidate("exams");
+  await Promise.all(
+    questions.map(q =>
+      addDoc(collection(db, "questions"), {
+        ...q,
+        examId,
+        order: order++,
+        createdAt: serverTimestamp(),
+      })
+    )
+  );
+  await updateDoc(doc(db, "exams", examId), {
+    totalQuestions: existing.length + questions.length,
+    updatedAt: serverTimestamp(),
+  });
 }
 
 export async function deleteAllExamQuestions(examId) {
-  const snap = await fsCall(() => getDocs(
+  const snap = await getDocs(
     query(collection(db, "questions"), where("examId", "==", examId))
-  ));
+  );
   await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
-  await fsCall(() => updateDoc(doc(db, "exams", examId), {
-    totalQuestions: 0, updatedAt: serverTimestamp(),
-  }));
-  memInvalidate(`questions:${examId}`);
-  memInvalidate("exams");
+  await updateDoc(doc(db, "exams", examId), {
+    totalQuestions: 0,
+    updatedAt: serverTimestamp(),
+  });
 }
 
 export async function deleteQuestion(questionId) {
   const questionRef = doc(db, "questions", questionId);
-  const snap = await fsCall(() => getDoc(questionRef));
-  if (!snap.exists()) return;
-  const examId = snap.data().examId;
-  await fsCall(() => deleteDoc(questionRef));
+  const questionSnap = await getDoc(questionRef);
+  if (!questionSnap.exists()) return;
+  const examId = questionSnap.data().examId;
+
+  await deleteDoc(questionRef);
+
   if (examId) {
-    await fsCall(() => updateDoc(doc(db, "exams", examId), {
-      totalQuestions: increment(-1), updatedAt: serverTimestamp(),
-    })).catch(() => {});
-    memInvalidate(`questions:${examId}`);
-    memInvalidate("exams");
+    try {
+      await updateDoc(doc(db, "exams", examId), {
+        totalQuestions: increment(-1),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (e) {
+      console.warn("⚠️ Could not update totalQuestions on delete:", e.message);
+    }
   }
 }
 
-// ======================
-// RESULTS
-// ======================
+// ─── RESULTS ─────────────────────────────────────────────────────────────────
 export async function saveExamScore(userId, examId, scoreData) {
   try {
     const progressRef = doc(db, "users", userId, "examProgress", examId);
-    const progressSnap = await fsCall(() => getDoc(progressRef));
+    const progressSnap = await getDoc(progressRef);
+
     let updateData = {
       lastAttemptAt: serverTimestamp(),
       totalAttempts: increment(1),
     };
-    if (scoreData?.score !== undefined && scoreData.score !== null) updateData.lastScore = scoreData.score;
-    if (scoreData?.pass !== undefined) updateData.lastPass = scoreData.pass;
+
+    if (scoreData?.score !== undefined && scoreData.score !== null) {
+      updateData.lastScore = scoreData.score;
+    }
+    if (scoreData?.pass !== undefined) {
+      updateData.lastPass = scoreData.pass;
+    }
+
     if (progressSnap.exists()) {
       const currentBest = progressSnap.data().bestScore || 0;
-      if (scoreData?.score > currentBest) updateData.bestScore = scoreData.score;
+      if (scoreData?.score > currentBest) {
+        updateData.bestScore = scoreData.score;
+        console.log("🎉 New best score!", scoreData.score);
+      }
     } else {
-      if (scoreData?.score !== undefined && scoreData.score !== null) updateData.bestScore = scoreData.score;
-      updateData.currentPart = 0; updateData.currentQuestion = 0; updateData.answers = {};
+      if (scoreData?.score !== undefined && scoreData.score !== null) {
+        updateData.bestScore = scoreData.score;
+      }
+      updateData.currentPart = 0;
+      updateData.currentQuestion = 0;
+      updateData.answers = {};
     }
-    await fsCall(() => setDoc(progressRef, updateData, { merge: true }));
-    memInvalidate(`progress:${userId}:${examId}`);
+
+    await setDoc(progressRef, updateData, { merge: true });
     return true;
-  } catch { return false; }
+  } catch (error) {
+    console.error("❌ Error saving exam score:", error);
+    return false;
+  }
 }
 
 export async function saveResult(data) {
-  const ref = await fsCall(() => addDoc(collection(db, "results"), {
-    ...data, createdAt: serverTimestamp(),
-  }));
+  const ref = await addDoc(collection(db, "results"), {
+    ...data,
+    createdAt: serverTimestamp(),
+  });
 
   if (data.userId && data.userId !== "guest") {
     const userRef = doc(db, "users", data.userId);
-    const userSnap = await fsCall(() => getDoc(userRef));
+    const userSnap = await getDoc(userRef);
     if (userSnap.exists()) {
       const stats = userSnap.data().stats || { totalAttempts: 0, totalPassed: 0, averageScore: 0 };
-      const newTotal  = stats.totalAttempts + 1;
+      const newTotal = stats.totalAttempts + 1;
       const newPassed = stats.totalPassed + (data.pass ? 1 : 0);
-      const newAvg    = Math.round((stats.averageScore * stats.totalAttempts + (data.score || 0)) / newTotal);
-      await fsCall(() => updateDoc(userRef, {
-        stats: { totalAttempts: newTotal, totalPassed: newPassed, averageScore: newAvg },
-      }));
-      const finalScore = data.score ?? data.percentage ?? 0;
-      await saveExamScore(data.userId, data.examId, {
-        score: finalScore, pass: data.pass,
-        correctAnswers: data.correct, totalQuestions: data.totalQuestions,
-      });
-      memInvalidate(`user:${data.userId}`);
-    }
+      const newAvg = Math.round((stats.averageScore * stats.totalAttempts + (data.score || 0)) / newTotal);
 
-    if (data.mode === "examSimulation" && data.pass === true) {
-      try {
-        const certId = generateCertId();
-        await saveCertificate({
-          certId, userId: data.userId, userName: data.userName || "Valued Candidate",
-          examId: data.examId, examTitle: data.examTitle, score: data.score,
-          date: data.date || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
-        });
-      } catch (certErr) {
-        console.error("❌ Failed to save certificate:", certErr);
-      }
+      await updateDoc(userRef, {
+        stats: {
+          totalAttempts: newTotal,
+          totalPassed: newPassed,
+          averageScore: newAvg,
+        }
+      });
+
+      const finalScore = (data.score !== undefined && data.score !== null)
+        ? data.score
+        : (data.percentage || 0);
+
+      await saveExamScore(data.userId, data.examId, {
+        score: finalScore,
+        pass: data.pass,
+        correctAnswers: data.correct,
+        totalQuestions: data.totalQuestions
+      });
     }
   }
 
-  memInvalidate(`results:${data.userId}`);
+  if (
+    data.mode === "examSimulation" &&
+    data.pass === true &&
+    data.userId &&
+    data.userId !== "guest" &&
+    data.userId.trim() !== ""
+  ) {
+    try {
+      const certId = generateCertId();
+      await saveCertificate({
+        certId,
+        userId: data.userId,
+        userName: data.userName || "Valued Candidate",
+        examId: data.examId,
+        examTitle: data.examTitle,
+        score: data.score,
+        date: data.date || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+      });
+      console.log("🎓 Certificate saved automatically for user", data.userId, "certId:", certId);
+    } catch (certErr) {
+      console.error("❌ Failed to save certificate:", certErr);
+    }
+  }
+
   return ref.id;
 }
 
 export async function getUserResults(userId) {
-  const cKey = `results:${userId}`;
-  const cached = memGet(cKey);
-  if (cached) return cached;
-  const snap = await fsCall(() => getDocs(
-    query(collection(db, "results"), where("userId", "==", userId), orderBy("createdAt", "desc"), limit(50))
-  ));
-  return memSet(cKey, snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  const snap = await getDocs(
+    query(
+      collection(db, "results"),
+      where("userId", "==", userId),
+      orderBy("createdAt", "desc")
+    )
+  );
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-export async function getAllResults(limitCount = 100) {
-  const snap = await fsCall(() => getDocs(
+export async function getAllResults(limitCount = 200) {
+  const snap = await getDocs(
     query(collection(db, "results"), orderBy("createdAt", "desc"), limit(limitCount))
-  ));
+  );
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 export async function getExamResults(examId) {
-  const snap = await fsCall(() => getDocs(
-    query(collection(db, "results"), where("examId", "==", examId), limit(200))
-  ));
+  const snap = await getDocs(
+    query(collection(db, "results"), where("examId", "==", examId))
+  );
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 export async function deleteResult(id) {
-  await fsCall(() => deleteDoc(doc(db, "results", id)));
+  await deleteDoc(doc(db, "results", id));
 }
 
-// ======================
-// ADMIN STATS
-// ======================
+// ─── ADMIN STATS ─────────────────────────────────────────────────────────────
 export async function getAdminStats() {
-  const cKey = "admin:stats";
-  const cached = memGet(cKey);
-  if (cached) return cached;
-
   const [examsSnap, studentsSnap, resultsSnap, questionsSnap] = await Promise.all([
-    fsCall(() => getDocs(query(collection(db, "exams"), limit(500)))),
-    fsCall(() => getDocs(query(collection(db, "users"), where("role", "==", "student"), limit(500)))),
-    fsCall(() => getDocs(query(collection(db, "results"), limit(500)))),
-    fsCall(() => getDocs(query(collection(db, "questions"), limit(1000)))),
+    getDocs(collection(db, "exams")),
+    getDocs(query(collection(db, "users"), where("role", "==", "student"))),
+    getDocs(collection(db, "results")),
+    getDocs(collection(db, "questions")),
   ]);
+
   const results = resultsSnap.docs.map(d => d.data());
-  const passed  = results.filter(r => r.pass).length;
-  const stats   = {
+  const passed = results.filter(r => r.pass).length;
+
+  return {
     totalExams: examsSnap.size,
     totalStudents: studentsSnap.size,
     totalAttempts: resultsSnap.size,
     totalQuestions: questionsSnap.size,
     passRate: results.length ? Math.round((passed / results.length) * 100) : 0,
   };
-  return memSet(cKey, stats);
 }
 
-// ======================
-// REPORTS
-// ======================
+// ─── REPORTS ─────────────────────────────────────────────────────────────────
 export async function submitQuestionReport(examId, questionId, userId, feedback, correctAnswer, questionText, userAnswer) {
-  return fsCall(() => addDoc(collection(db, "reports"), {
-    examId, questionId, userId, feedback, correctAnswer,
-    questionText, userAnswer, status: "pending", createdAt: serverTimestamp(),
-  }));
+  return await addDoc(collection(db, "reports"), {
+    examId,
+    questionId,
+    userId,
+    feedback,
+    correctAnswer,
+    questionText,
+    userAnswer,
+    status: "pending",
+    createdAt: serverTimestamp(),
+  });
 }
 
 export async function getReports() {
-  const snap = await fsCall(() => getDocs(
-    query(collection(db, "reports"), where("status", "==", "pending"), orderBy("createdAt", "desc"), limit(100))
-  ));
+  const snap = await getDocs(
+    query(collection(db, "reports"), where("status", "==", "pending"), orderBy("createdAt", "desc"))
+  );
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 export async function getAllReports() {
-  const snap = await fsCall(() => getDocs(
-    query(collection(db, "reports"), orderBy("createdAt", "desc"), limit(200))
-  ));
+  const snap = await getDocs(
+    query(collection(db, "reports"), orderBy("createdAt", "desc"))
+  );
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 export async function updateReportStatus(reportId, status, adminUid = null, note = "") {
   const rRef  = doc(db, "reports", reportId);
-  const rSnap = await fsCall(() => getDoc(rRef));
-  await fsCall(() => updateDoc(rRef, {
-    status, reviewNote: note, reviewedBy: adminUid || null,
-    reviewedAt: serverTimestamp(), updatedAt: serverTimestamp(),
-  }));
+  const rSnap = await getDoc(rRef);
+
+  await updateDoc(rRef, {
+    status,
+    reviewNote:  note,
+    reviewedBy:  adminUid || null,
+    reviewedAt:  serverTimestamp(),
+    updatedAt:   serverTimestamp(),
+  });
+
+  // ✅ Always send notification on any status change
   if (rSnap.exists() && rSnap.data().userId) {
     const { userId, questionText } = rSnap.data();
     await sendNotification(userId, {
       type:  `report_${status}`,
-      title: status === "resolved" ? "✅ Report Resolved" : status === "dismissed" ? "📋 Report Dismissed" : "📋 Report Update",
-      body:  note || (status === "resolved" ? "Your report has been resolved." : "Your report status was updated."),
+      title: status === "resolved"
+        ? "✅ Report Resolved"
+        : status === "dismissed"
+        ? "📋 Report Dismissed"
+        : "📋 Report Update",
+      body:  note || (status === "resolved" ? "Your report has been resolved." : status === "dismissed" ? "Your report has been dismissed." : "Your report status was updated."),
       data:  { reportId, status, questionText: (questionText || "").slice(0, 80) },
     });
   }
 }
 
 export async function deleteReport(reportId) {
-  await fsCall(() => deleteDoc(doc(db, "reports", reportId)));
+  await deleteDoc(doc(db, "reports", reportId));
 }
 
-// ======================
-// SCORES — use progress subcollection (single read)
-// ======================
+// ─── USER EXAM SCORES & BEST SCORE ─────────────────────────────────────────
 export async function getUserBestScore(userId, examId) {
-  const progress = await getExamProgress(userId, examId);
-  if (progress?.bestScore != null) return progress.bestScore;
-  if (progress?.lastScore != null) return progress.lastScore;
-  // Fallback: 1 read from results
-  const snap = await fsCall(() => getDocs(
-    query(collection(db, "results"), where("userId", "==", userId), where("examId", "==", examId), orderBy("score", "desc"), limit(1))
-  ));
-  return snap.empty ? null : (snap.docs[0].data().score || snap.docs[0].data().percentage);
+  try {
+    const progressRef = doc(db, "users", userId, "examProgress", examId);
+    const progressSnap = await getDoc(progressRef);
+
+    if (progressSnap.exists()) {
+      const data = progressSnap.data();
+      if (data.bestScore !== undefined && data.bestScore !== null) {
+        return data.bestScore;
+      }
+      if (data.lastScore !== undefined && data.lastScore !== null) {
+        return data.lastScore;
+      }
+    }
+
+    const resultsRef = collection(db, "results");
+    const q = query(
+      resultsRef,
+      where("userId", "==", userId),
+      where("examId", "==", examId),
+      orderBy("score", "desc"),
+      limit(1)
+    );
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      const bestResult = querySnapshot.docs[0].data();
+      return bestResult.score || bestResult.percentage;
+    }
+
+    return null;
+  } catch (error) {
+    console.error("❌ Error getting user best score:", error);
+    return null;
+  }
 }
 
 export async function getUserLastScore(userId, examId) {
-  const progress = await getExamProgress(userId, examId);
-  if (progress?.lastScore != null) return progress.lastScore;
-  const snap = await fsCall(() => getDocs(
-    query(collection(db, "results"), where("userId", "==", userId), where("examId", "==", examId), orderBy("createdAt", "desc"), limit(1))
-  ));
-  return snap.empty ? null : (snap.docs[0].data().score || snap.docs[0].data().percentage);
+  try {
+    const progressRef = doc(db, "users", userId, "examProgress", examId);
+    const progressSnap = await getDoc(progressRef);
+
+    if (progressSnap.exists()) {
+      const data = progressSnap.data();
+      if (data.lastScore !== undefined && data.lastScore !== null) {
+        return data.lastScore;
+      }
+    }
+
+    const resultsRef = collection(db, "results");
+    const q = query(
+      resultsRef,
+      where("userId", "==", userId),
+      where("examId", "==", examId),
+      orderBy("createdAt", "desc"),
+      limit(1)
+    );
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      const lastResult = querySnapshot.docs[0].data();
+      return lastResult.score || lastResult.percentage;
+    }
+
+    return null;
+  } catch (error) {
+    console.error("❌ Error getting user last score:", error);
+    return null;
+  }
 }
 
 export async function getUserExamStats(userId, examId) {
-  const progress = await getExamProgress(userId, examId);
-  return {
-    bestScore: progress?.bestScore || null,
-    lastScore: progress?.lastScore || null,
-    totalAttempts: progress?.totalAttempts || 0,
-    lastAttemptAt: progress?.lastAttemptAt || null,
-    completionPercentage: 0,
-  };
+  try {
+    const stats = {
+      bestScore: null,
+      lastScore: null,
+      totalAttempts: 0,
+      lastAttemptAt: null,
+      completionPercentage: 0
+    };
+
+    const progressRef = doc(db, "users", userId, "examProgress", examId);
+    const progressSnap = await getDoc(progressRef);
+
+    if (progressSnap.exists()) {
+      const data = progressSnap.data();
+      stats.bestScore = data.bestScore || null;
+      stats.lastScore = data.lastScore || null;
+      stats.totalAttempts = data.totalAttempts || 0;
+      stats.lastAttemptAt = data.lastAttemptAt || null;
+    }
+
+    if (!stats.lastScore) {
+      const lastScoreFromResults = await getUserLastScore(userId, examId);
+      if (lastScoreFromResults) stats.lastScore = lastScoreFromResults;
+    }
+
+    const resultsRef = collection(db, "results");
+    const q = query(
+      resultsRef,
+      where("userId", "==", userId),
+      where("examId", "==", examId),
+      orderBy("createdAt", "desc"),
+      limit(1)
+    );
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      const lastResult = querySnapshot.docs[0].data();
+      stats.completionPercentage = lastResult.completionPercentage ||
+        (lastResult.correctAnswers / lastResult.totalQuestions) * 100 || 0;
+    }
+
+    return stats;
+  } catch (error) {
+    console.error("❌ Error getting user exam stats:", error);
+    return { bestScore: null, lastScore: null, totalAttempts: 0, lastAttemptAt: null, completionPercentage: 0 };
+  }
 }
 
-// ======================
-// CERTIFICATES
-// ======================
+// ─── CERTIFICATES ───────────────────────────────────────────────────────────
 export async function saveCertificate({ certId, userId, userName, examId, examTitle, score, date }) {
-  if (!userId || userId === "guest" || !userId.trim()) return null;
-  if (!certId?.trim()) throw new Error("certId is required");
-  const certRef = doc(db, "certificates", certId);
-  const snap = await fsCall(() => getDoc(certRef));
-  if (snap.exists()) return certId;
-  await fsCall(() => setDoc(certRef, {
-    certId, userId, userName: userName || "Valued Candidate",
-    examId: examId || "", examTitle: examTitle || "Professional Certification Exam",
-    score: score ?? 0,
-    date: date || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
-    issuedAt: serverTimestamp(),
-  }));
-  return certId;
+  try {
+    if (!userId || userId === "guest" || userId.trim() === "") {
+      console.warn("⚠️ saveCertificate: skipped — no valid userId (guest user)");
+      return null;
+    }
+    if (!certId || certId.trim() === "") {
+      console.error("❌ saveCertificate: certId is missing");
+      throw new Error("certId is required");
+    }
+
+    const certRef = doc(db, "certificates", certId);
+    const snap = await getDoc(certRef);
+
+    if (snap.exists()) return certId;
+
+    const nowDate = date || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+    await setDoc(certRef, {
+      certId,
+      userId,
+      userName: userName || "Valued Candidate",
+      examId: examId || "",
+      examTitle: examTitle || "Professional Certification Exam",
+      score: score ?? 0,
+      date: nowDate,
+      issuedAt: serverTimestamp(),
+    });
+
+    console.log("✅ Certificate saved:", certId, "for user:", userId);
+    return certId;
+  } catch (err) {
+    console.error("❌ Error saving certificate:", err);
+    throw err;
+  }
 }
 
 export async function getUserCertificates(userId) {
-  if (!userId || userId === "guest") return [];
-  const snap = await fsCall(() => getDocs(
-    query(collection(db, "certificates"), where("userId", "==", userId), limit(50))
-  ));
-  return snap.docs.map(d => ({ id: d.id, ...d.data(), certId: d.data().certId || d.id }));
+  try {
+    if (!userId || userId === "guest") return [];
+    const q = query(
+      collection(db, "certificates"),
+      where("userId", "==", userId)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => {
+      const data = d.data();
+      return {
+        id: d.id,
+        ...data,
+        certId: data.certId || d.id,
+      };
+    });
+  } catch (error) {
+    console.error("Error getting user certificates:", error);
+    return [];
+  }
 }
 
 export async function getUserCertificateForExam(userId, examId) {
-  const snap = await fsCall(() => getDocs(
-    query(collection(db, "certificates"), where("userId", "==", userId), where("examId", "==", examId), limit(1))
-  ));
-  return snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
-}
-
-// ======================
-// MERGED DASHBOARD DATA — single batched fetch
-// ======================
-export async function getExamDashboardData(userId, examId) {
   try {
-    // Single progress read covers: enrollment, bestScore, lastScore, attempts
-    const [progress, userCert] = await Promise.all([
-      getExamProgress(userId, examId),
-      getUserCertificateForExam(userId, examId),
-    ]);
-
-    // Enrollment check from already-cached user profile (no extra read)
-    const enrolled = await getEnrolledExams(userId);
-    const isEnrolled = enrolled.includes(examId);
-
-    // Exam attempts/enrolled count from cached exam doc
-    const examDoc = await getExam(examId);
-
-    return {
-      isEnrolled,
-      bestScore: progress?.bestScore || null,
-      lastScore: progress?.lastScore || null,
-      attemptsCount: examDoc?.attempts || 0,
-      enrolledCount: examDoc?.enrolledCount || 0,
-      userCertificate: userCert,
-      savedProgress: progress,
-      enrolling: false,
-      unenrolling: false,
-    };
-  } catch {
-    return {
-      isEnrolled: false, bestScore: null, lastScore: null,
-      attemptsCount: 0, enrolledCount: 0, userCertificate: null,
-      savedProgress: null, enrolling: false, unenrolling: false,
-    };
+    const q = query(
+      collection(db, "certificates"),
+      where("userId", "==", userId),
+      where("examId", "==", examId)
+    );
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return null;
+    return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+  } catch (error) {
+    console.error("Error getting certificate for exam:", error);
+    return null;
   }
 }
 
 // ======================
-// WEEKLY COUNTERS — unchanged (runs once/week)
+// ✅ NEW: Merged dashboard data function (reduces reads)
 // ======================
+export async function getExamDashboardData(userId, examId, options = {}) {
+  const { signal } = options;
+
+  try {
+    const [
+      enrolledStatus,
+      bestScore,
+      stats,
+      savedProgress,
+      userCertificate,
+      enrolledCount,
+      examDoc
+    ] = await Promise.all([
+      checkIfEnrolled(userId, examId),
+      getUserBestScore(userId, examId),
+      getUserExamStats(userId, examId),
+      getExamProgress(userId, examId),
+      getUserCertificateForExam(userId, examId),
+      getEnrolledCountForExam(examId),
+      getExam(examId)
+    ]);
+
+    return {
+      isEnrolled: enrolledStatus,
+      bestScore: bestScore,
+      lastScore: stats?.lastScore || null,
+      attemptsCount: examDoc?.attempts || 0,
+      enrolledCount: enrolledCount,
+      userCertificate: userCertificate,
+      savedProgress: savedProgress,
+      enrolling: false,
+      unenrolling: false,
+    };
+  } catch (error) {
+    if (error.name === "AbortError") {
+      console.log("Dashboard data fetch aborted");
+      throw error;
+    }
+    console.error("Error fetching exam dashboard data:", error);
+    return {
+      isEnrolled: false,
+      bestScore: null,
+      lastScore: null,
+      attemptsCount: 0,
+      enrolledCount: 0,
+      userCertificate: null,
+      savedProgress: null,
+      enrolling: false,
+      unenrolling: false,
+    };
+  }
+}
+
+// ─── AUTO WEEKLY COUNTERS UPDATE ────────────────────────────────
 const WEEKLY_UPDATE_KEY = "flexexams_last_weekly_update";
 
 export async function runWeeklyCountersUpdate() {
   try {
     const lastRun = localStorage.getItem(WEEKLY_UPDATE_KEY);
-    if (lastRun && Date.now() - parseInt(lastRun) < 7 * 24 * 60 * 60 * 1000) return false;
+    const now     = Date.now();
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-    const examsSnap = await fsCall(() => getDocs(query(collection(db, "exams"), limit(200))));
+    if (lastRun && now - parseInt(lastRun) < WEEK_MS) return false;
+
+    console.log("🔄 Running weekly counters update…");
+
+    const examsSnap = await getDocs(collection(db, "exams"));
     const examIds   = examsSnap.docs.map(d => d.id);
 
-    await Promise.allSettled(examIds.map(async (examId) => {
+    const updatePromises = examIds.map(async (examId) => {
       try {
-        const [enrolledSnap, attemptsSnap] = await Promise.all([
-          fsCall(() => getDocs(query(collection(db, "users"), where("enrolledExams", "array-contains", examId), limit(500)))),
-          fsCall(() => getDocs(query(collection(db, "results"), where("examId", "==", examId), limit(500)))),
-        ]);
-        await fsCall(() => updateDoc(doc(db, "exams", examId), {
-          enrolledCount: enrolledSnap.size,
-          attempts: attemptsSnap.size,
-          countersUpdatedAt: serverTimestamp(),
-        }));
-      } catch { /* ignore per-exam errors */ }
-    }));
+        const enrolledQ  = query(
+          collection(db, "users"),
+          where("enrolledExams", "array-contains", examId)
+        );
+        const enrolledSnap = await getDocs(enrolledQ);
+        const enrolledCount = enrolledSnap.size;
 
-    localStorage.setItem(WEEKLY_UPDATE_KEY, String(Date.now()));
-    memInvalidate("exams");
+        const attemptsQ  = query(
+          collection(db, "results"),
+          where("examId", "==", examId)
+        );
+        const attemptsSnap = await getDocs(attemptsQ);
+        const attemptsCount = attemptsSnap.size;
+
+        await updateDoc(doc(db, "exams", examId), {
+          enrolledCount: enrolledCount,
+          attempts:      attemptsCount,
+          countersUpdatedAt: serverTimestamp(),
+        });
+      } catch (e) {
+        // ignore per-exam errors
+      }
+    });
+
+    await Promise.allSettled(updatePromises);
+
+    localStorage.setItem(WEEKLY_UPDATE_KEY, String(now));
+    console.log(`✅ Weekly update done — ${examIds.length} exams updated`);
     return true;
-  } catch { return false; }
+  } catch (e) {
+    console.error("Weekly update failed:", e);
+    return false;
+  }
 }
 
 // ======================
-// EXAM STATISTICS
+// ✅ EXAM STATISTICS
 // ======================
 export async function getExamStatistics(examId) {
-  const cKey = `examStats:${examId}`;
-  const cached = memGet(cKey);
-  if (cached) return cached;
-  const snap = await fsCall(() => getDoc(doc(db, "examStats", examId)));
-  return snap.exists() ? memSet(cKey, snap.data()) : null;
+  try {
+    const statsRef = doc(db, "examStats", examId);
+    const statsSnap = await getDoc(statsRef);
+    if (statsSnap.exists()) {
+      return statsSnap.data();
+    }
+    return null;
+  } catch (error) {
+    console.error("Error fetching exam statistics:", error);
+    return null;
+  }
 }
 
 export async function updateExamStatistics(examId) {
-  const questionsSnap = await fsCall(() => getDocs(
-    query(collection(db, "questions"), where("examId", "==", examId))
-  ));
-  const questions = questionsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const topicsDist = {};
-  questions.forEach(q => {
-    const domain = q.domain || "Uncategorized";
-    topicsDist[domain] = (topicsDist[domain] || 0) + 1;
-  });
-  const examDoc  = await getExam(examId);
-  await fsCall(() => setDoc(doc(db, "examStats", examId), {
-    totalQuestions: questions.length,
-    topicsDistribution: topicsDist,
-    duration: examDoc?.duration || 0,
-    passScore: examDoc?.passScore || 70,
-    updatedAt: serverTimestamp(),
-  }, { merge: true }));
-  memInvalidate(`examStats:${examId}`);
-  return true;
+  try {
+    const questionsSnap = await getDocs(
+      query(collection(db, "questions"), where("examId", "==", examId))
+    );
+    const questions = questionsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const total = questions.length;
+    const topicsDist = {};
+    questions.forEach(q => {
+      const domain = q.domain || "Uncategorized";
+      topicsDist[domain] = (topicsDist[domain] || 0) + 1;
+    });
+
+    const examDoc = await getExam(examId);
+    const duration = examDoc?.duration || 0;
+    const passScore = examDoc?.passScore || 70;
+
+    await setDoc(doc(db, "examStats", examId), {
+      totalQuestions: total,
+      topicsDistribution: topicsDist,
+      duration: duration,
+      passScore: passScore,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    
+    console.log(`✅ Exam statistics updated for ${examId}`);
+    return true;
+  } catch (error) {
+    console.error("Error updating exam statistics:", error);
+    return false;
+  }
 }
