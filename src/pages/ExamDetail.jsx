@@ -1,8 +1,6 @@
-// pages/ExamDetail.jsx — v8.5 — Diagnostic version with full logs
-// ✅ All logs prefixed with 🔍 for easy filtering
-// ✅ Mount/unmount counters
-// ✅ State change tracking
-// ✅ window.location.reload interception
+// pages/ExamDetail.jsx — v8.5 — Fixed infinite refresh loop
+// ✅ Coupon processed only once (no autoApplyCoupon state)
+// ✅ No more re‑trigger loops
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useAuth } from "../hooks/useAuth";
@@ -34,7 +32,7 @@ import {
 } from "../services/payment";
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Stars (نفس السابق)
+//  Stars
 // ─────────────────────────────────────────────────────────────────────────────
 const Stars = React.memo(function Stars({ rating = 5 }) {
   return (
@@ -53,7 +51,7 @@ const Stars = React.memo(function Stars({ rating = 5 }) {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Vendor Logo Map (نفس السابق)
+//  Vendor Logo Map (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 const vendorLogos = {
   AWS: "https://upload.wikimedia.org/wikipedia/commons/9/93/Amazon_Web_Services_Logo.svg",
@@ -90,7 +88,7 @@ const getMotivationalMessage = (score) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  ScoreCard (نفس السابق)
+//  ScoreCard (best score)
 // ─────────────────────────────────────────────────────────────────────────────
 const ScoreCard = React.memo(function ScoreCard({ score, examTitle }) {
   const percentage = Math.round(score);
@@ -122,7 +120,7 @@ const ScoreCard = React.memo(function ScoreCard({ score, examTitle }) {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  LastScoreCard (نفس السابق)
+//  LastScoreCard
 // ─────────────────────────────────────────────────────────────────────────────
 const LastScoreCard = React.memo(function LastScoreCard({ lastScore, examTitle }) {
   if (!lastScore || lastScore === 0) return null;
@@ -179,7 +177,7 @@ const LastScoreCard = React.memo(function LastScoreCard({ lastScore, examTitle }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  TopicDistributionBar (نفس السابق)
+//  TopicDistributionBar
 // ─────────────────────────────────────────────────────────────────────────────
 const TopicDistributionBar = React.memo(function TopicDistributionBar({ domain, count, total, color }) {
   const percentage = ((count / total) * 100).toFixed(1);
@@ -195,7 +193,7 @@ const TopicDistributionBar = React.memo(function TopicDistributionBar({ domain, 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SmartStickyPanel (نفس السابق)
+//  SmartStickyPanel (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 function SmartStickyPanel({ children, topOffset = 24 }) {
   const [isMobile, setIsMobile] = useState(() =>
@@ -348,7 +346,7 @@ function SmartStickyPanel({ children, topOffset = 24 }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  CouponInput (نفس السابق)
+//  CouponInput (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 function CouponInput({ examId, originalPrice, onApply, userId }) {
   const [code, setCode]       = useState("");
@@ -429,7 +427,7 @@ function CouponInput({ examId, originalPrice, onApply, userId }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SuggestedExams (نفس السابق)
+//  SuggestedExams (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 const SuggestedExams = React.memo(function SuggestedExams({ currentExam, setPage }) {
   const [suggested, setSuggested] = useState([]);
@@ -501,7 +499,7 @@ const SuggestedExams = React.memo(function SuggestedExams({ currentExam, setPage
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Main ExamDetail Component (مع كافة أدوات التشخيص)
+//  Main ExamDetail Component – FIXED
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   const { user, profile } = useAuth();
@@ -521,61 +519,17 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   });
   const [userAccess, setUserAccess]         = useState(null);
   const [accessLoading, setAccessLoading]   = useState(true);
-  const [autoApplyCoupon, setAutoApplyCoupon] = useState(null);
   const [claimingFree, setClaimingFree]     = useState(false);
 
   const abortControllerRef = useRef(null);
   const cacheRef           = useRef({});
+  const couponProcessedRef = useRef(false);  // ⬅️ KEY FIX: ensures coupon runs only once
 
-  // ==================== أدوات التشخيص ====================
-  const mountCount = useRef(0);
-  const couponExtractedRef = useRef(false);      // استخراج الكوبون من URL مرة واحدة
-  const couponProcessingRef = useRef(false);     // منع تكرار المعالجة
-  const lastProcessedCodeRef = useRef(null);     // آخر كوبون تمت معالجته
-
-  // مراقبة الـ Mount / Unmount
-  useEffect(() => {
-    mountCount.current += 1;
-    const currentMount = mountCount.current;
-    console.log(`🔍 [ExamDetail] 🔁 MOUNT #${currentMount} at ${new Date().toISOString()}`);
-    
-    // مراقبة window.location.reload
-    const originalReload = window.location.reload;
-    window.location.reload = function(...args) {
-      console.trace(`🔍 [ExamDetail] 🔥🔥🔥 window.location.reload() called! Mount #${currentMount}`);
-      return originalReload.apply(window, args);
-    };
-    
-    return () => {
-      console.log(`🔍 [ExamDetail] 🧹 UNMOUNT #${currentMount}`);
-      window.location.reload = originalReload;
-    };
-  }, []);
-
-  // مراقبة تغييرات الحالات المهمة
-  useEffect(() => {
-    console.log(`🔍 [ExamDetail] 👤 user changed:`, user?.uid || 'null', user?.email || '');
-  }, [user]);
-
-  useEffect(() => {
-    console.log(`🔍 [ExamDetail] 🔄 autoApplyCoupon ->`, autoApplyCoupon);
-  }, [autoApplyCoupon]);
-
-  useEffect(() => {
-    console.log(`🔍 [ExamDetail] 💰 appliedCoupon ->`, appliedCoupon);
-  }, [appliedCoupon]);
-
-  useEffect(() => {
-    console.log(`🔍 [ExamDetail] 📦 exam changed:`, exam?.id, exam?.title);
-  }, [exam]);
-
-  // ==================== نهاية أدوات التشخيص ====================
-
-  // ── SEO + استخراج الكوبون من URL (مرة واحدة فقط) ───────────────────────
+  // ── Combined SEO + Coupon extraction (runs once) ───────────────────────
   useEffect(() => {
     if (!exam) return;
-    console.log(`🔍 [ExamDetail] useEffect SEO/Extract running, couponExtractedRef=${couponExtractedRef.current}`);
-    
+
+    // SEO meta tags (always update)
     document.title = `${exam.title} | FlexExams Certification Practice`;
     const setMeta = (sel, attr, val, content) => {
       let el = document.querySelector(sel);
@@ -586,68 +540,27 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     setMeta('meta[property="og:title"]', "property", "og:title", `${exam.title} - FlexExams`);
     setMeta('meta[property="og:description"]', "property", "og:description", exam.description || `Test your knowledge with exam questions.`);
     if (exam.image) setMeta('meta[property="og:image"]', "property", "og:image", exam.image);
-    
-    // استخراج الكوبون من URL مرة واحدة فقط
-    if (!couponExtractedRef.current) {
+
+    // Coupon processing – only once per component lifecycle
+    if (!couponProcessedRef.current && exam.pricing?.price) {
       const url = new URL(window.location.href);
       const cpCode = url.searchParams.get("couponCode");
-      console.log(`🔍 [ExamDetail] Extracting coupon from URL:`, cpCode);
       if (cpCode) {
-        setAutoApplyCoupon(cpCode);
+        couponProcessedRef.current = true;
+        validateCoupon(cpCode, exam.id, null, user?.uid || null)
+          .then(res => {
+            if (res.valid) {
+              const discountPercent = res.discount || 0;
+              const discountAmount = res.discountAmount || (exam.pricing.price * discountPercent / 100);
+              const newPrice = Math.max(0, exam.pricing.price - discountAmount);
+              setAppliedCoupon({ code: cpCode, discountPercent, discountAmount, newPrice });
+            }
+            // No further state changes that could cause a loop
+          })
+          .catch(err => console.error("Coupon validation error:", err));
       }
-      couponExtractedRef.current = true;
     }
-  }, [exam]);
-
-  // ── Auto-apply coupon (مرة واحدة لكل كود) ──────────────────────────────
-  useEffect(() => {
-    console.log(`🔍 [ExamDetail] useEffect autoApplyCoupon triggered: autoApplyCoupon=${autoApplyCoupon}, price=${exam?.pricing?.price}, processing=${couponProcessingRef.current}, lastCode=${lastProcessedCodeRef.current}`);
-    
-    if (!autoApplyCoupon || !exam?.pricing?.price) {
-      console.log(`🔍 [ExamDetail] -> early exit (no coupon or no price)`);
-      return;
-    }
-    if (couponProcessingRef.current) {
-      console.log(`🔍 [ExamDetail] -> early exit (already processing)`);
-      return;
-    }
-    if (lastProcessedCodeRef.current === autoApplyCoupon) {
-      console.log(`🔍 [ExamDetail] -> early exit (already processed this code)`);
-      return;
-    }
-
-    console.log(`🔍 [ExamDetail] 🚀 Starting coupon validation for code: ${autoApplyCoupon}`);
-    couponProcessingRef.current = true;
-    let mounted = true;
-
-    validateCoupon(autoApplyCoupon, exam.id, null, user?.uid || null)
-      .then(res => {
-        if (!mounted) return;
-        console.log(`🔍 [ExamDetail] validateCoupon result: valid=${res.valid}, discount=${res.discount}`);
-        if (res.valid) {
-          const discountPercent = res.discount || 0;
-          const discountAmount = res.discountAmount || (exam.pricing.price * discountPercent / 100);
-          const newPrice = Math.max(0, exam.pricing.price - discountAmount);
-          setAppliedCoupon({ code: autoApplyCoupon, discountPercent, discountAmount, newPrice });
-        }
-        lastProcessedCodeRef.current = autoApplyCoupon;
-        setAutoApplyCoupon(null);
-      })
-      .catch((err) => {
-        console.error(`🔍 [ExamDetail] validateCoupon error:`, err);
-        if (mounted) {
-          lastProcessedCodeRef.current = autoApplyCoupon;
-          setAutoApplyCoupon(null);
-        }
-      })
-      .finally(() => {
-        if (mounted) {
-          couponProcessingRef.current = false;
-        }
-      });
-
-    return () => { mounted = false; };
-  }, [autoApplyCoupon, exam?.id, exam?.pricing?.price, user?.uid]);
+  }, [exam, user?.uid]); // Only depends on exam and user ID
 
   // ── Vendors ───────────────────────────────────────────────────────
   useEffect(() => { getVendors().then(setVendors).catch(() => {}); }, []);
