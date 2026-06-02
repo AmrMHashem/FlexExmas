@@ -248,102 +248,106 @@ export default function Pricing({ setPage, showToast }) {
                   : isPopular ? "0 8px 24px rgba(99,102,241,0.12)" : "none",
               }}
             >
-              {/* Popular / Best Value badge */}
-              {(isPopular || isYearly) && (
-                <div style={{
-                  position: "absolute", top: 20, right: 20,
-                  background: isPopular
-                    ? "linear-gradient(135deg,#6366f1,#8b5cf6)"
-                    : "linear-gradient(135deg,#ec4899,#f43f5e)",
-                  borderRadius: 100, padding: "4px 12px",
-                  fontSize: 10, fontWeight: 800, color: "#fff",
-                  textTransform: "uppercase", letterSpacing: "0.08em",
-                }}>
-                  {isPopular ? "Most Popular" : "Best Value"}
-                </div>
-              )}
+            {/* Popular / Best Value badge */}
+{(isPopular || isYearly) && (
+  <div style={{
+    position: "absolute", top: 20, right: 20,
+    background: isPopular
+      ? "linear-gradient(135deg,#6366f1,#8b5cf6)"
+      : "linear-gradient(135deg,#ec4899,#f43f5e)",
+    borderRadius: 100, padding: "4px 12px",
+    fontSize: 10, fontWeight: 800, color: "#fff",
+    textTransform: "uppercase", letterSpacing: "0.08em",
+  }}>
+    {isPopular ? "Most Popular" : "Best Value"}
+  </div>
+)}
 
-              <div style={{ marginBottom: 24 }}>
-                <div style={{
-                  display: "inline-flex", alignItems: "center", gap: 6,
-                  background: isPopular ? "rgba(99,102,241,0.12)" : "rgba(236,72,153,0.1)",
-                  border: `1px solid ${isPopular ? "rgba(99,102,241,0.3)" : "rgba(236,72,153,0.3)"}`,
-                  borderRadius: 100, padding: "4px 12px", marginBottom: 16,
-                  fontSize: 11, fontWeight: 700,
-                  color: isPopular ? "var(--accent)" : "#ec4899",
-                  textTransform: "uppercase", letterSpacing: "0.1em",
-                }}>
-                  <Icon name={isYearly ? "crown" : "zap"} size={12} color={isPopular ? "var(--accent)" : "#ec4899"} />
-                  {plan.name}
-                </div>
+<div style={{ marginBottom: 24 }}>
+  <div style={{
+    display: "inline-flex", alignItems: "center", gap: 6,
+    background: isPopular ? "rgba(99,102,241,0.12)" : "rgba(236,72,153,0.1)",
+    border: `1px solid ${isPopular ? "rgba(99,102,241,0.3)" : "rgba(236,72,153,0.3)"}`,
+    borderRadius: 100, padding: "4px 12px", marginBottom: 16,
+    fontSize: 11, fontWeight: 700,
+    color: isPopular ? "var(--accent)" : "#ec4899",
+    textTransform: "uppercase", letterSpacing: "0.1em",
+  }}>
+    <Icon name={isYearly ? "crown" : "zap"} size={12} color={isPopular ? "var(--accent)" : "#ec4899"} />
+    {plan.name}
+  </div>
 
-                <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4 }}>
-                  <div style={{ fontSize: "clamp(36px,4vw,48px)", fontWeight: 900, color: "var(--text)", letterSpacing: "-2px", lineHeight: 1 }}>
-                    ${isYearly && billing === "yearly" ? yearlyMonthly : plan.price}
-                  </div>
-                  <div style={{ fontSize: 13, color: "var(--text3)", fontWeight: 600 }}>/mo</div>
-                </div>
+  <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4 }}>
+    {/* تعديل: السعر يعرض السنوي كاملاً إذا كان billing سنوي */}
+    <div style={{ fontSize: "clamp(36px,4vw,48px)", fontWeight: 900, color: "var(--text)", letterSpacing: "-2px", lineHeight: 1 }}>
+      ${isYearly && billing === "yearly" ? yearly.price : (isYearly ? yearlyMonthly : plan.price)}
+    </div>
+    {/* تعديل: الوحدة تصبح /year للسنوي مع billing سنوي */}
+    <div style={{ fontSize: 13, color: "var(--text3)", fontWeight: 600 }}>
+      {isYearly && billing === "yearly" ? "/year" : "/mo"}
+    </div>
+  </div>
 
-                {isYearly && (
-                  <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                    Billed ${yearly.price}/year · Save {savings}%
-                  </div>
-                )}
-                {!isYearly && (
-                  <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                    Billed monthly · Cancel anytime
-                  </div>
-                )}
-              </div>
+  {isYearly && (
+    <div style={{ fontSize: 12, color: "var(--text3)" }}>
+      Billed ${yearly.price}/year · Save {savings}%
+    </div>
+  )}
+  {!isYearly && (
+    <div style={{ fontSize: 12, color: "var(--text3)" }}>
+      Billed monthly · Cancel anytime
+    </div>
+  )}
+</div>
 
-              <div style={{ borderTop: `1px solid ${isPopular ? "rgba(99,102,241,0.2)" : "var(--border)"}`, paddingTop: 20, marginBottom: 24 }}>
-                {(plan.features || []).map((f, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0" }}>
-                    <div style={{
-                      width: 20, height: 20, borderRadius: 6, flexShrink: 0,
-                      background: "rgba(16,185,129,0.12)",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                    }}>
-                      <Icon name="check" size={12} color="var(--green)" />
-                    </div>
-                    <span style={{ fontSize: 13, color: "var(--text2)" }}>{f}</span>
-                  </div>
-                ))}
-              </div>
+<div style={{ borderTop: `1px solid ${isPopular ? "rgba(99,102,241,0.2)" : "var(--border)"}`, paddingTop: 20, marginBottom: 24 }}>
+  {(plan.features || []).map((f, i) => (
+    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0" }}>
+      <div style={{
+        width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+        background: "rgba(16,185,129,0.12)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <Icon name="check" size={12} color="var(--green)" />
+      </div>
+      <span style={{ fontSize: 13, color: "var(--text2)" }}>{f}</span>
+    </div>
+  ))}
+</div>
 
-              <button
-                onClick={() => isActive ? null : handleChoosePlan(plan.id)}
-                style={{
-                  width: "100%", padding: "14px", borderRadius: 14, border: "none",
-                  cursor: isActive ? "default" : "pointer", fontFamily: "inherit",
-                  fontSize: 14, fontWeight: 800, letterSpacing: "-0.2px",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                  background: isActive
-                    ? "rgba(16,185,129,0.12)"
-                    : isPopular
-                      ? "linear-gradient(135deg,#6366f1,#8b5cf6)"
-                      : "linear-gradient(135deg,#ec4899,#f43f5e)",
-                  color: isActive ? "var(--green)" : "#fff",
-                  boxShadow: isActive ? "none" : isPopular
-                    ? "0 8px 24px rgba(99,102,241,0.35)"
-                    : "0 8px 24px rgba(236,72,153,0.3)",
-                  transition: "all 0.2s",
-                }}
-                onMouseEnter={e => { if (!isActive) e.currentTarget.style.transform = "scale(1.02)"; }}
-                onMouseLeave={e => { e.currentTarget.style.transform = ""; }}
-              >
-                {isActive ? (
-                  <>
-                    <Icon name="check" size={16} color="var(--green)" />
-                    Active Plan
-                  </>
-                ) : (
-                  <>
-                    Get {plan.name}
-                    <Icon name="arrow" size={15} color="#fff" />
-                  </>
-                )}
-              </button>
+<button
+  onClick={() => isActive ? null : handleChoosePlan(plan.id)}
+  style={{
+    width: "100%", padding: "14px", borderRadius: 14, border: "none",
+    cursor: isActive ? "default" : "pointer", fontFamily: "inherit",
+    fontSize: 14, fontWeight: 800, letterSpacing: "-0.2px",
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+    background: isActive
+      ? "rgba(16,185,129,0.12)"
+      : isPopular
+        ? "linear-gradient(135deg,#6366f1,#8b5cf6)"
+        : "linear-gradient(135deg,#ec4899,#f43f5e)",
+    color: isActive ? "var(--green)" : "#fff",
+    boxShadow: isActive ? "none" : isPopular
+      ? "0 8px 24px rgba(99,102,241,0.35)"
+      : "0 8px 24px rgba(236,72,153,0.3)",
+    transition: "all 0.2s",
+  }}
+  onMouseEnter={e => { if (!isActive) e.currentTarget.style.transform = "scale(1.02)"; }}
+  onMouseLeave={e => { e.currentTarget.style.transform = ""; }}
+>
+  {isActive ? (
+    <>
+      <Icon name="check" size={16} color="var(--green)" />
+      Active Plan
+    </>
+  ) : (
+    <>
+      Get {plan.name}
+      <Icon name="arrow" size={15} color="#fff" />
+    </>
+  )}
+</button>
             </div>
           );
         })}
