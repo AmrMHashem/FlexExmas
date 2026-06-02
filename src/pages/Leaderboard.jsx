@@ -436,28 +436,57 @@ export default function Leaderboard({ setPage, showToast }) {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    const loadMyData = user
-      ? getDoc(doc(db, "leaderboard", user.uid))
-          .then(s => s.exists() ? { id: s.id, ...s.data() } : null)
-          .catch(() => null)
-      : Promise.resolve(null);
-    loadMyData.then(my => setMyData(my));
 
-    const q = query(collection(db, "leaderboard"), orderBy("points", "desc"), limit(50));
-    const unsub = onSnapshot(q, (snap) => {
-      let results = snap.docs.map((d, i) => ({ id: d.id, rank: i + 1, ...d.data() }));
-      if (period === "monthly") {
-        const filtered = results.filter(r => !r.monthKey || r.monthKey === currentMonthKey);
-        results = (filtered.length > 0 ? filtered : results).map((r, i) => ({ ...r, rank: i + 1 }));
+    const CACHE_TTL = 5 * 60 * 1000;
+    const SESSION_KEY = `fx_lb_${period}_${currentMonthKey}`;
+
+    const loadAll = async () => {
+      try {
+        const loadMyData = user
+          ? getDoc(doc(db, "leaderboard", user.uid))
+              .then(s => s.exists() ? { id: s.id, ...s.data() } : null)
+              .catch(() => null)
+          : Promise.resolve(null);
+
+        // Check session cache first — avoids re-read on tab switch
+        let results = null;
+        try {
+          const raw = sessionStorage.getItem(SESSION_KEY);
+          if (raw) {
+            const { data: d, ts } = JSON.parse(raw);
+            if (Date.now() - ts < CACHE_TTL) results = d;
+          }
+        } catch { /* ignore */ }
+
+        if (!results) {
+          // getDocs only — NO onSnapshot (saves continuous billing)
+          const q = query(collection(db, "leaderboard"), orderBy("points", "desc"), limit(50));
+          const snap = await getDocs(q);
+          let fetched = snap.docs.map((d, i) => ({ id: d.id, rank: i + 1, ...d.data() }));
+          if (period === "monthly") {
+            const filtered = fetched.filter(r => !r.monthKey || r.monthKey === currentMonthKey);
+            fetched = (filtered.length > 0 ? filtered : fetched).map((r, i) => ({ ...r, rank: i + 1 }));
+          }
+          results = fetched.slice(0, 10);
+          try {
+            sessionStorage.setItem(SESSION_KEY, JSON.stringify({ data: results, ts: Date.now() }));
+          } catch { /* storage full */ }
+        }
+
+        const myData = await loadMyData;
+        if (!cancelled) { setMyData(myData); setData(results); setLoading(false); }
+      } catch {
+        if (!cancelled) {
+          fetchLeaderboard(period === "monthly" ? currentMonthKey : null)
+            .then(d => { if (!cancelled) { setData(d.slice(0, 10)); setLoading(false); } });
+        }
       }
-      setData(results.slice(0, 10));
-      setLoading(false);
-    }, () => {
-      fetchLeaderboard(period === "monthly" ? currentMonthKey : null)
-        .then(d => { setData(d.slice(0, 10)); setLoading(false); });
-    });
-    return () => unsub();
+    };
+
+    loadAll();
+    return () => { cancelled = true; };
   }, [user, period, currentMonthKey]);
 
   const myRankIndex = data.findIndex(d => d.id === user?.uid);
