@@ -149,20 +149,34 @@ function VendorCard({ vendor, vendorExams, onViewAll, onExamClick, animIdx }) {
           </button>
         </div>
 
-        {/* Stats row */}
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
-          {[
-            { icon:"📋", label:"Exams", value:vendorExams.length },
-            { icon:"⏱️", label:"Avg Duration", value:`${avgDuration}m` },
-            { icon:"👥", label:"Attempts", value:totalAttempts > 999 ? `${(totalAttempts/1000).toFixed(1)}K` : totalAttempts },
-          ].map((s,si) => (
-            <div key={si} style={{ background:"var(--bg3)", border:"1px solid var(--border)", borderRadius:12, padding:"12px 10px", textAlign:"center" }}>
-              <div style={{ fontSize:18, marginBottom:4 }}>{s.icon}</div>
-              <div style={{ fontSize:16, fontWeight:900, color:vendor.color }}>{s.value}</div>
-              <div style={{ fontSize:10, color:"var(--text3)", fontWeight:600 }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
+ {/* Stats row */}
+<div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 20 }}>
+  {(() => {
+    // حساب متوسط المدة (وليس الجمع)
+    let avgDuration = 0;
+    if (vendorExams && vendorExams.length > 0) {
+      const total = vendorExams.reduce((sum, exam) => sum + (Number(exam.duration) || 0), 0);
+      avgDuration = total / vendorExams.length;
+    }
+    const avgDisplay = `${Math.round(avgDuration)}m`;
+    
+    // تنسيق عدد المحاولات
+    const attempts = Number(totalAttempts) || 0;
+    const attemptsDisplay = attempts > 999 ? `${(attempts / 1000).toFixed(1)}K` : attempts;
+    
+    return [
+      { icon: "📋", label: "Exams", value: vendorExams?.length || 0 },
+      { icon: "⏱️", label: "Avg Duration", value: avgDisplay },
+      { icon: "👥", label: "Attempts", value: attemptsDisplay },
+    ].map((s, si) => (
+      <div key={si} style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 12, padding: "12px 10px", textAlign: "center" }}>
+        <div style={{ fontSize: 18, marginBottom: 4 }}>{s.icon}</div>
+        <div style={{ fontSize: 16, fontWeight: 900, color: vendor?.color || "var(--text1)" }}>{s.value}</div>
+        <div style={{ fontSize: 10, color: "var(--text3)", fontWeight: 600 }}>{s.label}</div>
+      </div>
+    ));
+  })()}
+</div>
 
         {/* Expanded details */}
         {expanded && vendor.description && (
