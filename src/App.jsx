@@ -597,7 +597,62 @@ function LoadingScreen() {
     </div>
   );
 }
-
+// ========== 🔍 DIAGNOSTIC CODE - ONE PLACE ==========
+  (function() {
+    if (typeof window === 'undefined') return;
+    if (window.__FLEX_DEBUG_ACTIVE) return;
+    window.__FLEX_DEBUG_ACTIVE = true;
+    
+    // Counters
+    window.__FLEX_MOUNT_COUNT = (window.__FLEX_MOUNT_COUNT || 0) + 1;
+    const mountNum = window.__FLEX_MOUNT_COUNT;
+    const mountTime = Date.now();
+    console.log(`🔷 [MOUNT #${mountNum}] AppInner at ${new Date().toISOString()}`);
+    
+    // Detect rapid remounts (infinite loop)
+    if (!window.__FLEX_FIRST_MOUNT_TIME) window.__FLEX_FIRST_MOUNT_TIME = mountTime;
+    if (mountNum > 3 && (mountTime - window.__FLEX_FIRST_MOUNT_TIME) < 3000) {
+      console.error("🔴🔴🔴 INFINITE LOOP DETECTED! Multiple mounts in short time.");
+      console.trace("Stack trace of mount loop:");
+      debugger; // Stops execution, opens devtools
+      throw new Error("Stop infinite mount loop");
+    }
+    
+    // Override setPage to track calls
+    const originalSetPage = React.useState ? (() => {}) : null;
+    // We need to intercept after useState is declared, but we can patch later.
+    // Alternative: Hook into history.pushState and replaceState
+    const originalPushState = history.pushState;
+    const originalReplaceState = history.replaceState;
+    history.pushState = function(...args) {
+      console.log(`📍 history.pushState to:`, args[2]);
+      console.trace("pushState called from:");
+      return originalPushState.apply(this, args);
+    };
+    history.replaceState = function(...args) {
+      console.log(`📍 history.replaceState to:`, args[2]);
+      console.trace("replaceState called from:");
+      return originalReplaceState.apply(this, args);
+    };
+    
+    // Monitor page state changes by polling (simple)
+    let lastPage = null;
+    setInterval(() => {
+      const path = window.location.pathname;
+      if (lastPage !== path) {
+        console.log(`🔄 PAGE CHANGED: "${lastPage}" -> "${path}"`);
+        lastPage = path;
+      }
+    }, 100);
+    
+    // Log any unhandled errors
+    window.addEventListener('error', (e) => {
+      console.error("🔥 Uncaught error:", e.error, e.message);
+    });
+    
+    console.log("✅ Diagnostic installed – watching for loops");
+  })();
+// ========== END DIAGNOSTIC ==========
 // ─────────────────────────────────────────────────────────────────
 // AppInner — النواة الرئيسية
 // ─────────────────────────────────────────────────────────────────
