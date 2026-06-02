@@ -1,7 +1,6 @@
-// pages/ExamDetail.jsx — v8.4 — Fixed infinite coupon loop & refresh
-// ✅ Prevent coupon extraction from URL more than once
-// ✅ Prevent re-processing same coupon
-// ✅ Stable lifecycle even with key={page} removed
+// pages/ExamDetail.jsx — v8.3 — Fixed mobile overflow issues
+// ✅ Fixed: horizontal overflow on mobile devices
+// ✅ When applied coupon makes exam free, show a direct claim button
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useAuth } from "../hooks/useAuth";
@@ -52,7 +51,7 @@ const Stars = React.memo(function Stars({ rating = 5 }) {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Vendor Logo Map
+//  Vendor Logo Map (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 const vendorLogos = {
   AWS: "https://upload.wikimedia.org/wikipedia/commons/9/93/Amazon_Web_Services_Logo.svg",
@@ -89,7 +88,7 @@ const getMotivationalMessage = (score) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  ScoreCard (best score)
+//  ScoreCard (best score) — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 const ScoreCard = React.memo(function ScoreCard({ score, examTitle }) {
   const percentage = Math.round(score);
@@ -121,7 +120,7 @@ const ScoreCard = React.memo(function ScoreCard({ score, examTitle }) {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  LastScoreCard
+//  LastScoreCard — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 const LastScoreCard = React.memo(function LastScoreCard({ lastScore, examTitle }) {
   if (!lastScore || lastScore === 0) return null;
@@ -178,7 +177,7 @@ const LastScoreCard = React.memo(function LastScoreCard({ lastScore, examTitle }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  TopicDistributionBar
+//  TopicDistributionBar — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 const TopicDistributionBar = React.memo(function TopicDistributionBar({ domain, count, total, color }) {
   const percentage = ((count / total) * 100).toFixed(1);
@@ -194,7 +193,7 @@ const TopicDistributionBar = React.memo(function TopicDistributionBar({ domain, 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SmartStickyPanel
+//  SmartStickyPanel — unchanged except mobile width fix
 // ─────────────────────────────────────────────────────────────────────────────
 function SmartStickyPanel({ children, topOffset = 24 }) {
   const [isMobile, setIsMobile] = useState(() =>
@@ -340,6 +339,7 @@ function SmartStickyPanel({ children, topOffset = 24 }) {
   }, [isMobile, init]);
 
   if (isMobile) {
+    // FIX: prevent overflow on mobile
     return <div style={{ alignSelf: "start", width: "100%", maxWidth: "100%", overflowX: "hidden" }}>{children}</div>;
   }
 
@@ -347,7 +347,7 @@ function SmartStickyPanel({ children, topOffset = 24 }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  CouponInput
+//  CouponInput — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 function CouponInput({ examId, originalPrice, onApply, userId }) {
   const [code, setCode]       = useState("");
@@ -428,7 +428,7 @@ function CouponInput({ examId, originalPrice, onApply, userId }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SuggestedExams
+//  SuggestedExams — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 const SuggestedExams = React.memo(function SuggestedExams({ currentExam, setPage }) {
   const [suggested, setSuggested] = useState([]);
@@ -526,12 +526,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   const abortControllerRef = useRef(null);
   const cacheRef           = useRef({});
 
-  // 🛡️ Refs لمنع تكرار معالجة الكوبون
-  const couponExtractedRef = useRef(false);       // استخراج الكوبون من URL مرة واحدة فقط
-  const couponProcessingRef = useRef(false);      // تجنب تشغيل effect أثناء المعالجة
-  const lastProcessedCodeRef = useRef(null);      // آخر كوبون تمت معالجته
-
-  // ── SEO + استخراج الكوبون من URL (مرة واحدة فقط) ───────────────────────
+  // ── SEO ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!exam) return;
     document.title = `${exam.title} | FlexExams Certification Practice`;
@@ -544,53 +539,25 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     setMeta('meta[property="og:title"]', "property", "og:title", `${exam.title} - FlexExams`);
     setMeta('meta[property="og:description"]', "property", "og:description", exam.description || `Test your knowledge with exam questions.`);
     if (exam.image) setMeta('meta[property="og:image"]', "property", "og:image", exam.image);
-    
-    // استخراج الكوبون من URL مرة واحدة فقط (لا يتكرر مع إعادة الرندر)
-    if (!couponExtractedRef.current) {
-      const url = new URL(window.location.href);
-      const cpCode = url.searchParams.get("couponCode");
-      if (cpCode) {
-        setAutoApplyCoupon(cpCode);
-      }
-      couponExtractedRef.current = true;
-    }
+    const url = new URL(window.location.href);
+    const cpCode = url.searchParams.get("couponCode");
+    if (cpCode) setAutoApplyCoupon(cpCode);
   }, [exam]);
 
-  // ── Auto-apply coupon (مرة واحدة لكل كود) ──────────────────────────────
+  // ── Auto-apply coupon from URL ────────────────────────────────────
   useEffect(() => {
-    // لا تفعل شيئًا إذا لم يوجد كوبون أو سعر أو تمت المعالجة مسبقًا
     if (!autoApplyCoupon || !exam?.pricing?.price) return;
-    if (couponProcessingRef.current) return;
-    if (lastProcessedCodeRef.current === autoApplyCoupon) return;
-
-    couponProcessingRef.current = true;
     let mounted = true;
-
-    validateCoupon(autoApplyCoupon, exam.id, null, user?.uid || null)
-      .then(res => {
-        if (!mounted) return;
-        if (res.valid) {
-          const discountPercent = res.discount || 0;
-          const discountAmount = res.discountAmount || (exam.pricing.price * discountPercent / 100);
-          const newPrice = Math.max(0, exam.pricing.price - discountAmount);
-          setAppliedCoupon({ code: autoApplyCoupon, discountPercent, discountAmount, newPrice });
-        }
-        // بغض النظر عن النتيجة، نعتبر هذا الكود قد تمت معالجته ونحذفه من autoApplyCoupon
-        lastProcessedCodeRef.current = autoApplyCoupon;
-        setAutoApplyCoupon(null);
-      })
-      .catch(() => {
-        if (mounted) {
-          lastProcessedCodeRef.current = autoApplyCoupon;
-          setAutoApplyCoupon(null);
-        }
-      })
-      .finally(() => {
-        if (mounted) {
-          couponProcessingRef.current = false;
-        }
-      });
-
+    validateCoupon(autoApplyCoupon, exam.id, null, user?.uid || null).then(res => {
+      if (!mounted) return;
+      if (res.valid) {
+        const discountPercent = res.discount || 0;
+        const discountAmount  = res.discountAmount || (exam.pricing.price * discountPercent / 100);
+        const newPrice        = Math.max(0, exam.pricing.price - discountAmount);
+        setAppliedCoupon({ code: autoApplyCoupon, discountPercent, discountAmount, newPrice });
+      }
+      setAutoApplyCoupon(null);
+    }).catch(() => { if (mounted) setAutoApplyCoupon(null); });
     return () => { mounted = false; };
   }, [autoApplyCoupon, exam?.id, exam?.pricing?.price, user?.uid]);
 
