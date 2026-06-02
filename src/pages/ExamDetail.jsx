@@ -1,9 +1,4 @@
-// pages/ExamDetail.jsx — v8.5 — FINAL FIX (root cause resolved)
-// ✅ FIX 1: appliedRef guard is now stable and never accidentally reset on re-render
-// ✅ FIX 2: autoApplyCoupon effect no longer re-runs on every auth state change
-// ✅ FIX 3: URL history uses pathname only — no full URL object toString()
-// ✅ FIX 4: All useEffect deps use primitive values (exam?.id, user?.uid) not objects
-// ✅ FIX 5: SEO effect separated from coupon URL reading
+// pages/ExamDetail.jsx — v8.3 — Fixed mobile overflow issues
 // ✅ Fixed: horizontal overflow on mobile devices
 // ✅ When applied coupon makes exam free, show a direct claim button
 
@@ -56,7 +51,7 @@ const Stars = React.memo(function Stars({ rating = 5 }) {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Vendor Logo Map
+//  Vendor Logo Map (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 const vendorLogos = {
   AWS: "https://upload.wikimedia.org/wikipedia/commons/9/93/Amazon_Web_Services_Logo.svg",
@@ -93,7 +88,7 @@ const getMotivationalMessage = (score) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  ScoreCard
+//  ScoreCard (best score) — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 const ScoreCard = React.memo(function ScoreCard({ score, examTitle }) {
   const percentage = Math.round(score);
@@ -125,7 +120,7 @@ const ScoreCard = React.memo(function ScoreCard({ score, examTitle }) {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  LastScoreCard
+//  LastScoreCard — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 const LastScoreCard = React.memo(function LastScoreCard({ lastScore, examTitle }) {
   if (!lastScore || lastScore === 0) return null;
@@ -182,7 +177,7 @@ const LastScoreCard = React.memo(function LastScoreCard({ lastScore, examTitle }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  TopicDistributionBar
+//  TopicDistributionBar — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 const TopicDistributionBar = React.memo(function TopicDistributionBar({ domain, count, total, color }) {
   const percentage = ((count / total) * 100).toFixed(1);
@@ -198,7 +193,7 @@ const TopicDistributionBar = React.memo(function TopicDistributionBar({ domain, 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SmartStickyPanel
+//  SmartStickyPanel — unchanged except mobile width fix
 // ─────────────────────────────────────────────────────────────────────────────
 function SmartStickyPanel({ children, topOffset = 24 }) {
   const [isMobile, setIsMobile] = useState(() =>
@@ -228,19 +223,25 @@ function SmartStickyPanel({ children, topOffset = 24 }) {
   const init = useCallback(() => {
     const el = wrapperRef.current;
     if (!el || isMobile) return;
+
     el.style.transform = "translateY(0px)";
     el.style.position = "relative";
     el.style.top = "auto";
     el.style.willChange = "transform";
     el.style.transition = "none";
     el._lastRenderedY = null;
-    const panelH = el.offsetHeight;
+
+    const rect = el.getBoundingClientRect();
     const viewH = window.innerHeight;
-    S.current.initialTop = el.getBoundingClientRect().top + window.scrollY;
+    const panelH = el.offsetHeight;
+
+    S.current.initialTop = rect.top + window.scrollY;
     S.current.panelH = panelH;
     S.current.currentY = 0;
     S.current.initialized = true;
+
     const fits = panelH <= viewH - topOffset * 2;
+
     if (fits) {
       S.current.mode = "simple";
       el.style.position = "sticky";
@@ -259,20 +260,29 @@ function SmartStickyPanel({ children, topOffset = 24 }) {
   const handleScroll = useCallback(() => {
     const s = S.current;
     if (!s.initialized || s.mode === "simple") return;
+
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
+
     rafRef.current = requestAnimationFrame(() => {
       const el = wrapperRef.current;
       if (!el) return;
+
       const scrollY = window.scrollY;
       const viewH = window.innerHeight;
+
       const container = el.parentElement;
       if (!container) return;
+
       const containerTop = container.getBoundingClientRect().top + window.scrollY;
-      const containerBottom = containerTop + container.offsetHeight;
+      const containerHeight = container.offsetHeight;
+      const containerBottom = containerTop + containerHeight;
       const desiredBottom = viewH - topOffset;
+
       let targetY = desiredBottom + scrollY - s.initialTop - s.panelH;
+
       const maxY = Math.max(0, containerBottom - s.initialTop - s.panelH - topOffset);
       targetY = Math.max(0, Math.min(targetY, maxY));
+
       if (Math.abs(targetY - s.currentY) > 0.5) {
         s.currentY = targetY;
         applyTransform(s.currentY);
@@ -289,14 +299,25 @@ function SmartStickyPanel({ children, topOffset = 24 }) {
   useEffect(() => {
     if (isMobile) {
       const el = wrapperRef.current;
-      if (el) { el.style.position = ""; el.style.top = ""; el.style.transform = ""; el.style.willChange = ""; }
+      if (el) {
+        el.style.position = "";
+        el.style.top = "";
+        el.style.transform = "";
+        el.style.willChange = "";
+      }
       return;
     }
+
     let r1 = requestAnimationFrame(() => {
-      let r2 = requestAnimationFrame(() => { init(); handleScroll(); });
+      let r2 = requestAnimationFrame(() => {
+        init();
+        handleScroll();
+      });
     });
+
     window.addEventListener("scroll", handleScroll, { passive: true });
     window.addEventListener("resize", init, { passive: true });
+
     return () => {
       cancelAnimationFrame(r1);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -309,19 +330,24 @@ function SmartStickyPanel({ children, topOffset = 24 }) {
     if (isMobile) return;
     const el = wrapperRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => requestAnimationFrame(init));
+
+    const ro = new ResizeObserver(() => {
+      requestAnimationFrame(init);
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, [isMobile, init]);
 
   if (isMobile) {
+    // FIX: prevent overflow on mobile
     return <div style={{ alignSelf: "start", width: "100%", maxWidth: "100%", overflowX: "hidden" }}>{children}</div>;
   }
+
   return <div ref={wrapperRef} style={{ alignSelf: "start" }}>{children}</div>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  CouponInput
+//  CouponInput — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 function CouponInput({ examId, originalPrice, onApply, userId }) {
   const [code, setCode]       = useState("");
@@ -333,27 +359,19 @@ function CouponInput({ examId, originalPrice, onApply, userId }) {
     setLoading(true);
     setResult(null);
     try {
-      if (!userId) {
-        setResult({ valid: false, error: "Please login first" });
-        setLoading(false);
-        return;
-      }
-      const res = await validateCoupon(code.trim(), examId, null, userId);
+      const res = await validateCoupon(code.trim(), examId, null, userId || null);
       setResult(res);
       if (res.valid) {
         const discountPercent = res.discount || 0;
         const discountAmount  = res.discountAmount || (originalPrice * discountPercent / 100);
         const newPrice        = Math.max(0, originalPrice - discountAmount);
         onApply({ code: code.trim(), discountPercent, discountAmount, newPrice });
-        // ✅ FIX 3: pathname only — no full URL object
-        window.history.replaceState(
-          null,
-          "",
-          `${window.location.pathname}?couponCode=${encodeURIComponent(code.trim())}`
-        );
+        const url = new URL(window.location.href);
+        url.searchParams.set("couponCode", code.trim());
+        window.history.replaceState({}, "", url.toString());
       }
     } catch (e) {
-      setResult({ valid: false, error: e?.message || "Failed to validate coupon" });
+      setResult({ valid: false, error: "Failed to validate coupon" });
     }
     setLoading(false);
   };
@@ -362,8 +380,9 @@ function CouponInput({ examId, originalPrice, onApply, userId }) {
     setCode("");
     setResult(null);
     onApply(null);
-    // ✅ FIX 3: pathname only — strips query string cleanly
-    window.history.replaceState(null, "", window.location.pathname);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("couponCode");
+    window.history.replaceState({}, "", url.toString());
   };
 
   return (
@@ -409,17 +428,17 @@ function CouponInput({ examId, originalPrice, onApply, userId }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SuggestedExams
+//  SuggestedExams — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 const SuggestedExams = React.memo(function SuggestedExams({ currentExam, setPage }) {
   const [suggested, setSuggested] = useState([]);
   const [loading, setLoading]     = useState(true);
-
+ 
   const goToExam = useCallback((examObj) => {
     window.scrollTo({ top: 0, behavior: "smooth" });
     setTimeout(() => setPage("exam-detail", { exam: examObj }), 60);
   }, [setPage]);
-
+ 
   useEffect(() => {
     if (!currentExam) return;
     let mounted = true;
@@ -441,9 +460,9 @@ const SuggestedExams = React.memo(function SuggestedExams({ currentExam, setPage
       .catch(() => setLoading(false));
     return () => { mounted = false; };
   }, [currentExam?.id]);
-
+ 
   if (loading || !suggested.length) return null;
-
+ 
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, padding: "clamp(20px,4vw,28px)" }}>
       <h2 style={{ fontSize: "clamp(16px,4vw,18px)", fontWeight: 700, marginBottom: 20 }}>Related Exams</h2>
@@ -504,16 +523,10 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   const [autoApplyCoupon, setAutoApplyCoupon] = useState(null);
   const [claimingFree, setClaimingFree]     = useState(false);
 
-  // ✅ FIX 1: appliedRef — defined once, persists across renders
-  // This ref prevents validateCoupon from being called more than once
-  // per exam session, regardless of how many times the component re-renders
-  const appliedRef         = useRef(false);
   const abortControllerRef = useRef(null);
   const cacheRef           = useRef({});
 
-  // ── SEO (separated from coupon reading) ──────────────────────────
-  // ✅ FIX 4: depends on exam?.id (string), not the full exam object
-  // This prevents re-running every time exam object reference changes
+  // ── SEO ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!exam) return;
     document.title = `${exam.title} | FlexExams Certification Practice`;
@@ -526,81 +539,32 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     setMeta('meta[property="og:title"]', "property", "og:title", `${exam.title} - FlexExams`);
     setMeta('meta[property="og:description"]', "property", "og:description", exam.description || `Test your knowledge with exam questions.`);
     if (exam.image) setMeta('meta[property="og:image"]', "property", "og:image", exam.image);
-  }, [exam?.id]); // ✅ exam?.id only — stable primitive
-
-  // ── Read coupon code from URL (one-time on mount per exam) ────────
-  // ✅ FIX 5: Completely separated from SEO effect
-  // Runs once when exam.id changes, reads URL param, stores in state
-  useEffect(() => {
-    if (!exam?.id) return;
-    const cpCode = new URLSearchParams(window.location.search).get("couponCode");
+    const url = new URL(window.location.href);
+    const cpCode = url.searchParams.get("couponCode");
     if (cpCode) setAutoApplyCoupon(cpCode);
-  }, [exam?.id]);
-
-  // ── Reset all coupon state when exam changes ──────────────────────
-  // ✅ FIX 1 (continued): reset the guard ref when navigating to a different exam
-  useEffect(() => {
-    appliedRef.current = false;
-    setAppliedCoupon(null);
-    setAutoApplyCoupon(null);
-  }, [exam?.id]);
+  }, [exam]);
 
   // ── Auto-apply coupon from URL ────────────────────────────────────
-  // ✅ FIX 2 (THE MAIN FIX): This effect has 3 hard guards:
-  //
-  //   Guard A — appliedRef.current:
-  //     Prevents this from running twice in React StrictMode (double-invoke)
-  //     or when any dependency triggers a re-run after the first call.
-  //
-  //   Guard B — user?.uid required:
-  //     Firebase Security Rules: `allow read: if isAuth()`
-  //     Without this, an unauthenticated call hits Firestore → gets DENIED →
-  //     the unhandled rejection causes the component to re-render →
-  //     which triggers this effect again → infinite loop.
-  //
-  //   Guard C — mounted flag:
-  //     Prevents setState after the component has unmounted.
-  //
-  // ✅ FIX 4: user?.uid is a string primitive in deps, not the user object.
-  //   This is critical — if `user` (object) were in deps, any Firebase auth
-  //   state refresh (token renewal etc.) would re-run this effect and
-  //   bypass appliedRef because appliedRef would be reset by the exam effect
-  //   above only on exam change, but auth object changes happen independently.
-  //   Using user?.uid (string) means this only re-runs when the actual UID changes.
   useEffect(() => {
-    if (!autoApplyCoupon) return;
-    if (!exam?.id || !exam?.pricing?.price) return;
-    if (!user?.uid) return;          // Guard B — block if not authenticated
-    if (appliedRef.current) return;  // Guard A — block if already ran
-
-    appliedRef.current = true;       // Lock immediately before any async work
-    let mounted = true;              // Guard C
-
-    validateCoupon(autoApplyCoupon, exam.id, null, user.uid)
-      .then(res => {
-        if (!mounted) return;
-        if (res.valid) {
-          const discountPercent = res.discount || 0;
-          const discountAmount  = res.discountAmount || (exam.pricing.price * discountPercent / 100);
-          const newPrice        = Math.max(0, exam.pricing.price - discountAmount);
-          setAppliedCoupon({ code: autoApplyCoupon, discountPercent, discountAmount, newPrice });
-        }
-        setAutoApplyCoupon(null);
-      })
-      .catch(() => {
-        if (mounted) {
-          appliedRef.current = false; // Allow retry on network error (not on auth deny)
-          setAutoApplyCoupon(null);
-        }
-      });
-
+    if (!autoApplyCoupon || !exam?.pricing?.price) return;
+    let mounted = true;
+    validateCoupon(autoApplyCoupon, exam.id, null, user?.uid || null).then(res => {
+      if (!mounted) return;
+      if (res.valid) {
+        const discountPercent = res.discount || 0;
+        const discountAmount  = res.discountAmount || (exam.pricing.price * discountPercent / 100);
+        const newPrice        = Math.max(0, exam.pricing.price - discountAmount);
+        setAppliedCoupon({ code: autoApplyCoupon, discountPercent, discountAmount, newPrice });
+      }
+      setAutoApplyCoupon(null);
+    }).catch(() => { if (mounted) setAutoApplyCoupon(null); });
     return () => { mounted = false; };
-  }, [autoApplyCoupon, exam?.id, exam?.pricing?.price, user?.uid]); // ✅ all primitives
+  }, [autoApplyCoupon, exam?.id, exam?.pricing?.price, user?.uid]);
 
   // ── Vendors ───────────────────────────────────────────────────────
   useEffect(() => { getVendors().then(setVendors).catch(() => {}); }, []);
 
-  const vendorName = useMemo(() => exam?.vendor || exam?.category || "", [exam?.vendor, exam?.category]);
+  const vendorName = useMemo(() => exam?.vendor || exam?.category || "", [exam]);
   const vendorLogo = useMemo(() => {
     const found = vendors.find(v =>
       v.name?.toLowerCase() === vendorName?.toLowerCase() ||
@@ -611,7 +575,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     return exam?.vendorImage || getFallbackVendorLogo(vendorName) || null;
   }, [vendors, vendorName, exam?.vendorImage]);
 
-  // ── Domain stats ──────────────────────────────────────────────────
+  // ── FULL domain stats ─────────────────────────────────────────────
   const fullDomainStats = useMemo(() => {
     return fullQuestions.reduce((acc, q) => {
       acc[q.domain] = (acc[q.domain] || 0) + 1;
@@ -631,7 +595,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     if (exam?.lastUpdated)       return new Date(exam.lastUpdated);
     if (exam?.publishedDate)     return new Date(exam.publishedDate);
     return new Date();
-  }, [exam?.updatedAt, exam?.lastUpdated, exam?.publishedDate]);
+  }, [exam]);
 
   const formattedDate = lastUpdated
     ? lastUpdated.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
@@ -643,12 +607,12 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     { id: "review",         icon: "eye",   label: "Review Mode",      desc: "See correct answers, Set Score and Time", official: false },
   ], [fullQuestions.length, exam?.duration]);
 
-  // ── Load questions ────────────────────────────────────────────────
-  // ✅ FIX 4: exam?.id only — not full exam object
+  // ── Load ALL questions first ──────────────────────────────────────
   useEffect(() => {
-    if (!exam?.id) return;
+    if (!exam) return;
     if (exam.isActive === false) showToast({ msg: "🔒 This exam is under maintenance.", type: "warning" });
     let isMounted = true;
+
     const loadQuestions = async () => {
       try {
         const allQs = await getQuestions(exam.id);
@@ -662,20 +626,20 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     };
     loadQuestions();
     return () => { isMounted = false; };
-  }, [exam?.id]); // ✅ primitive dep only
+  }, [exam, showToast]);
 
   // ── Payment access ────────────────────────────────────────────────
   useEffect(() => {
     if (!exam?.id) return;
     setAccessLoading(true);
-    checkUserAccess(user?.uid || null, exam.id)
+    checkUserAccess(user?.uid, exam.id)
       .then(access => { setUserAccess(access); setAccessLoading(false); })
-      .catch(() => { setUserAccess({ hasAccess: false, accessType: user?.uid ? "free" : "guest" }); setAccessLoading(false); });
+      .catch(() => { setUserAccess({ hasAccess: false, accessType: user ? "free" : "guest" }); setAccessLoading(false); });
   }, [user?.uid, exam?.id]);
 
   // ── Dashboard data ────────────────────────────────────────────────
   useEffect(() => {
-    if (!exam?.id || !user?.uid) return;
+    if (!exam || !user?.uid) return;
     const cacheKey = `exam_dashboard_${user.uid}_${exam.id}`;
     const cached   = cacheRef.current[cacheKey];
     if (cached && (Date.now() - cached.timestamp) < 5 * 60 * 1000) {
@@ -715,7 +679,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
       showToast({ msg: "❌ Enrollment failed", type: "error" });
       setDashboard(prev => ({ ...prev, enrolling: false }));
     }
-  }, [user?.uid, exam?.id, showToast]);
+  }, [user, exam?.id, showToast]);
 
   const handleUnenroll = useCallback(async () => {
     if (!window.confirm("Are you sure? Your progress will be permanently deleted.")) return;
@@ -729,7 +693,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
       showToast({ msg: "❌ Unenroll failed", type: "error" });
       setDashboard(prev => ({ ...prev, unenrolling: false }));
     }
-  }, [user?.uid, exam?.id, showToast]);
+  }, [user, exam?.id, showToast]);
 
   const handleStart = useCallback(async (resumeProgress = false) => {
     if (exam.isActive === false) { showToast({ msg: "🔒 This exam is currently unavailable", type: "error" }); return; }
@@ -790,7 +754,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
       console.error(err);
       showToast({ msg: "❌ Failed to clear progress, try again", type: "error" });
     }
-  }, [user?.uid, exam?.id, handleStart, showToast]);
+  }, [user, exam?.id, handleStart, showToast]);
 
   const handleDownloadCertificate = useCallback(async () => {
     setDownloadingCert(true);
@@ -811,7 +775,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
       showToast({ msg: "❌ Failed to download certificate", type: "error" });
     }
     setDownloadingCert(false);
-  }, [exam?.id, exam?.title, user?.uid, profile?.name, dashboard.userCertificate, showToast]);
+  }, [exam, user, profile, dashboard.userCertificate, showToast]);
 
   const handleClaimFreeAccess = useCallback(async () => {
     if (!user) {
@@ -842,15 +806,16 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
       setDashboard(prev => ({ ...prev, isEnrolled: true, enrolledCount: prev.enrolledCount + 1 }));
       showToast({ msg: "🎉 Coupon applied! You now have full access to this exam for free.", type: "success" });
       setAppliedCoupon(null);
-      // ✅ FIX 3: clean URL using pathname only
-      window.history.replaceState(null, "", window.location.pathname);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("couponCode");
+      window.history.replaceState({}, "", url.toString());
     } catch (err) {
       console.error("Free claim error:", err);
       showToast({ msg: "❌ Failed to claim free access. Please try again or contact support.", type: "error" });
     } finally {
       setClaimingFree(false);
     }
-  }, [user?.uid, exam?.id, exam?.title, exam?.pricing?.price, appliedCoupon, setPage, showToast, claimingFree]);
+  }, [user, exam, appliedCoupon, setPage, showToast, claimingFree]);
 
   if (!exam) {
     return (
@@ -935,10 +900,16 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
       {shouldShowFreeClaim ? (
         <div style={{ marginBottom: 20 }}>
           <Btn
-            full size="lg"
+            full
+            size="lg"
             onClick={handleClaimFreeAccess}
             loading={claimingFree}
-            style={{ background: "linear-gradient(135deg,#10b981,#059669)", borderColor: "transparent", minHeight: 48, boxShadow: "0 4px 14px rgba(16,185,129,0.4)" }}
+            style={{
+              background: "linear-gradient(135deg,#10b981,#059669)",
+              borderColor: "transparent",
+              minHeight: 48,
+              boxShadow: "0 4px 14px rgba(16,185,129,0.4)",
+            }}
           >
             <Icon n="gift" size={16} /> Claim Free Access 🎉
           </Btn>
@@ -1153,6 +1124,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
                 </div>
               )}
             </div>
+            
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16, marginBottom: 28 }}>
               <div>
                 <div style={{ fontSize: "clamp(11px, 3vw, 12px)", color: "var(--text3)" }}>Total Questions</div>
