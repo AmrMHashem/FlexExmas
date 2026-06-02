@@ -608,6 +608,7 @@ function AppInner() {
 
   const [page, setPage]               = useState(initialState.page);
   const [pendingSlug, setPendingSlug]  = useState(initialState.slug);
+  const animationKeyRef               = React.useRef(initialState.page);
   const [authMode, setAuthMode]        = useState("login");
   const [activeFilter, setActiveFilter] = useState({ vendor: null, topic: null });
   const [activeExam, setActiveExam]    = useState(null);
@@ -656,6 +657,7 @@ function AppInner() {
             };
             sessionStorage.setItem("flexexams_return_to", JSON.stringify(returnState));
           } catch (_) {}
+          animationKeyRef.current = "auth";
           pushPath("/auth");
           setPage("auth");
           return;
@@ -666,6 +668,7 @@ function AppInner() {
             vendor: opts?.vendorFilter || null,
             topic:  opts?.topicFilter  || null,
           });
+          animationKeyRef.current = "exams";
           pushPath("/exams");
           setPage("exams");
           return;
@@ -675,8 +678,10 @@ function AppInner() {
           const exam = opts?.exam || opts;
           if (exam && (exam.title || exam.name || exam.id)) {
             const slug = slugify(exam.title || exam.name || String(exam.id));
+            const isNewExam = !activeExam || activeExam.id !== exam.id;
             setActiveExam(exam);
             pushPath(`/exam/${slug}`);
+            if (isNewExam) animationKeyRef.current = `exam-detail:${exam.id}`;
             setPage("exam-detail");
             requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
             return;
@@ -685,6 +690,7 @@ function AppInner() {
 
         if (p === "checkout") {
           setCheckoutData(opts || null);
+          animationKeyRef.current = "checkout";
           pushPath("/checkout");
           setPage("checkout");
           requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
@@ -694,6 +700,7 @@ function AppInner() {
         // باقي الصفحات
         const meta = PAGE_META[p];
         const path = meta ? meta.path : `/${p}`;
+        animationKeyRef.current = p;
         pushPath(path);
         setPage(p);
       });
@@ -719,6 +726,7 @@ function AppInner() {
         if (found) {
           setActiveExam(found);
           pushPath(`/exam/${state.examSlug}`);
+          animationKeyRef.current = `exam-detail:${found.id}`;
           startTransition(() => setPage("exam-detail"));
           if (state.scrollY) {
             setTimeout(() => window.scrollTo({ top: state.scrollY, behavior: "smooth" }), 300);
@@ -730,6 +738,7 @@ function AppInner() {
       if (state.page === "checkout" && state.checkoutData) {
         setCheckoutData(state.checkoutData);
         pushPath("/checkout");
+        animationKeyRef.current = "checkout";
         startTransition(() => setPage("checkout"));
         return;
       }
@@ -767,10 +776,13 @@ function AppInner() {
               (ex) => slugify(ex.title || ex.name || String(ex.id)) === slug
             );
             if (found) {
+              const isNewExam = !activeExam || activeExam.id !== found.id;
               setActiveExam(found);
+              if (isNewExam) animationKeyRef.current = `exam-detail:${found.id}`;
               setPage("exam-detail");
             } else {
               window.history.replaceState(null, "", "/exams");
+              animationKeyRef.current = "exams";
               setPage("exams");
             }
           } else {
@@ -779,6 +791,7 @@ function AppInner() {
           }
           return;
         }
+        animationKeyRef.current = newPage;
         setPage(newPage);
       });
     };
@@ -829,9 +842,17 @@ function AppInner() {
             );
             if (found) {
               setActiveExam(found);
-              setPage("exam-detail");
+              // Only update page if not already on exam-detail to avoid remount
+              setPage(prev => {
+                if (prev !== "exam-detail") {
+                  animationKeyRef.current = `exam-detail:${found.id}`;
+                  return "exam-detail";
+                }
+                return prev;
+              });
             } else {
               window.history.replaceState(null, "", "/exams");
+              animationKeyRef.current = "exams";
               setPage("exams");
               showToast({ type: "error", message: "Exam not found." });
             }
@@ -890,7 +911,7 @@ function AppInner() {
       {/* Pricing button is now inside NavBar right actions */}
 
       <main
-        key={page}
+        key={animationKeyRef.current}
         className="fade-in"
         style={{ minHeight: "calc(100vh - 72px)", overflowX: "hidden" }}
       >
