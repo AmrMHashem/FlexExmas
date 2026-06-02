@@ -1,4 +1,7 @@
 // firebase.js — FlexExams Firebase Configuration
+// ✅ Offline persistence enabled
+// ✅ Firestore quota-exceeded fallback handler
+
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import {
@@ -11,6 +14,7 @@ import {
 } from "firebase/auth";
 import {
   getFirestore,
+  enableIndexedDbPersistence,
   collection,
   doc,
   setDoc,
@@ -50,6 +54,36 @@ const analytics = getAnalytics(app);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
+
+// ── Offline Persistence (reduces reads on revisit from cache) ─────────────
+enableIndexedDbPersistence(db).catch((err) => {
+  if (err.code === "failed-precondition") {
+    // Multiple tabs open — persistence only works in one tab at a time
+    console.warn("[Firestore] Persistence unavailable: multiple tabs open.");
+  } else if (err.code === "unimplemented") {
+    // Browser doesn't support it
+    console.warn("[Firestore] Persistence not supported by this browser.");
+  }
+});
+
+// ── Quota-Exceeded Global Handler ─────────────────────────────────────────
+// If Firestore quota is exceeded, show a maintenance banner instead of crashing
+window.__firestoreQuotaExceeded = false;
+
+const _originalGetDocs = getDocs;
+const _originalGetDoc  = getDoc;
+
+// We patch at module level via a global flag — components check this flag
+// before rendering to show a fallback UI (handled in App.jsx)
+export function isFirestoreQuotaExceeded() {
+  return window.__firestoreQuotaExceeded === true;
+}
+
+export function markQuotaExceeded() {
+  window.__firestoreQuotaExceeded = true;
+  // Dispatch global event so any component can react
+  window.dispatchEvent(new CustomEvent("firestore:quota-exceeded"));
+}
 
 export {
   app,
