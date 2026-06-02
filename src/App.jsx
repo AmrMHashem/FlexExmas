@@ -6,11 +6,13 @@
 // ✅ Lazy loading + code splitting
 // ✅ useTransition for non-blocking navigation
 // ✅ Firebase/getExams loads after Auth check
+// ✅ Fix: showToast uses ref-based timer to avoid reference instability
 
 import React, {
   useState,
   useCallback,
   useEffect,
+  useRef,
   Suspense,
   lazy,
   useTransition,
@@ -41,7 +43,7 @@ const CareerDiagnostic  = lazy(() => import("./pages/CareerDiagnostic"));
 const Pricing           = lazy(() => import("./pages/Pricing"));
 const Leaderboard       = lazy(() => import("./pages/Leaderboard"));
 const Checkout          = lazy(() => import("./pages/Checkout"));
-const Terms             = lazy(() => import("./pages/Terms"));   // ✅ إضافة Terms
+const Terms             = lazy(() => import("./pages/Terms"));
 
 // ── Page fallback spinner ─────────────────────────────────────────
 const PageFallback = () => (
@@ -58,7 +60,7 @@ const PageFallback = () => (
 );
 
 // ─────────────────────────────────────────────────────────────────
-// slugify — توليد slug احترافي من اسم الاختبار
+// slugify
 // ─────────────────────────────────────────────────────────────────
 const slugify = (text) =>
   (text || "")
@@ -70,7 +72,7 @@ const slugify = (text) =>
     .slice(0, 70) || "exam";
 
 // ─────────────────────────────────────────────────────────────────
-// ROUTE MAP — pathname → page key
+// ROUTE MAP
 // ─────────────────────────────────────────────────────────────────
 const ROUTE_MAP = {
   "/":                   "home",
@@ -92,27 +94,24 @@ const ROUTE_MAP = {
   "/leaderboard":        "leaderboard",
   "/referral":           "referral",
   "/checkout":           "checkout",
-  "/terms":              "terms",          // ✅ إضافة Terms
+  "/terms":              "terms",
 };
 
 // ─────────────────────────────────────────────────────────────────
-// getStateFromPath — يقرأ الـ pathname ويحدد الصفحة والـ slug
+// getStateFromPath
 // ─────────────────────────────────────────────────────────────────
 const getStateFromPath = (pathname = window.location.pathname) => {
   const clean = pathname.replace(/\/$/, "") || "/";
-
-  // /exam/aws-solutions-architect-saa-c03
   if (clean.startsWith("/exam/")) {
     const slug = clean.replace("/exam/", "").trim();
     return { page: "exam-detail", slug };
   }
-
   const page = ROUTE_MAP[clean] || "home";
   return { page, slug: null };
 };
 
 // ─────────────────────────────────────────────────────────────────
-// PAGE META — title + description + canonical per page
+// PAGE META
 // ─────────────────────────────────────────────────────────────────
 const PAGE_META = {
   home: {
@@ -202,7 +201,7 @@ const PAGE_META = {
     description: "Complete your FlexExams purchase securely via PayPal.",
     path: "/checkout",
   },
-  terms: {   // ✅ إضافة Terms
+  terms: {
     title: "Terms of Service & Privacy Policy — FlexExams",
     description: "Read FlexExams terms of service, privacy policy, and cookie policy. Learn how we protect your data and what rights you have.",
     path: "/terms",
@@ -325,7 +324,7 @@ function usePageSEO(page, activeExam) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// History navigation helper — pushes clean URL, no #
+// History navigation helper
 // ─────────────────────────────────────────────────────────────────
 function pushPath(path) {
   if (window.location.pathname !== path) {
@@ -493,7 +492,7 @@ h1,h2,h3,h4,h5,h6 { font-family: 'Plus Jakarta Sans',sans-serif; font-weight: 70
 `;
 
 // ─────────────────────────────────────────────────────────────────
-// QuotaBanner — shown when Firestore free-tier limit is exceeded
+// QuotaBanner
 // ─────────────────────────────────────────────────────────────────
 function QuotaBanner() {
   return (
@@ -599,7 +598,7 @@ function LoadingScreen() {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// AppInner — النواة الرئيسية
+// AppInner
 // ─────────────────────────────────────────────────────────────────
 function AppInner() {
   const { isLoading } = useAuth();
@@ -620,29 +619,20 @@ function AppInner() {
   const [checkoutData, setCheckoutData] = useState(null);
   const [, startTransition]            = useTransition();
 
+  // ── FIX: ref-based timer — showToast لا تتغير reference أبدًا ──
+  const toastTimerRef = useRef(null);
   const showToast = useCallback((t) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast(t);
-    setTimeout(() => setToast(null), 4000);
-  }, []);
+    toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+  }, []); // ✅ [] — stable reference لا تسبب re-render loops
 
-  // Weekly counters auto-update function
-  const runWeeklyCountersUpdate = useCallback(async () => {
-    try {
-      const { runWeeklyCountersUpdate: update } = await import("./services/firestore");
-      await update();
-      console.log('[Info] Weekly counters updated successfully.');
-    } catch (err) {
-      console.warn('Weekly counters update failed:', err);
-    }
-  }, []);
-
-  // ── nav — دالة التنقل المركزية (History API) ─────────────────
+  // ── nav ───────────────────────────────────────────────────────
   const nav = useCallback(
     (p, opts) => {
       startTransition(() => {
         if (p === "auth") {
           setAuthMode(opts?.mode || "login");
-          // ── حفظ الصفحة الحالية قبل الانتقال لـ auth ─────────────
           try {
             const returnState = {
               page        : page,
@@ -691,7 +681,6 @@ function AppInner() {
           return;
         }
 
-        // باقي الصفحات
         const meta = PAGE_META[p];
         const path = meta ? meta.path : `/${p}`;
         pushPath(path);
@@ -704,7 +693,7 @@ function AppInner() {
     [startTransition, page, activeExam, checkoutData]
   );
 
-  // ── handleReturnAfterAuth — يُستدعى من Auth بعد نجاح الـ login/register ──
+  // ── handleReturnAfterAuth ─────────────────────────────────────
   const handleReturnAfterAuth = useCallback(() => {
     try {
       const raw = sessionStorage.getItem("flexexams_return_to");
@@ -734,7 +723,6 @@ function AppInner() {
         return;
       }
 
-      // صفحة أخرى — نرجع لها
       const validPages = ["exams", "dashboard", "pricing", "my-exams", "favorites"];
       if (validPages.includes(state.page)) {
         nav(state.page);
@@ -755,7 +743,7 @@ function AppInner() {
     [nav]
   );
 
-  // ── مستمع لـ Back / Forward في المتصفح ──────────────────────
+  // ── Back / Forward ────────────────────────────────────────────
   useEffect(() => {
     const handlePopState = () => {
       const { page: newPage, slug } = getStateFromPath();
@@ -787,7 +775,7 @@ function AppInner() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, [exams, startTransition]);
 
-  // ── Certificate verify من query param (?id=...) ──────────────
+  // ── Certificate verify ────────────────────────────────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get("id");
@@ -854,14 +842,13 @@ function AppInner() {
     };
   }, [examsLoaded, isLoading, pendingSlug, showToast]);
 
-  // ── refreshExams — يُعاد استدعاؤه بعد أي تعديل على الأسئلة ──
+  // ── refreshExams ──────────────────────────────────────────────
   const refreshExams = useCallback(async () => {
     try {
       const { getExams } = await import("./services/firestore");
       const data = await getExams();
       const active = data.filter((ex) => ex.isActive !== false);
       setExams(active);
-      // إذا كان الاختبار الحالي مفتوحًا، نحدّث بياناته أيضًا
       if (activeExam) {
         const updated = active.find((ex) => ex.id === activeExam.id);
         if (updated) setActiveExam(updated);
@@ -873,11 +860,17 @@ function AppInner() {
 
   const [quotaExceeded, setQuotaExceeded] = React.useState(() => isFirestoreQuotaExceeded());
 
-  // Listen for global quota-exceeded event
   React.useEffect(() => {
     const handler = () => setQuotaExceeded(true);
     window.addEventListener("firestore:quota-exceeded", handler);
     return () => window.removeEventListener("firestore:quota-exceeded", handler);
+  }, []);
+
+  // cleanup toast timer on unmount
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
   }, []);
 
   if (quotaExceeded) return <QuotaBanner />;
@@ -886,8 +879,6 @@ function AppInner() {
   return (
     <>
       <NavBar page={page} setPage={nav} showToast={showToast} extraLinks={[{page:"leaderboard",label:"🏆 Leaderboard"},{page:"referral",label:"🎁 Referral"}]} />
-
-      {/* Pricing button is now inside NavBar right actions */}
 
       <main
         key={page}
@@ -923,7 +914,7 @@ function AppInner() {
 
           {page === "contact" && <Contact showToast={showToast} />}
 
-          {page === "terms" && <Terms />}   {/* ✅ إضافة صفحة Terms */}
+          {page === "terms" && <Terms />}
 
           {page === "exam-detail" && activeExam && (
             <ExamDetail
@@ -1040,7 +1031,6 @@ export default function App() {
     if (!localStorage.getItem("theme")) localStorage.setItem("theme", saved);
     document.documentElement.setAttribute("data-theme", saved);
 
-    // Theme color meta
     let tc = document.querySelector("meta[name='theme-color']");
     if (!tc) {
       tc = document.createElement("meta");
@@ -1049,11 +1039,9 @@ export default function App() {
     }
     tc.content = saved === "dark" ? "#0d1223" : "#ffffff";
 
-    // Twitter card base
     setMeta("twitter:card", "summary_large_image");
     setMeta("twitter:site", "@FlexExams");
 
-    // Resource hints
     [
       { rel: "preconnect",   href: "https://fonts.googleapis.com" },
       { rel: "preconnect",   href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
@@ -1069,7 +1057,6 @@ export default function App() {
       document.head.appendChild(l);
     });
 
-    // Preload logo (LCP)
     if (!document.querySelector("link[rel='preload'][as='image']")) {
       const pl = document.createElement("link");
       pl.rel = "preload";
@@ -1078,7 +1065,6 @@ export default function App() {
       document.head.appendChild(pl);
     }
 
-    // Organization JSON-LD (persistent)
     injectJsonLd("ld-org", {
       "@context": "https://schema.org",
       "@type": "Organization",
