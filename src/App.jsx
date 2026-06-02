@@ -1,4 +1,11 @@
-// App.jsx — FIXED VERSION
+// App.jsx — FlexExams v5.0 — History Router Edition (SEO-Optimized)
+// ✅ History API routing — clean URLs /topics /exams /exam/slug
+// ✅ No more # in URLs → better SEO & social sharing
+// ✅ Per-page canonical + og:url updates
+// ✅ Structured data per page (BreadcrumbList + WebPage)
+// ✅ Lazy loading + code splitting
+// ✅ useTransition for non-blocking navigation
+// ✅ Firebase/getExams loads after Auth check
 
 import React, {
   useState,
@@ -7,10 +14,8 @@ import React, {
   Suspense,
   lazy,
   useTransition,
-  useRef,
 } from "react";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
-import { isFirestoreQuotaExceeded } from "./firebase";
 import NavBar from "./components/NavBar";
 import Footer from "./components/Footer";
 import { Toast, Spinner } from "./components/UI";
@@ -35,58 +40,69 @@ const CareerDiagnostic  = lazy(() => import("./pages/CareerDiagnostic"));
 const Pricing           = lazy(() => import("./pages/Pricing"));
 const Leaderboard       = lazy(() => import("./pages/Leaderboard"));
 const Checkout          = lazy(() => import("./pages/Checkout"));
-const Terms             = lazy(() => import("./pages/Terms"));
+const Terms             = lazy(() => import("./pages/Terms"));   // ✅ إضافة Terms
 
+// ── Page fallback spinner ─────────────────────────────────────────
 const PageFallback = () => (
-  <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+  <div
+    style={{
+      minHeight: "60vh",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    }}
+  >
     <Spinner size={32} color="var(--accent)" />
   </div>
 );
 
-// ✅ FIX #1: Stable slugify function
-const slugify = (text) => {
-  if (!text) return "exam";
-  return String(text)
+// ─────────────────────────────────────────────────────────────────
+// slugify — توليد slug احترافي من اسم الاختبار
+// ─────────────────────────────────────────────────────────────────
+const slugify = (text) =>
+  (text || "")
     .toLowerCase()
     .replace(/[^a-z0-9\u0600-\u06FF\s-]/g, "")
     .trim()
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "")
     .slice(0, 70) || "exam";
+
+// ─────────────────────────────────────────────────────────────────
+// ROUTE MAP — pathname → page key
+// ─────────────────────────────────────────────────────────────────
+const ROUTE_MAP = {
+  "/":                   "home",
+  "/exams":              "exams",
+  "/topics":             "topics",
+  "/categories":         "categories",
+  "/about":              "about",
+  "/contact":            "contact",
+  "/quiz":               "quiz",
+  "/result":             "result",
+  "/auth":               "auth",
+  "/dashboard":          "dashboard",
+  "/my-exams":           "my-exams",
+  "/admin":              "admin",
+  "/favorites":          "favorites",
+  "/verify":             "verify",
+  "/career-diagnostic":  "career-diagnostic",
+  "/pricing":            "pricing",
+  "/leaderboard":        "leaderboard",
+  "/referral":           "referral",
+  "/checkout":           "checkout",
+  "/terms":              "terms",          // ✅ إضافة Terms
 };
 
-// ✅ FIX #2: Memoized ROUTE_MAP to prevent re-creation
-const ROUTE_MAP = Object.freeze({
-  "/": "home",
-  "/exams": "exams",
-  "/topics": "topics",
-  "/categories": "categories",
-  "/about": "about",
-  "/contact": "contact",
-  "/quiz": "quiz",
-  "/result": "result",
-  "/auth": "auth",
-  "/dashboard": "dashboard",
-  "/my-exams": "my-exams",
-  "/admin": "admin",
-  "/favorites": "favorites",
-  "/verify": "verify",
-  "/career-diagnostic": "career-diagnostic",
-  "/pricing": "pricing",
-  "/leaderboard": "leaderboard",
-  "/referral": "referral",
-  "/checkout": "checkout",
-  "/terms": "terms",
-});
-
-// ✅ FIX #3: Optimized getStateFromPath
+// ─────────────────────────────────────────────────────────────────
+// getStateFromPath — يقرأ الـ pathname ويحدد الصفحة والـ slug
+// ─────────────────────────────────────────────────────────────────
 const getStateFromPath = (pathname = window.location.pathname) => {
   const clean = pathname.replace(/\/$/, "") || "/";
 
+  // /exam/aws-solutions-architect-saa-c03
   if (clean.startsWith("/exam/")) {
-    const slug = clean.replace("/exam/", "").trim().toLowerCase();
-    if (!slug) return { page: "home", slug: null };
+    const slug = clean.replace("/exam/", "").trim();
     return { page: "exam-detail", slug };
   }
 
@@ -94,8 +110,10 @@ const getStateFromPath = (pathname = window.location.pathname) => {
   return { page, slug: null };
 };
 
-// ✅ FIX #4: Stable PAGE_META object
-const PAGE_META = Object.freeze({
+// ─────────────────────────────────────────────────────────────────
+// PAGE META — title + description + canonical per page
+// ─────────────────────────────────────────────────────────────────
+const PAGE_META = {
   home: {
     title: "FlexExams — Practice Smarter, Pass with Confidence",
     description: "Prepare for 50+ IT certifications with real exam-style questions, timed practice tests, and instant results. Trusted by 100,000+ professionals worldwide.",
@@ -171,14 +189,8 @@ const PAGE_META = Object.freeze({
     description: "Discover the best IT certification path for your career goals with our free Career Diagnostic tool.",
     path: "/career-diagnostic",
   },
-  leaderboard: {
-    title: "Leaderboard — FlexExams",
-    path: "/leaderboard",
-  },
-  referral: {
-    title: "Referral Program — FlexExams",
-    path: "/referral",
-  },
+  leaderboard: { title: "Leaderboard — FlexExams", path: "/leaderboard" },
+  referral:    { title: "Referral Program — FlexExams", path: "/referral" },
   pricing: {
     title: "Pricing — FlexExams",
     description: "Affordable certification prep plans. Start free, upgrade anytime for full access to all exams.",
@@ -189,14 +201,16 @@ const PAGE_META = Object.freeze({
     description: "Complete your FlexExams purchase securely via PayPal.",
     path: "/checkout",
   },
-  terms: {
+  terms: {   // ✅ إضافة Terms
     title: "Terms of Service & Privacy Policy — FlexExams",
     description: "Read FlexExams terms of service, privacy policy, and cookie policy. Learn how we protect your data and what rights you have.",
     path: "/terms",
   },
-});
+};
 
-// ── SEO helpers ────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// SEO helpers
+// ─────────────────────────────────────────────────────────────────
 function setMeta(nameOrProp, content, isProp = false) {
   const sel = isProp
     ? `meta[property="${nameOrProp}"]`
@@ -240,25 +254,25 @@ function updatePageSEO(page, activeExam) {
 
   if (page === "exam-detail" && activeExam) {
     const examTitle = activeExam.title || activeExam.name || "Practice Exam";
-    const examSlug = slugify(examTitle);
-    const path = `/exam/${examSlug}`;
-    const title = `${examTitle} — Practice Exam | FlexExams`;
-    const desc = `Practice for ${examTitle} with real exam-style questions on FlexExams. Timed tests, instant feedback, and detailed explanations.`;
+    const examSlug  = slugify(examTitle);
+    const path      = `/exam/${examSlug}`;
+    const title     = `${examTitle} — Practice Exam | FlexExams`;
+    const desc      = `Practice for ${examTitle} with real exam-style questions on FlexExams. Timed tests, instant feedback, and detailed explanations.`;
 
     document.title = title;
     setMeta("description", desc);
     setCanonical(path);
-    setMeta("og:title", title, true);
-    setMeta("og:description", desc, true);
-    setMeta("og:image", OG_IMAGE, true);
-    setMeta("twitter:title", title);
+    setMeta("og:title",       title,    true);
+    setMeta("og:description", desc,     true);
+    setMeta("og:image",       OG_IMAGE, true);
+    setMeta("twitter:title",  title);
     setMeta("twitter:description", desc);
 
     injectJsonLd("ld-breadcrumb", {
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
       "itemListElement": [
-        { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.flexexams.com/" },
+        { "@type": "ListItem", "position": 1, "name": "Home",  "item": "https://www.flexexams.com/" },
         { "@type": "ListItem", "position": 2, "name": "Exams", "item": "https://www.flexexams.com/exams" },
         { "@type": "ListItem", "position": 3, "name": examTitle, "item": `https://www.flexexams.com${path}` },
       ],
@@ -266,14 +280,14 @@ function updatePageSEO(page, activeExam) {
     return;
   }
 
-  const meta = PAGE_META[page] || PAGE_META.home;
+  const meta  = PAGE_META[page] || PAGE_META.home;
   document.title = meta.title;
-  setMeta("description", meta.description);
+  setMeta("description",    meta.description);
   setCanonical(meta.path);
-  setMeta("og:title", meta.title, true);
+  setMeta("og:title",       meta.title,       true);
   setMeta("og:description", meta.description, true);
-  setMeta("og:image", OG_IMAGE, true);
-  setMeta("twitter:title", meta.title);
+  setMeta("og:image",       OG_IMAGE,         true);
+  setMeta("twitter:title",  meta.title);
   setMeta("twitter:description", meta.description);
 
   if (page === "home") {
@@ -300,19 +314,27 @@ function updatePageSEO(page, activeExam) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────
+// usePageSEO hook
+// ─────────────────────────────────────────────────────────────────
 function usePageSEO(page, activeExam) {
   useEffect(() => {
     updatePageSEO(page, activeExam);
   }, [page, activeExam]);
 }
 
+// ─────────────────────────────────────────────────────────────────
+// History navigation helper — pushes clean URL, no #
+// ─────────────────────────────────────────────────────────────────
 function pushPath(path) {
   if (window.location.pathname !== path) {
     window.history.pushState(null, "", path);
   }
 }
 
-// ── GLOBAL CSS ────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// GLOBAL CSS
+// ─────────────────────────────────────────────────────────────────
 const GLOBAL_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap');
 
@@ -469,57 +491,18 @@ h1,h2,h3,h4,h5,h6 { font-family: 'Plus Jakarta Sans',sans-serif; font-weight: 70
 .sticky-col { position:sticky; top:var(--sticky-top-offset); align-self:start; }
 `;
 
-// ── QuotaBanner ────────────────────────────────────────────────────
-function QuotaBanner() {
-  return (
-    <div style={{
-      position: "fixed", inset: 0, background: "var(--bg)",
-      display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "center",
-      zIndex: 9999, padding: "24px",
-    }}>
-      <div style={{ fontSize: 64, marginBottom: 20 }}>🛠️</div>
-      <h1 style={{
-        fontFamily: "'Plus Jakarta Sans',sans-serif",
-        fontSize: "clamp(22px,5vw,32px)", fontWeight: 900,
-        marginBottom: 12, textAlign: "center",
-        background: "var(--gradient-accent)",
-        WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-      }}>
-        FlexExams — Maintenance Mode
-      </h1>
-      <p style={{
-        fontSize: "clamp(14px,3vw,17px)", color: "var(--text2)",
-        maxWidth: 500, textAlign: "center", lineHeight: 1.7, marginBottom: 28,
-      }}>
-        We are performing scheduled maintenance to improve your experience.
-        The platform will be back online shortly. Thank you for your patience! 🙏
-      </p>
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
-        <a href="/"
-          style={{ padding: "12px 28px", borderRadius: 12, background: "var(--gradient-accent)", color: "#fff", fontWeight: 800, fontSize: 14, textDecoration: "none", fontFamily: "inherit" }}>
-          ↩ Go to Home
-        </a>
-        <button onClick={() => { window.location.reload(); }}
-          style={{ padding: "12px 28px", borderRadius: 12, background: "var(--accent-soft)", border: "1.5px solid var(--border)", color: "var(--accent)", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>
-          🔄 Try Again
-        </button>
-      </div>
-      <p style={{ marginTop: 24, fontSize: 12, color: "var(--text3)" }}>
-        If the issue persists, please check back in a few minutes.
-      </p>
-    </div>
-  );
-}
-
-// ── LoadingScreen ──────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// Loading Screen
+// ─────────────────────────────────────────────────────────────────
 function LoadingScreen() {
   return (
-    <div style={{
-      position: "fixed", inset: 0, background: "var(--bg)",
-      display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "center", zIndex: 9999,
-    }}>
+    <div
+      style={{
+        position: "fixed", inset: 0, background: "var(--bg)",
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center", zIndex: 9999,
+      }}
+    >
       <style>{`
         @keyframes loadGlow {
           0%,100% { box-shadow: 0 0 20px rgba(99,102,241,0.3); }
@@ -530,6 +513,7 @@ function LoadingScreen() {
           50%      { transform: scaleY(1);   opacity: 1;   }
         }
       `}</style>
+
       <div style={{ marginBottom: 28 }}>
         <img
           src="https://i.ibb.co/DPztDcgx/Chat-GPT-Image-Apr-26-2026-09-45-41-PM.png"
@@ -538,6 +522,7 @@ function LoadingScreen() {
           alt="FlexExams" loading="eager" fetchpriority="high"
         />
       </div>
+
       <div style={{
         fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 28, fontWeight: 900,
         marginBottom: 5, letterSpacing: "-1px",
@@ -546,12 +531,14 @@ function LoadingScreen() {
       }}>
         FlexExams
       </div>
+
       <div style={{
         fontSize: 11, color: "var(--text3)", letterSpacing: "0.25em",
         textTransform: "uppercase", marginBottom: 36, fontWeight: 700,
       }}>
         Certification Platform
       </div>
+
       <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
         {[0, 1, 2, 3].map((i) => (
           <div key={i} style={{
@@ -565,32 +552,34 @@ function LoadingScreen() {
   );
 }
 
-// ✅ FIX #5: Optimized AppInner with proper state management
+// ─────────────────────────────────────────────────────────────────
+// AppInner — النواة الرئيسية
+// ─────────────────────────────────────────────────────────────────
 function AppInner() {
   const { isLoading } = useAuth();
-  
-  // Use useRef to avoid unnecessary re-renders from URL parsing
-  const currentStateRef = useRef(getStateFromPath());
-  const [page, setPage] = useState(currentStateRef.current.page);
-  const [pendingSlug, setPendingSlug] = useState(currentStateRef.current.slug);
-  const [authMode, setAuthMode] = useState("login");
+
+  const initialState = getStateFromPath();
+
+  const [page, setPage]               = useState(initialState.page);
+  const [pendingSlug, setPendingSlug]  = useState(initialState.slug);
+  const [authMode, setAuthMode]        = useState("login");
   const [activeFilter, setActiveFilter] = useState({ vendor: null, topic: null });
-  const [activeExam, setActiveExam] = useState(null);
-  const [quizData, setQuizData] = useState(null);
-  const [resultData, setResultData] = useState(null);
-  const [exams, setExams] = useState([]);
-  const [examsLoaded, setExamsLoaded] = useState(false);
-  const [toast, setToast] = useState(null);
+  const [activeExam, setActiveExam]    = useState(null);
+  const [quizData, setQuizData]        = useState(null);
+  const [resultData, setResultData]    = useState(null);
+  const [exams, setExams]              = useState([]);
+  const [examsLoaded, setExamsLoaded]  = useState(false);
+  const [toast, setToast]              = useState(null);
   const [verifyCertId, setVerifyCertId] = useState(null);
   const [checkoutData, setCheckoutData] = useState(null);
-  const [, startTransition] = useTransition();
+  const [, startTransition]            = useTransition();
 
   const showToast = useCallback((t) => {
     setToast(t);
-    const timer = setTimeout(() => setToast(null), 4000);
-    return () => clearTimeout(timer);
+    setTimeout(() => setToast(null), 4000);
   }, []);
 
+  // Weekly counters auto-update function
   const runWeeklyCountersUpdate = useCallback(async () => {
     try {
       const { runWeeklyCountersUpdate: update } = await import("./services/firestore");
@@ -601,22 +590,23 @@ function AppInner() {
     }
   }, []);
 
-  // ✅ FIX #6: Memoized nav function to prevent re-creation
+  // ── nav — دالة التنقل المركزية (History API) ─────────────────
   const nav = useCallback(
     (p, opts) => {
       startTransition(() => {
         if (p === "auth") {
           setAuthMode(opts?.mode || "login");
+          // ── حفظ الصفحة الحالية قبل الانتقال لـ auth ─────────────
           try {
             const returnState = {
-              page,
-              examId: activeExam?.id || null,
-              examSlug: activeExam
+              page        : page,
+              examId      : activeExam?.id   || null,
+              examSlug    : activeExam
                 ? slugify(activeExam.title || activeExam.name || String(activeExam.id))
                 : null,
-              checkoutData: checkoutData || null,
-              couponCode: opts?.couponCode || null,
-              scrollY: window.scrollY,
+              checkoutData: checkoutData     || null,
+              couponCode  : opts?.couponCode || null,
+              scrollY     : window.scrollY,
             };
             sessionStorage.setItem("flexexams_return_to", JSON.stringify(returnState));
           } catch (_) {}
@@ -628,7 +618,7 @@ function AppInner() {
         if (p === "exams") {
           setActiveFilter({
             vendor: opts?.vendorFilter || null,
-            topic: opts?.topicFilter || null,
+            topic:  opts?.topicFilter  || null,
           });
           pushPath("/exams");
           setPage("exams");
@@ -655,6 +645,7 @@ function AppInner() {
           return;
         }
 
+        // باقي الصفحات
         const meta = PAGE_META[p];
         const path = meta ? meta.path : `/${p}`;
         pushPath(path);
@@ -663,10 +654,11 @@ function AppInner() {
 
       requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
     },
-    // Only depend on startTransition — NOT on page, activeExam, or checkoutData
-    [startTransition]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [startTransition, page, activeExam, checkoutData]
   );
 
+  // ── handleReturnAfterAuth — يُستدعى من Auth بعد نجاح الـ login/register ──
   const handleReturnAfterAuth = useCallback(() => {
     try {
       const raw = sessionStorage.getItem("flexexams_return_to");
@@ -696,6 +688,7 @@ function AppInner() {
         return;
       }
 
+      // صفحة أخرى — نرجع لها
       const validPages = ["exams", "dashboard", "pricing", "my-exams", "favorites"];
       if (validPages.includes(state.page)) {
         nav(state.page);
@@ -705,7 +698,8 @@ function AppInner() {
     } catch (_) {
       nav("home");
     }
-  }, [exams, startTransition, nav]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exams, startTransition]);
 
   const startQuiz = useCallback(
     (data) => {
@@ -715,7 +709,7 @@ function AppInner() {
     [nav]
   );
 
-  // ✅ FIX #7: Fixed popstate handler with proper dependency array
+  // ── مستمع لـ Back / Forward في المتصفح ──────────────────────
   useEffect(() => {
     const handlePopState = () => {
       const { page: newPage, slug } = getStateFromPath();
@@ -723,22 +717,17 @@ function AppInner() {
       startTransition(() => {
         if (newPage === "exam-detail" && slug) {
           if (exams.length > 0) {
-            const slugLower = slug.toLowerCase().trim();
-            const found = exams.find((ex) => {
-              const examSlug = slugify(ex.title || ex.name || String(ex.id)).toLowerCase();
-              return examSlug === slugLower;
-            });
-
+            const found = exams.find(
+              (ex) => slugify(ex.title || ex.name || String(ex.id)) === slug
+            );
             if (found) {
               setActiveExam(found);
               setPage("exam-detail");
             } else {
-              // Slug doesn't match any exam — go back to exams list
               window.history.replaceState(null, "", "/exams");
               setPage("exams");
             }
           } else {
-            // Exams not loaded yet — keep slug pending
             setPendingSlug(slug);
             setPage("exam-detail");
           }
@@ -750,9 +739,9 @@ function AppInner() {
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-    // ✅ FIXED: Removed exams from dependency array to prevent infinite re-renders
-  }, [startTransition]);
+  }, [exams, startTransition]);
 
+  // ── Certificate verify من query param (?id=...) ──────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get("id");
@@ -762,6 +751,7 @@ function AppInner() {
     }
   }, []);
 
+  // ── Quiz beforeunload guard ───────────────────────────────────
   useEffect(() => {
     if (page !== "quiz") return;
     const h = (e) => {
@@ -772,7 +762,7 @@ function AppInner() {
     return () => window.removeEventListener("beforeunload", h);
   }, [page]);
 
-  // ✅ FIX #8: Optimized exam loading with better cache logic
+  // ── تحميل الـ Exams ──────────────────────────────────────────
   useEffect(() => {
     if (examsLoaded || isLoading) return;
     let cancelled = false;
@@ -788,12 +778,9 @@ function AppInner() {
           setExamsLoaded(true);
 
           if (pendingSlug) {
-            const slugLower = pendingSlug.toLowerCase().trim();
-            const found = active.find((ex) => {
-              const examSlug = slugify(ex.title || ex.name || String(ex.id)).toLowerCase();
-              return examSlug === slugLower;
-            });
-
+            const found = active.find(
+              (ex) => slugify(ex.title || ex.name || String(ex.id)) === pendingSlug
+            );
             if (found) {
               setActiveExam(found);
               setPage("exam-detail");
@@ -821,12 +808,14 @@ function AppInner() {
     };
   }, [examsLoaded, isLoading, pendingSlug, showToast]);
 
+  // ── refreshExams — يُعاد استدعاؤه بعد أي تعديل على الأسئلة ──
   const refreshExams = useCallback(async () => {
     try {
       const { getExams } = await import("./services/firestore");
       const data = await getExams();
       const active = data.filter((ex) => ex.isActive !== false);
       setExams(active);
+      // إذا كان الاختبار الحالي مفتوحًا، نحدّث بياناته أيضًا
       if (activeExam) {
         const updated = active.find((ex) => ex.id === activeExam.id);
         if (updated) setActiveExam(updated);
@@ -836,23 +825,13 @@ function AppInner() {
     }
   }, [activeExam]);
 
-  const [quotaExceeded, setQuotaExceeded] = React.useState(() => isFirestoreQuotaExceeded());
-
-  React.useEffect(() => {
-    const handler = () => setQuotaExceeded(true);
-    window.addEventListener("firestore:quota-exceeded", handler);
-    return () => window.removeEventListener("firestore:quota-exceeded", handler);
-  }, []);
-
-  if (quotaExceeded) return <QuotaBanner />;
   if (isLoading) return <LoadingScreen />;
 
   return (
     <>
-      <NavBar page={page} setPage={nav} showToast={showToast} extraLinks={[
-        { page: "leaderboard", label: "🏆 Leaderboard" },
-        { page: "referral", label: "🎁 Referral" }
-      ]} />
+      <NavBar page={page} setPage={nav} showToast={showToast} extraLinks={[{page:"leaderboard",label:"🏆 Leaderboard"},{page:"referral",label:"🎁 Referral"}]} />
+
+      {/* Pricing button is now inside NavBar right actions */}
 
       <main
         key={page}
@@ -888,7 +867,7 @@ function AppInner() {
 
           {page === "contact" && <Contact showToast={showToast} />}
 
-          {page === "terms" && <Terms />}
+          {page === "terms" && <Terms />}   {/* ✅ إضافة صفحة Terms */}
 
           {page === "exam-detail" && activeExam && (
             <ExamDetail
@@ -968,13 +947,11 @@ function AppInner() {
           {page === "pricing" && (
             <Pricing setPage={nav} showToast={showToast} />
           )}
-
           {page === "leaderboard" && (
-            <Suspense fallback={<div style={{padding:48,textAlign:"center"}}><Spinner size={32} color="var(--accent)" /></div>}>
+            <Suspense fallback={<div style={{padding:48,textAlign:"center"}}><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" style={{animation:"spin .8s linear infinite"}}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></div>}>
               <Leaderboard setPage={nav} showToast={showToast} />
             </Suspense>
           )}
-
           {page === "referral" && (
             <Suspense fallback={null}>
               {React.createElement(lazy(() => import("./components/ReferralSystem")), { showToast })}
@@ -998,13 +975,16 @@ function AppInner() {
   );
 }
 
-// ── Root App ───────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// App — Root
+// ─────────────────────────────────────────────────────────────────
 export default function App() {
   useEffect(() => {
     const saved = localStorage.getItem("theme") || "dark";
     if (!localStorage.getItem("theme")) localStorage.setItem("theme", saved);
     document.documentElement.setAttribute("data-theme", saved);
 
+    // Theme color meta
     let tc = document.querySelector("meta[name='theme-color']");
     if (!tc) {
       tc = document.createElement("meta");
@@ -1013,12 +993,14 @@ export default function App() {
     }
     tc.content = saved === "dark" ? "#0d1223" : "#ffffff";
 
+    // Twitter card base
     setMeta("twitter:card", "summary_large_image");
     setMeta("twitter:site", "@FlexExams");
 
+    // Resource hints
     [
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      { rel: "preconnect",   href: "https://fonts.googleapis.com" },
+      { rel: "preconnect",   href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       { rel: "dns-prefetch", href: "//i.ibb.co" },
       { rel: "dns-prefetch", href: "//firestore.googleapis.com" },
       { rel: "dns-prefetch", href: "//firebase.googleapis.com" },
@@ -1031,14 +1013,16 @@ export default function App() {
       document.head.appendChild(l);
     });
 
+    // Preload logo (LCP)
     if (!document.querySelector("link[rel='preload'][as='image']")) {
       const pl = document.createElement("link");
       pl.rel = "preload";
-      pl.as = "image";
+      pl.as  = "image";
       pl.href = "https://i.ibb.co/DPztDcgx/Chat-GPT-Image-Apr-26-2026-09-45-41-PM.png";
       document.head.appendChild(pl);
     }
 
+    // Organization JSON-LD (persistent)
     injectJsonLd("ld-org", {
       "@context": "https://schema.org",
       "@type": "Organization",
