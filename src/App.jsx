@@ -1,7 +1,11 @@
-// App.jsx — FlexExams v5.0 — History Router Edition (SEO-Optimized) — FIXED
-// ✅ Single source of truth for routing
-// ✅ No infinite refresh loops
-// ✅ Exams loaded BEFORE exam-detail page render
+// App.jsx — FlexExams v5.0 — History Router Edition (SEO-Optimized)
+// ✅ History API routing — clean URLs /topics /exams /exam/slug
+// ✅ No more # in URLs → better SEO & social sharing
+// ✅ Per-page canonical + og:url updates
+// ✅ Structured data per page (BreadcrumbList + WebPage)
+// ✅ Lazy loading + code splitting
+// ✅ useTransition for non-blocking navigation
+// ✅ Firebase/getExams loads after Auth check
 
 import React, {
   useState,
@@ -10,7 +14,6 @@ import React, {
   Suspense,
   lazy,
   useTransition,
-  useRef,
 } from "react";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { isFirestoreQuotaExceeded } from "./firebase";
@@ -38,8 +41,9 @@ const CareerDiagnostic  = lazy(() => import("./pages/CareerDiagnostic"));
 const Pricing           = lazy(() => import("./pages/Pricing"));
 const Leaderboard       = lazy(() => import("./pages/Leaderboard"));
 const Checkout          = lazy(() => import("./pages/Checkout"));
-const Terms             = lazy(() => import("./pages/Terms"));
+const Terms             = lazy(() => import("./pages/Terms"));   // ✅ إضافة Terms
 
+// ── Page fallback spinner ─────────────────────────────────────────
 const PageFallback = () => (
   <div
     style={{
@@ -88,12 +92,11 @@ const ROUTE_MAP = {
   "/leaderboard":        "leaderboard",
   "/referral":           "referral",
   "/checkout":           "checkout",
-  "/terms":              "terms",
+  "/terms":              "terms",          // ✅ إضافة Terms
 };
 
 // ─────────────────────────────────────────────────────────────────
 // getStateFromPath — يقرأ الـ pathname ويحدد الصفحة والـ slug
-// ✅ PURE function — no side effects
 // ─────────────────────────────────────────────────────────────────
 const getStateFromPath = (pathname = window.location.pathname) => {
   const clean = pathname.replace(/\/$/, "") || "/";
@@ -199,7 +202,7 @@ const PAGE_META = {
     description: "Complete your FlexExams purchase securely via PayPal.",
     path: "/checkout",
   },
-  terms: {
+  terms: {   // ✅ إضافة Terms
     title: "Terms of Service & Privacy Policy — FlexExams",
     description: "Read FlexExams terms of service, privacy policy, and cookie policy. Learn how we protect your data and what rights you have.",
     path: "/terms",
@@ -322,7 +325,7 @@ function usePageSEO(page, activeExam) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// History navigation helper — synchronous URL push
+// History navigation helper — pushes clean URL, no #
 // ─────────────────────────────────────────────────────────────────
 function pushPath(path) {
   if (window.location.pathname !== path) {
@@ -601,13 +604,10 @@ function LoadingScreen() {
 function AppInner() {
   const { isLoading } = useAuth();
 
-  // ✅ FIXED: Initialize state ONLY on mount, not on every render
-  const initialStateRef = useRef(null);
-  if (!initialStateRef.current) {
-    initialStateRef.current = getStateFromPath();
-  }
+  const initialState = getStateFromPath();
 
-  const [page, setPage]               = useState(initialStateRef.current.page);
+  const [page, setPage]               = useState(initialState.page);
+  const [pendingSlug, setPendingSlug]  = useState(initialState.slug);
   const [authMode, setAuthMode]        = useState("login");
   const [activeFilter, setActiveFilter] = useState({ vendor: null, topic: null });
   const [activeExam, setActiveExam]    = useState(null);
@@ -619,12 +619,6 @@ function AppInner() {
   const [verifyCertId, setVerifyCertId] = useState(null);
   const [checkoutData, setCheckoutData] = useState(null);
   const [, startTransition]            = useTransition();
-
-  // ✅ FIXED: Cache exams to avoid refinding exam on every popstate
-  const examsRefRef = useRef([]);
-  useEffect(() => {
-    examsRefRef.current = exams;
-  }, [exams]);
 
   const showToast = useCallback((t) => {
     setToast(t);
@@ -642,13 +636,13 @@ function AppInner() {
     }
   }, []);
 
-  // ✅ FIXED: Memoized navigation function
-  // Use useCallback to prevent re-registration of popstate listener
+  // ── nav — دالة التنقل المركزية (History API) ─────────────────
   const nav = useCallback(
     (p, opts) => {
       startTransition(() => {
         if (p === "auth") {
           setAuthMode(opts?.mode || "login");
+          // ── حفظ الصفحة الحالية قبل الانتقال لـ auth ─────────────
           try {
             const returnState = {
               page        : page,
@@ -697,6 +691,7 @@ function AppInner() {
           return;
         }
 
+        // باقي الصفحات
         const meta = PAGE_META[p];
         const path = meta ? meta.path : `/${p}`;
         pushPath(path);
@@ -705,6 +700,7 @@ function AppInner() {
 
       requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [startTransition, page, activeExam, checkoutData]
   );
 
@@ -716,8 +712,8 @@ function AppInner() {
       sessionStorage.removeItem("flexexams_return_to");
       const state = JSON.parse(raw);
 
-      if (state.page === "exam-detail" && state.examSlug && examsRefRef.current.length > 0) {
-        const found = examsRefRef.current.find(
+      if (state.page === "exam-detail" && state.examSlug && exams.length > 0) {
+        const found = exams.find(
           (ex) => slugify(ex.title || ex.name || String(ex.id)) === state.examSlug
         );
         if (found) {
@@ -738,6 +734,7 @@ function AppInner() {
         return;
       }
 
+      // صفحة أخرى — نرجع لها
       const validPages = ["exams", "dashboard", "pricing", "my-exams", "favorites"];
       if (validPages.includes(state.page)) {
         nav(state.page);
@@ -747,7 +744,8 @@ function AppInner() {
     } catch (_) {
       nav("home");
     }
-  }, [startTransition, nav]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exams, startTransition]);
 
   const startQuiz = useCallback(
     (data) => {
@@ -757,38 +755,37 @@ function AppInner() {
     [nav]
   );
 
-  // ✅ FIXED: Memoize handlePopState to prevent re-registration on every render
-  const handlePopState = useCallback(() => {
-    const { page: newPage, slug } = getStateFromPath();
-
-    startTransition(() => {
-      if (newPage === "exam-detail" && slug) {
-        if (examsRefRef.current.length > 0) {
-          const found = examsRefRef.current.find(
-            (ex) => slugify(ex.title || ex.name || String(ex.id)) === slug
-          );
-          if (found) {
-            setActiveExam(found);
-            setPage("exam-detail");
-          } else {
-            window.history.replaceState(null, "", "/exams");
-            setPage("exams");
-          }
-        } else {
-          // Exams not loaded yet — show placeholder and wait for load
-          setPage("exam-detail");
-        }
-        return;
-      }
-      setPage(newPage);
-    });
-  }, [startTransition]);
-
-  // ✅ FIXED: Register popstate ONLY ONCE on mount, not on every dependency change
+  // ── مستمع لـ Back / Forward في المتصفح ──────────────────────
   useEffect(() => {
+    const handlePopState = () => {
+      const { page: newPage, slug } = getStateFromPath();
+
+      startTransition(() => {
+        if (newPage === "exam-detail" && slug) {
+          if (exams.length > 0) {
+            const found = exams.find(
+              (ex) => slugify(ex.title || ex.name || String(ex.id)) === slug
+            );
+            if (found) {
+              setActiveExam(found);
+              setPage("exam-detail");
+            } else {
+              window.history.replaceState(null, "", "/exams");
+              setPage("exams");
+            }
+          } else {
+            setPendingSlug(slug);
+            setPage("exam-detail");
+          }
+          return;
+        }
+        setPage(newPage);
+      });
+    };
+
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [handlePopState]);
+  }, [exams, startTransition]);
 
   // ── Certificate verify من query param (?id=...) ──────────────
   useEffect(() => {
@@ -811,7 +808,7 @@ function AppInner() {
     return () => window.removeEventListener("beforeunload", h);
   }, [page]);
 
-  // ✅ FIXED: Load exams ONCE, then resolve pending exam-detail state
+  // ── تحميل الـ Exams ──────────────────────────────────────────
   useEffect(() => {
     if (examsLoaded || isLoading) return;
     let cancelled = false;
@@ -824,12 +821,9 @@ function AppInner() {
         if (!cancelled) {
           const active = data.filter((ex) => ex.isActive !== false);
           setExams(active);
-          examsRefRef.current = active;
           setExamsLoaded(true);
 
-          // ✅ FIXED: If we loaded exam-detail with a pending slug, NOW resolve it
-          const { slug: pendingSlug } = getStateFromPath();
-          if (pendingSlug && initialStateRef.current.page === "exam-detail") {
+          if (pendingSlug) {
             const found = active.find(
               (ex) => slugify(ex.title || ex.name || String(ex.id)) === pendingSlug
             );
@@ -841,12 +835,14 @@ function AppInner() {
               setPage("exams");
               showToast({ type: "error", message: "Exam not found." });
             }
+            setPendingSlug(null);
           }
         }
       } catch (err) {
         console.error("Failed to load exams:", err);
         if (!cancelled) {
           setExamsLoaded(true);
+          setPendingSlug(null);
         }
       }
     };
@@ -856,7 +852,7 @@ function AppInner() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [examsLoaded, isLoading, showToast]);
+  }, [examsLoaded, isLoading, pendingSlug, showToast]);
 
   // ── refreshExams — يُعاد استدعاؤه بعد أي تعديل على الأسئلة ──
   const refreshExams = useCallback(async () => {
@@ -865,7 +861,7 @@ function AppInner() {
       const data = await getExams();
       const active = data.filter((ex) => ex.isActive !== false);
       setExams(active);
-      examsRefRef.current = active;
+      // إذا كان الاختبار الحالي مفتوحًا، نحدّث بياناته أيضًا
       if (activeExam) {
         const updated = active.find((ex) => ex.id === activeExam.id);
         if (updated) setActiveExam(updated);
@@ -890,6 +886,8 @@ function AppInner() {
   return (
     <>
       <NavBar page={page} setPage={nav} showToast={showToast} extraLinks={[{page:"leaderboard",label:"🏆 Leaderboard"},{page:"referral",label:"🎁 Referral"}]} />
+
+      {/* Pricing button is now inside NavBar right actions */}
 
       <main
         key={page}
@@ -925,7 +923,7 @@ function AppInner() {
 
           {page === "contact" && <Contact showToast={showToast} />}
 
-          {page === "terms" && <Terms />}
+          {page === "terms" && <Terms />}   {/* ✅ إضافة صفحة Terms */}
 
           {page === "exam-detail" && activeExam && (
             <ExamDetail
@@ -1042,6 +1040,7 @@ export default function App() {
     if (!localStorage.getItem("theme")) localStorage.setItem("theme", saved);
     document.documentElement.setAttribute("data-theme", saved);
 
+    // Theme color meta
     let tc = document.querySelector("meta[name='theme-color']");
     if (!tc) {
       tc = document.createElement("meta");
@@ -1050,9 +1049,11 @@ export default function App() {
     }
     tc.content = saved === "dark" ? "#0d1223" : "#ffffff";
 
+    // Twitter card base
     setMeta("twitter:card", "summary_large_image");
     setMeta("twitter:site", "@FlexExams");
 
+    // Resource hints
     [
       { rel: "preconnect",   href: "https://fonts.googleapis.com" },
       { rel: "preconnect",   href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
@@ -1068,6 +1069,7 @@ export default function App() {
       document.head.appendChild(l);
     });
 
+    // Preload logo (LCP)
     if (!document.querySelector("link[rel='preload'][as='image']")) {
       const pl = document.createElement("link");
       pl.rel = "preload";
@@ -1076,6 +1078,7 @@ export default function App() {
       document.head.appendChild(pl);
     }
 
+    // Organization JSON-LD (persistent)
     injectJsonLd("ld-org", {
       "@context": "https://schema.org",
       "@type": "Organization",
