@@ -97,7 +97,7 @@ const shareUrl = `https://www.flexexams.com/exam/${slug}`;
   <meta name="twitter:description" content="${desc}"/>
   <meta name="twitter:image" content="${image}"/>
   <link rel="canonical" href="${shareUrl}"/>
-  ${!bot?`<script>window.location.replace("${examUrl}");</script>`:''}
+${bot ? '' : `<meta http-equiv="refresh" content="0;url=${examUrl}">`}
 </head>
 <body style="font-family:sans-serif;text-align:center;padding:60px;background:#0d1223;color:#eef1fb">
   <h2 style="color:#a5b4fc">${title}</h2>
