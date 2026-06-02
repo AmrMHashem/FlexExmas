@@ -42,7 +42,29 @@ const Pricing           = lazy(() => import("./pages/Pricing"));
 const Leaderboard       = lazy(() => import("./pages/Leaderboard"));
 const Checkout          = lazy(() => import("./pages/Checkout"));
 const Terms             = lazy(() => import("./pages/Terms"));   // ✅ إضافة Terms
-
+// دالة لتحميل المكونات مع إعادة محاولة واحدة ومنع الحلقات اللانهائية
+const lazyWithRetry = (importFunc) => {
+  return React.lazy(() => {
+    return importFunc().catch((error) => {
+      console.error("فشل تحميل المكون:", error);
+      // نمنع إعادة تحميل الصفحة تلقائيًا ونعرض زرًا للمستخدم
+      return {
+        default: () => (
+          <div style={{ textAlign: 'center', padding: '50px' }}>
+            <h2>⚠️ حدث خطأ في تحميل الصفحة</h2>
+            <p>يرجى تحديث الصفحة يدويًا لحل المشكلة.</p>
+            <button 
+              onClick={() => window.location.reload()} 
+              style={{ padding: '10px 20px', cursor: 'pointer' }}
+            >
+              تحديث الصفحة
+            </button>
+          </div>
+        ),
+      };
+    });
+  });
+};
 // ── Page fallback spinner ─────────────────────────────────────────
 const PageFallback = () => (
   <div
