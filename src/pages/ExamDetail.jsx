@@ -503,6 +503,7 @@ const SuggestedExams = React.memo(function SuggestedExams({ currentExam, setPage
 //  Main ExamDetail Component
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
+  return <div style={{ padding: 50, textAlign: 'center' }}>⚠️ ExamDetail temporarily disabled for testing</div>;
   const { user, profile } = useAuth();
   const [questions, setQuestions]           = useState([]);
   const [fullQuestions, setFullQuestions]   = useState([]);
