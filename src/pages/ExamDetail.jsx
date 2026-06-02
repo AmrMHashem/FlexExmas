@@ -373,8 +373,8 @@ const res = await validateCoupon(code.trim(), examId, null, userId);
         const newPrice        = Math.max(0, originalPrice - discountAmount);
         onApply({ code: code.trim(), discountPercent, discountAmount, newPrice });
         const url = new URL(window.location.href);
-        url.searchParams.set("couponCode", code.trim());
-        window.history.replaceState({}, "", url.toString());
+url.searchParams.set("couponCode", code.trim());
+window.history.replaceState(null, "", `${url.pathname}?${url.searchParams.toString()}`);
       }
     } catch (e) {
 setResult({ valid: false, error: e?.message || "Failed to validate coupon" });
@@ -387,8 +387,8 @@ setResult({ valid: false, error: e?.message || "Failed to validate coupon" });
     setResult(null);
     onApply(null);
     const url = new URL(window.location.href);
-    url.searchParams.delete("couponCode");
-    window.history.replaceState({}, "", url.toString());
+url.searchParams.delete("couponCode");
+window.history.replaceState(null, "", url.pathname);
   };
 
   return (
