@@ -6,7 +6,7 @@
 // ✅ حقل استرداد ديناميكي حسب طريقة الدفع
 // ✅ إصلاح: بقاء الزر معطلاً بعد الريفرش باستخدام localStorage
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useAuth } from "../hooks/useAuth";
 import {
   getUserResults,
@@ -1066,55 +1066,66 @@ export default function MyExams({ setPage, setResultData, setActiveExam, exams, 
   const [loadingTransactions, setLoadingTransactions] = useState(true);
   const [questionCounts, setQuestionCounts] = useState({});
 
-  const loadTransactions = useCallback(async () => {
+  const loadTransactions = useCallback(async (forceRefresh = false) => {
     if (!user) return;
+    // ── sessionStorage cache (5 min) — survives page reload within same tab ─
+    const SS_KEY = `fx_myexams_txs_${user.uid}`;
+    const CACHE_TTL = 5 * 60 * 1000;
+    if (!forceRefresh) {
+      try {
+        const raw = sessionStorage.getItem(SS_KEY);
+        if (raw) {
+          const { data, ts } = JSON.parse(raw);
+          if (Date.now() - ts < CACHE_TTL) { setTransactions(data); setLoadingTransactions(false); return; }
+        }
+      } catch { /* ignore */ }
+    }
     setLoadingTransactions(true);
     try {
       const txs = await getUserTransactions(user.uid);
       if (txs && txs.length > 0) {
         setTransactions(txs);
+        try { sessionStorage.setItem(SS_KEY, JSON.stringify({ data: txs, ts: Date.now() })); } catch { /* full */ }
         setLoadingTransactions(false);
         return;
       }
-
+      // Fallback: collect txIds from profile, then fetch ALL in parallel
       const { getDoc, doc } = await import("firebase/firestore");
       const { db } = await import("../firebase");
-
-      const snap = await getDoc(doc(db, "users", user.uid));
-      if (!snap.exists()) { setTransactions([]); return; }
-
+      // ✅ 2 parallel reads (was sequential)
+      const [snap, subSnap] = await Promise.all([
+        getDoc(doc(db, "users", user.uid)),
+        getDoc(doc(db, "subscriptions", user.uid)),
+      ]);
+      if (!snap.exists()) { setTransactions([]); setLoadingTransactions(false); return; }
       const profileData = snap.data();
       const txIdsToFetch = new Set();
-
-      const purchased = profileData.purchasedExams || {};
-      Object.values(purchased).forEach(info => {
+      Object.values(profileData.purchasedExams || {}).forEach(info => {
         if (info?.transactionId) txIdsToFetch.add(info.transactionId);
       });
-
-      const subSnap = await getDoc(doc(db, "subscriptions", user.uid));
       const subData = subSnap.exists() ? subSnap.data() : null;
-      if (subData?.transactionId) txIdsToFetch.add(subData.transactionId);
+      if (subData?.transactionId)                  txIdsToFetch.add(subData.transactionId);
       if (profileData.subscription?.transactionId) txIdsToFetch.add(profileData.subscription.transactionId);
-      if (profileData.premiumTxId) txIdsToFetch.add(profileData.premiumTxId);
-
-      const fetched = [];
-      for (const txId of txIdsToFetch) {
-        if (!txId || txId.startsWith("synth_")) continue;
-        try {
-          const txDoc = await getDoc(doc(db, "transactions", txId));
-          if (txDoc.exists()) {
-            fetched.push({ id: txDoc.id, ...txDoc.data() });
-          }
-        } catch (_) { /* skip */ }
-      }
-
-      fetched.sort((a, b) => {
-        const da = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
-        const db2 = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
-        return db2 - da;
-      });
-
+      if (profileData.premiumTxId)                 txIdsToFetch.add(profileData.premiumTxId);
+      // ✅ All txDoc reads in parallel — replaces sequential for-loop
+      const validIds = [...txIdsToFetch].filter(id => id && !id.startsWith("synth_"));
+      const settled = await Promise.allSettled(
+        validIds.map(txId =>
+          getDoc(doc(db, "transactions", txId))
+            .then(d => d.exists() ? { id: d.id, ...d.data() } : null)
+            .catch(() => null)
+        )
+      );
+      const fetched = settled
+        .filter(r => r.status === "fulfilled" && r.value)
+        .map(r => r.value)
+        .sort((a, b) => {
+          const da  = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+          const db2 = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+          return db2 - da;
+        });
       setTransactions(fetched);
+      try { sessionStorage.setItem(SS_KEY, JSON.stringify({ data: fetched, ts: Date.now() })); } catch { /* full */ }
     } catch (err) {
       console.error("Failed to load transactions:", err);
       setTransactions([]);
@@ -1123,40 +1134,69 @@ export default function MyExams({ setPage, setResultData, setActiveExam, exams, 
     }
   }, [user]);
 
+  // ── session cache — prevent re-fetch on every navigation ─────────────────
+  const _myExamsCacheRef = useRef({ data: null, uid: null, ts: 0 });
+  const MYEXAMS_TTL = 3 * 60 * 1000; // 3 min
+
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
     const load = async () => {
+      // Serve from cache if same user & within TTL
+      const c = _myExamsCacheRef.current;
+      if (c.uid === user.uid && c.data && Date.now() - c.ts < MYEXAMS_TTL) {
+        setResults(c.data.results);
+        setEnrolledExams(c.data.enrolled);
+        setSubscription(c.data.subscription);
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       try {
-        const [r, enrolled] = await Promise.all([
+        const [r, enrolled, sub] = await Promise.all([
           getUserResults(user.uid).catch(() => []),
           getEnrolledExams(user.uid).catch(() => []),
+          getUserSubscription(user.uid).catch(() => null),
         ]);
         if (cancelled) return;
-        setResults(r.slice(0, 10).sort((a, b) => new Date(b.date) - new Date(a.date)));
+        const sortedResults = r.slice(0, 10).sort((a, b) => new Date(b.date) - new Date(a.date));
+        setResults(sortedResults);
         setEnrolledExams(enrolled || []);
+        setSubscription(sub);
+
+        // Store in cache
+        _myExamsCacheRef.current = {
+          uid: user.uid, ts: Date.now(),
+          data: { results: sortedResults, enrolled: enrolled || [], subscription: sub },
+        };
 
         loadTransactions();
-        getUserSubscription(user.uid).catch(() => null).then((sub) => {
-          if (!cancelled) setSubscription(sub);
-        });
 
+        // ✅ FIX: Use totalQuestions from exams prop — avoids N+1 subcollection reads
         if ((enrolled || []).length > 0) {
-          Promise.allSettled(
-            enrolled.map((examId) =>
-              getQuestions(examId)
-                .then((qs) => ({ examId, count: (qs || []).length }))
-                .catch(() => ({ examId, count: null }))
-            )
-          ).then((settled) => {
-            if (cancelled) return;
-            const map = {};
-            settled.forEach((r) => {
-              if (r.status === "fulfilled") map[r.value.examId] = r.value.count;
-            });
-            setQuestionCounts(map);
+          const qmap = {};
+          const qmissing = [];
+          enrolled.forEach(examId => {
+            const examDoc = (exams || []).find(e => e.id === examId);
+            if (examDoc?.totalQuestions != null) qmap[examId] = examDoc.totalQuestions;
+            else qmissing.push(examId);
           });
+          setQuestionCounts(qmap);
+          // Only hit subcollection for exams missing totalQuestions (rare)
+          if (qmissing.length > 0) {
+            Promise.allSettled(
+              qmissing.map(examId =>
+                getQuestions(examId)
+                  .then(qs => ({ examId, count: (qs || []).length }))
+                  .catch(() => ({ examId, count: null }))
+              )
+            ).then(settled => {
+              if (cancelled) return;
+              const extra = {};
+              settled.forEach(r => { if (r.status === "fulfilled") extra[r.value.examId] = r.value.count; });
+              setQuestionCounts(prev => ({ ...prev, ...extra }));
+            });
+          }
         }
 
         if (!cancelled) setLoading(false);
