@@ -1,15 +1,11 @@
 {
   "rewrites": [
     {
-      "source": "/exam/(.*)",
-      "destination": "/api/share?slug=$1"
+      "source": "/share/exam/:slug",
+      "destination": "/api/share?slug=:slug"
     },
     {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    },
-    {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
