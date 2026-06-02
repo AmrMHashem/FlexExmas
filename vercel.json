@@ -1,31 +1,16 @@
 {
   "rewrites": [
     {
+      "source": "/exam/:slug",
+      "destination": "/api/share?slug=:slug"
+    },
+    {
       "source": "/share/exam/:slug",
       "destination": "/api/share?slug=:slug"
     },
     {
-      "source": "/exam/:slug",
+      "source": "/((?!api/|exam/|share/).*)",
       "destination": "/index.html"
-    },
-    {
-      "source": "/((?!api/|share/|assets/|favicon.ico|robots.txt|sitemap.xml).*)",
-      "destination": "/index.html"
-    }
-  ],
-  "headers": [
-    {
-      "source": "/share/exam/(.*)",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-store, max-age=0"
-        },
-        {
-          "key": "X-Robots-Tag",
-          "value": "noindex, nofollow"
-        }
-      ]
     }
   ]
 }
