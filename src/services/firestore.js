@@ -365,13 +365,11 @@ export async function getExamCompletionPercentage(userId, examId, totalQuestions
 // SLUG
 // ======================
 export function generateSlug(title = "") {
-  return (title || "")
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\u0600-\u06FF\s-]/g, "")  // ✅ دعم العربية والأرقام والمسافات والشرطات
+  return title.toLowerCase().trim()
+    .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-")
     .replace(/-{2,}/g, "-")
-    .replace(/^-+|-+$/g, "") || "exam";
+    .replace(/^-+|-+$/g, "");
 }
 
 // ======================
