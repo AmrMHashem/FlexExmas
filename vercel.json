@@ -5,8 +5,27 @@
       "destination": "/api/share?slug=:slug"
     },
     {
-      "source": "/((?!api/).*)",
+      "source": "/exam/:slug",
       "destination": "/index.html"
+    },
+    {
+      "source": "/((?!api/|share/|assets/|favicon.ico|robots.txt|sitemap.xml).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/share/exam/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        },
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
     }
   ]
 }
