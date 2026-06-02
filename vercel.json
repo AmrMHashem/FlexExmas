@@ -1,7 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/exam/:slug",
+      "source": "/share/exam/:slug",
       "destination": "/api/share?slug=:slug"
     },
     {
