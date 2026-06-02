@@ -1,7 +1,6 @@
-// pages/ExamDetail.jsx — v9.0 — Ultimate Fix with Full Diagnostics
-// 🔍 كل خطوة مسجلة في console
-// 🛡️ Multiple guards to prevent infinite loops
-// ⏱️ Mount limit to prevent browser freeze
+// pages/ExamDetail.jsx — v8.3 — Fixed mobile overflow issues
+// ✅ Fixed: horizontal overflow on mobile devices
+// ✅ When applied coupon makes exam free, show a direct claim button
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useAuth } from "../hooks/useAuth";
@@ -9,15 +8,21 @@ import {
   getQuestions,
   incrementExamAttempts,
   enrollUserInExam,
+  checkIfEnrolled,
+  getExamProgress,
   unenrollUserFromExam,
   clearExamProgress,
+  getUserBestScore,
+  getUserCertificateForExam,
+  getUserExamStats,
+  getEnrolledCountForExam,
   getExamDashboardData,
   getExams,
   getVendors,
 } from "../services/firestore";
 import { Btn, Spinner, Icon, Tag, ProgressBar, Empty, Modal } from "../components/UI";
 import { generatePDFCertificate } from "../utils/pdfCertificate";
-import { ExamAccessGate } from "../components/ExamPricingWidget";
+import { ExamPriceBadge, ExamAccessGate } from "../components/ExamPricingWidget";
 import {
   checkUserAccess,
   getAccessLimit,
@@ -27,7 +32,7 @@ import {
 } from "../services/payment";
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Stars (unchanged)
+//  Stars
 // ─────────────────────────────────────────────────────────────────────────────
 const Stars = React.memo(function Stars({ rating = 5 }) {
   return (
@@ -83,7 +88,7 @@ const getMotivationalMessage = (score) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  ScoreCard (unchanged)
+//  ScoreCard (best score) — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 const ScoreCard = React.memo(function ScoreCard({ score, examTitle }) {
   const percentage = Math.round(score);
@@ -115,7 +120,7 @@ const ScoreCard = React.memo(function ScoreCard({ score, examTitle }) {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  LastScoreCard (unchanged)
+//  LastScoreCard — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 const LastScoreCard = React.memo(function LastScoreCard({ lastScore, examTitle }) {
   if (!lastScore || lastScore === 0) return null;
@@ -172,7 +177,7 @@ const LastScoreCard = React.memo(function LastScoreCard({ lastScore, examTitle }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  TopicDistributionBar (unchanged)
+//  TopicDistributionBar — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 const TopicDistributionBar = React.memo(function TopicDistributionBar({ domain, count, total, color }) {
   const percentage = ((count / total) * 100).toFixed(1);
@@ -188,7 +193,7 @@ const TopicDistributionBar = React.memo(function TopicDistributionBar({ domain, 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SmartStickyPanel (unchanged)
+//  SmartStickyPanel — unchanged except mobile width fix
 // ─────────────────────────────────────────────────────────────────────────────
 function SmartStickyPanel({ children, topOffset = 24 }) {
   const [isMobile, setIsMobile] = useState(() =>
@@ -334,6 +339,7 @@ function SmartStickyPanel({ children, topOffset = 24 }) {
   }, [isMobile, init]);
 
   if (isMobile) {
+    // FIX: prevent overflow on mobile
     return <div style={{ alignSelf: "start", width: "100%", maxWidth: "100%", overflowX: "hidden" }}>{children}</div>;
   }
 
@@ -341,7 +347,7 @@ function SmartStickyPanel({ children, topOffset = 24 }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  CouponInput (unchanged)
+//  CouponInput — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 function CouponInput({ examId, originalPrice, onApply, userId }) {
   const [code, setCode]       = useState("");
@@ -422,7 +428,7 @@ function CouponInput({ examId, originalPrice, onApply, userId }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SuggestedExams (unchanged)
+//  SuggestedExams — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 const SuggestedExams = React.memo(function SuggestedExams({ currentExam, setPage }) {
   const [suggested, setSuggested] = useState([]);
@@ -494,44 +500,10 @@ const SuggestedExams = React.memo(function SuggestedExams({ currentExam, setPage
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  MAIN ExamDetail Component — ULTIMATE FIX with full diagnostics
+//  Main ExamDetail Component
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   const { user, profile } = useAuth();
-  
-  // ==================== DIAGNOSTICS & GUARDS ====================
-  const mountCount = useRef(0);
-  const hasMountedLimit = useRef(false);
-  
-  // منع infinite mount (لو حصل loop غير متوقع)
-  if (!hasMountedLimit.current) {
-    mountCount.current += 1;
-    console.log(`🔍 [ExamDetail] 🔁 MOUNT #${mountCount.current} at ${new Date().toISOString()}`);
-    if (mountCount.current > 5) {
-      console.error("🔴 [ExamDetail] Mount limit exceeded (5) - potential infinite loop! Throwing error to stop.");
-      hasMountedLimit.current = true;
-      throw new Error("ExamDetail mount limit exceeded – possible infinite loop");
-    }
-  }
-  
-  // مراقبة إعادة تحميل الصفحة
-  useEffect(() => {
-    const originalReload = window.location.reload;
-    window.location.reload = function(...args) {
-      console.trace(`🔴🔴🔴 [ExamDetail] window.location.reload() called! Mount #${mountCount.current}`);
-      return originalReload.apply(window, args);
-    };
-    return () => { window.location.reload = originalReload; };
-  }, []);
-  
-  // مراقبة تغيير page من setPage (لتتبع إذا كان الـ loop بسبب تنقل متكرر)
-  const originalSetPage = setPage;
-  const safeSetPage = useCallback((page, opts) => {
-    console.log(`🔍 [ExamDetail] setPage called with:`, page, opts);
-    originalSetPage(page, opts);
-  }, [originalSetPage]);
-  
-  // ==================== STATE ====================
   const [questions, setQuestions]           = useState([]);
   const [fullQuestions, setFullQuestions]   = useState([]);
   const [loading, setLoading]               = useState(true);
@@ -548,126 +520,147 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   });
   const [userAccess, setUserAccess]         = useState(null);
   const [accessLoading, setAccessLoading]   = useState(true);
+  const [autoApplyCoupon, setAutoApplyCoupon] = useState(null);
   const [claimingFree, setClaimingFree]     = useState(false);
 
-  // Refs لمنع تكرار العمليات
-  const vendorsLoadedRef = useRef(false);
-  const questionsLoadedRef = useRef(false);
-  const accessCheckedRef = useRef(false);
-  const dashboardLoadedRef = useRef(false);
-  const couponProcessedRef = useRef(false);
   const abortControllerRef = useRef(null);
-  const cacheRef = useRef({});
+  const cacheRef           = useRef({});
 
-  // ==================== EFFECTS (with guards) ====================
-  
-  // 1. SEO + title (دائماً يُحدث لكن لا يُحدث loop)
+  // ── SEO ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!exam) return;
     document.title = `${exam.title} | FlexExams Certification Practice`;
-    // يمكن إضافة meta tags هنا لكنها لا تسبب loop
+    const setMeta = (sel, attr, val, content) => {
+      let el = document.querySelector(sel);
+      if (!el) { el = document.createElement("meta"); el.setAttribute(attr, val); document.head.appendChild(el); }
+      el.setAttribute("content", content);
+    };
+    setMeta('meta[name="description"]', "name", "description", exam.description || exam.subtitle || `Prepare for ${exam.title} certification.`);
+    setMeta('meta[property="og:title"]', "property", "og:title", `${exam.title} - FlexExams`);
+    setMeta('meta[property="og:description"]', "property", "og:description", exam.description || `Test your knowledge with exam questions.`);
+    if (exam.image) setMeta('meta[property="og:image"]', "property", "og:image", exam.image);
+    const url = new URL(window.location.href);
+    const cpCode = url.searchParams.get("couponCode");
+    if (cpCode) setAutoApplyCoupon(cpCode);
   }, [exam]);
 
-  // 2. تحميل الـ Vendors (مرة واحدة)
+  // ── Auto-apply coupon from URL ────────────────────────────────────
   useEffect(() => {
-    if (vendorsLoadedRef.current) return;
-    vendorsLoadedRef.current = true;
-    console.log("🔍 [ExamDetail] Loading vendors...");
-    getVendors().then(setVendors).catch(err => console.error("Vendors error:", err));
-  }, []);
+    if (!autoApplyCoupon || !exam?.pricing?.price) return;
+    let mounted = true;
+    validateCoupon(autoApplyCoupon, exam.id, null, user?.uid || null).then(res => {
+      if (!mounted) return;
+      if (res.valid) {
+        const discountPercent = res.discount || 0;
+        const discountAmount  = res.discountAmount || (exam.pricing.price * discountPercent / 100);
+        const newPrice        = Math.max(0, exam.pricing.price - discountAmount);
+        setAppliedCoupon({ code: autoApplyCoupon, discountPercent, discountAmount, newPrice });
+      }
+      setAutoApplyCoupon(null);
+    }).catch(() => { if (mounted) setAutoApplyCoupon(null); });
+    return () => { mounted = false; };
+  }, [autoApplyCoupon, exam?.id, exam?.pricing?.price, user?.uid]);
 
-  // 3. تحميل الأسئلة (مرة واحدة)
+  // ── Vendors ───────────────────────────────────────────────────────
+  useEffect(() => { getVendors().then(setVendors).catch(() => {}); }, []);
+
+  const vendorName = useMemo(() => exam?.vendor || exam?.category || "", [exam]);
+  const vendorLogo = useMemo(() => {
+    const found = vendors.find(v =>
+      v.name?.toLowerCase() === vendorName?.toLowerCase() ||
+      v.tag?.toLowerCase()  === vendorName?.toLowerCase()
+    );
+    if (found?.image) return found.image;
+    if (found?.logo && found.logo.startsWith("http")) return found.logo;
+    return exam?.vendorImage || getFallbackVendorLogo(vendorName) || null;
+  }, [vendors, vendorName, exam?.vendorImage]);
+
+  // ── FULL domain stats ─────────────────────────────────────────────
+  const fullDomainStats = useMemo(() => {
+    return fullQuestions.reduce((acc, q) => {
+      acc[q.domain] = (acc[q.domain] || 0) + 1;
+      return acc;
+    }, {});
+  }, [fullQuestions]);
+
+  const limitedDomainStats = useMemo(() => {
+    return questions.reduce((acc, q) => {
+      acc[q.domain] = (acc[q.domain] || 0) + 1;
+      return acc;
+    }, {});
+  }, [questions]);
+
+  const lastUpdated = useMemo(() => {
+    if (exam?.updatedAt?.toDate) return exam.updatedAt.toDate();
+    if (exam?.lastUpdated)       return new Date(exam.lastUpdated);
+    if (exam?.publishedDate)     return new Date(exam.publishedDate);
+    return new Date();
+  }, [exam]);
+
+  const formattedDate = lastUpdated
+    ? lastUpdated.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+    : "Recently updated";
+
+  const studyModes = useMemo(() => [
+    { id: "examSimulation", icon: "clock", label: "⏱ Timed Exam",    desc: `Time = Questions ratio × ${exam?.duration || 0} min — Score + Certificate`, official: true },
+    { id: "fullPractice",   icon: "exam",  label: "📖 Practice Mode", desc: `No timer — All ${fullQuestions.length} questions at your own pace`, official: false },
+    { id: "review",         icon: "eye",   label: "Review Mode",      desc: "See correct answers, Set Score and Time", official: false },
+  ], [fullQuestions.length, exam?.duration]);
+
+  // ── Load ALL questions first ──────────────────────────────────────
   useEffect(() => {
-    if (!exam || questionsLoadedRef.current) return;
-    questionsLoadedRef.current = true;
-    console.log(`🔍 [ExamDetail] Loading questions for exam ${exam.id}...`);
-    let cancelled = false;
-    getQuestions(exam.id)
-      .then(qs => {
-        if (cancelled) return;
-        setFullQuestions(qs);
-        setQuestions(qs);
+    if (!exam) return;
+    if (exam.isActive === false) showToast({ msg: "🔒 This exam is under maintenance.", type: "warning" });
+    let isMounted = true;
+
+    const loadQuestions = async () => {
+      try {
+        const allQs = await getQuestions(exam.id);
+        if (!isMounted) return;
+        setFullQuestions(allQs);
+        setQuestions(allQs);
         setLoading(false);
-        console.log(`🔍 [ExamDetail] Loaded ${qs.length} questions`);
-      })
-      .catch(err => {
-        console.error("Questions error:", err);
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [exam]);
+      } catch (err) {
+        if (isMounted) setLoading(false);
+      }
+    };
+    loadQuestions();
+    return () => { isMounted = false; };
+  }, [exam, showToast]);
 
-  // 4. التحقق من صلاحية الوصول (مرة واحدة)
+  // ── Payment access ────────────────────────────────────────────────
   useEffect(() => {
-    if (!exam?.id || accessCheckedRef.current) return;
-    accessCheckedRef.current = true;
-    console.log(`🔍 [ExamDetail] Checking user access...`);
+    if (!exam?.id) return;
     setAccessLoading(true);
     checkUserAccess(user?.uid, exam.id)
-      .then(access => {
-        setUserAccess(access);
-        setAccessLoading(false);
-        console.log(`🔍 [ExamDetail] User access:`, access);
-      })
-      .catch(() => {
-        setUserAccess({ hasAccess: false, accessType: user ? "free" : "guest" });
-        setAccessLoading(false);
-      });
+      .then(access => { setUserAccess(access); setAccessLoading(false); })
+      .catch(() => { setUserAccess({ hasAccess: false, accessType: user ? "free" : "guest" }); setAccessLoading(false); });
   }, [user?.uid, exam?.id]);
 
-  // 5. تحميل Dashboard (مرة واحدة للمستخدم المسجل)
+  // ── Dashboard data ────────────────────────────────────────────────
   useEffect(() => {
-    if (!exam || !user?.uid || dashboardLoadedRef.current) return;
-    dashboardLoadedRef.current = true;
-    console.log(`🔍 [ExamDetail] Loading dashboard for user ${user.uid}...`);
+    if (!exam || !user?.uid) return;
     const cacheKey = `exam_dashboard_${user.uid}_${exam.id}`;
-    const cached = cacheRef.current[cacheKey];
+    const cached   = cacheRef.current[cacheKey];
     if (cached && (Date.now() - cached.timestamp) < 5 * 60 * 1000) {
       setDashboard(cached.data);
-      console.log("🔍 [ExamDetail] Dashboard from cache");
       return;
     }
-    if (abortControllerRef.current) abortControllerRef.current.abort();
+    abortControllerRef.current?.abort();
     abortControllerRef.current = new AbortController();
-    getExamDashboardData(user.uid, exam.id, { signal: abortControllerRef.current.signal })
-      .then(data => {
+    const loadDashboard = async () => {
+      try {
+        const data = await getExamDashboardData(user.uid, exam.id, { signal: abortControllerRef.current.signal });
         setDashboard(data);
         cacheRef.current[cacheKey] = { data, timestamp: Date.now() };
-        console.log("🔍 [ExamDetail] Dashboard loaded");
-      })
-      .catch(err => { if (err.name !== "AbortError") console.error("Dashboard error:", err); });
+      } catch (err) {
+        if (err.name !== "AbortError") console.error("Error loading dashboard:", err);
+      }
+    };
+    loadDashboard();
     return () => abortControllerRef.current?.abort();
   }, [user?.uid, exam?.id]);
 
-  // 6. معالجة الكوبون (مرة واحدة فقط)
-  useEffect(() => {
-    if (!exam || !exam.pricing?.price) return;
-    if (couponProcessedRef.current) return;
-    const urlParams = new URLSearchParams(window.location.search);
-    const cpCode = urlParams.get("couponCode");
-    if (!cpCode) return;
-    
-    couponProcessedRef.current = true;
-    console.log(`🔍 [ExamDetail] Processing coupon code: ${cpCode}`);
-    validateCoupon(cpCode, exam.id, null, user?.uid || null)
-      .then(res => {
-        if (res.valid) {
-          const discountPercent = res.discount || 0;
-          const discountAmount = res.discountAmount || (exam.pricing.price * discountPercent / 100);
-          const newPrice = Math.max(0, exam.pricing.price - discountAmount);
-          setAppliedCoupon({ code: cpCode, discountPercent, discountAmount, newPrice });
-          console.log(`🔍 [ExamDetail] Coupon applied: ${discountPercent}% discount`);
-        } else {
-          console.log(`🔍 [ExamDetail] Coupon invalid: ${res.error || 'no reason'}`);
-        }
-      })
-      .catch(err => console.error("Coupon validation error:", err));
-  }, [exam, user?.uid]);
-
-  // ==================== باقي الدوال (handleEnroll, handleStart, ...) كما هي دون تغيير ====================
-  // (لن أكررها كلها هنا للاختصار، ولكن سأضمنها في الملف النهائي)
-  // بما أن المقصود هو تقديم ملف كامل، سأكمل كتابة الدوال الأساسية بنفس المنطق القديم ولكن مع استخدام safeSetPage
-  
   const incrementAttempts = useCallback(async () => {
     try {
       await incrementExamAttempts(exam.id);
@@ -718,9 +711,9 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
         return;
       }
     }
-    const access = userAccess;
-    const limit = getAccessLimit(access?.accessType || (user ? "free" : "guest"));
-    const isFreeExam = !exam.pricing?.price || exam.pricing?.isFree;
+    const access        = userAccess;
+    const limit         = getAccessLimit(access?.accessType || (user ? "free" : "guest"));
+    const isFreeExam    = !exam.pricing?.price || exam.pricing?.isFree;
     const hasFullAccess = access?.hasAccess || isFreeExam;
     if (!hasFullAccess) {
       const allowedCount = Math.max(3, Math.ceil(pool.length * limit));
@@ -729,7 +722,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     await incrementAttempts();
     let timeDuration = null;
     if (mode === "examSimulation") {
-      const ratio = pool.length / Math.max(1, fullQuestions.length);
+      const ratio  = pool.length / Math.max(1, fullQuestions.length);
       timeDuration = Math.round(exam.duration * ratio) * 60;
       if (timeDuration < 60) timeDuration = 60;
     } else if (mode === "review") {
@@ -768,13 +761,13 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     try {
       await generatePDFCertificate({
         examTitle: exam.title,
-        userName: user.displayName || profile?.name || user.email || "Candidate",
-        score: dashboard.userCertificate?.score,
-        date: dashboard.userCertificate?.date,
-        certId: dashboard.userCertificate?.certId,
-        examMode: "examSimulation",
-        passed: true,
-        filename: `${exam.title.replace(/\s/g, "_")}_Certificate`,
+        userName:  user.displayName || profile?.name || user.email || "Candidate",
+        score:     dashboard.userCertificate?.score,
+        date:      dashboard.userCertificate?.date,
+        certId:    dashboard.userCertificate?.certId,
+        examMode:  "examSimulation",
+        passed:    true,
+        filename:  `${exam.title.replace(/\s/g, "_")}_Certificate`,
       });
       showToast({ msg: "✅ Certificate downloaded!", type: "success" });
     } catch (err) {
@@ -787,7 +780,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   const handleClaimFreeAccess = useCallback(async () => {
     if (!user) {
       showToast({ msg: "Please sign in to claim free access.", type: "warning" });
-      safeSetPage("auth", { mode: "login" });
+      setPage("auth", { mode: "login" });
       return;
     }
     if (claimingFree) return;
@@ -822,47 +815,36 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     } finally {
       setClaimingFree(false);
     }
-  }, [user, exam, appliedCoupon, safeSetPage, showToast, claimingFree]);
+  }, [user, exam, appliedCoupon, setPage, showToast, claimingFree]);
 
-  // إذا لم يوجد exam
   if (!exam) {
     return (
       <div style={{ textAlign: "center", padding: 80 }}>
-        <Empty icon="exam" title="No exam selected" action={<Btn onClick={() => safeSetPage("home")}>Go Back</Btn>} />
+        <Empty icon="exam" title="No exam selected" action={<Btn onClick={() => setPage("home")}>Go Back</Btn>} />
       </div>
     );
   }
 
-  // ==================== متغيرات العرض ====================
-  const ec = exam.color || "var(--accent)";
-  const successRate = exam.successRate || 93;
-  const numberOfParts = exam.numberOfParts || 1;
-  const isFreeExam = !exam.pricing?.price || exam.pricing?.isFree;
-  const hasFullAccess = userAccess?.hasAccess || isFreeExam;
-  const basePrice = exam.pricing?.price || 0;
-  const displayPrice = appliedCoupon ? appliedCoupon.newPrice : basePrice;
-  const discountLabel = appliedCoupon ? `-${appliedCoupon.discountPercent}%` : (exam.pricing?.discount > 0 ? `-${exam.pricing.discount}%` : null);
+  const ec             = exam.color || "var(--accent)";
+  const successRate    = exam.successRate || 93;
+  const numberOfParts  = exam.numberOfParts || 1;
+  const isFreeExam     = !exam.pricing?.price || exam.pricing?.isFree;
+  const hasFullAccess  = userAccess?.hasAccess || isFreeExam;
+  const basePrice      = exam.pricing?.price || 0;
+  const displayPrice   = appliedCoupon ? appliedCoupon.newPrice : basePrice;
+  const hasDiscount    = appliedCoupon ? true : (exam.pricing?.discount > 0);
+  const discountLabel  = appliedCoupon
+    ? `-${appliedCoupon.discountPercent}%`
+    : exam.pricing?.discount > 0 ? `-${exam.pricing.discount}%` : null;
+
   const totalFullQuestions = fullQuestions.length;
-  const totalTopics = Object.keys(fullQuestions.reduce((acc, q) => { acc[q.domain] = 1; return acc; }, {})).length;
+  const totalTopics = Object.keys(fullDomainStats).length;
+
   const shouldShowFreeClaim = !hasFullAccess && !accessLoading && displayPrice === 0 && appliedCoupon !== null;
-
-  const vendorName = exam?.vendor || exam?.category || "";
-  const vendorLogo = (() => {
-    const found = vendors.find(v => v.name?.toLowerCase() === vendorName?.toLowerCase() || v.tag?.toLowerCase() === vendorName?.toLowerCase());
-    if (found?.image) return found.image;
-    if (found?.logo && found.logo.startsWith("http")) return found.logo;
-    return exam?.vendorImage || getFallbackVendorLogo(vendorName) || null;
-  })();
-
-  const studyModes = [
-    { id: "examSimulation", icon: "clock", label: "⏱ Timed Exam", desc: `Time = Questions ratio × ${exam?.duration || 0} min — Score + Certificate`, official: true },
-    { id: "fullPractice",   icon: "exam",  label: "📖 Practice Mode", desc: `No timer — All ${fullQuestions.length} questions at your own pace`, official: false },
-    { id: "review",         icon: "eye",   label: "Review Mode",      desc: "See correct answers, Set Score and Time", official: false },
-  ];
 
   const RightPanelContent = (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, padding: "clamp(20px, 4vw, 28px)", overflowX: "hidden", width: "100%", boxSizing: "border-box" }}>
-      {/* محتوى اللوحة الجانبية – نفس الكود القديم، لم يتغير */}
+
       {exam.pricing && !hasFullAccess && (
         <div style={{ marginBottom: 18 }}>
           {isFreeExam ? (
@@ -896,31 +878,60 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
           )}
         </div>
       )}
+
       <h3 style={{ fontWeight: 700, marginBottom: 20, fontSize: "clamp(18px, 4vw, 20px)" }}>Prepare and Pass</h3>
-      {user && dashboard.bestScore !== null && dashboard.bestScore > 0 && <ScoreCard score={dashboard.bestScore} examTitle={exam.title} />}
-      {user && dashboard.lastScore !== null && dashboard.lastScore > 0 && <LastScoreCard lastScore={dashboard.lastScore} examTitle={exam.title} />}
-      {!hasFullAccess && !isFreeExam && !accessLoading && basePrice > 0 && <CouponInput examId={exam.id} originalPrice={basePrice} userId={user?.uid} onApply={data => setAppliedCoupon(data)} />}
+
+      {user && dashboard.bestScore !== null && dashboard.bestScore > 0 && (
+        <ScoreCard score={dashboard.bestScore} examTitle={exam.title} />
+      )}
+      {user && dashboard.lastScore !== null && dashboard.lastScore > 0 && (
+        <LastScoreCard lastScore={dashboard.lastScore} examTitle={exam.title} />
+      )}
+
+      {!hasFullAccess && !isFreeExam && !accessLoading && basePrice > 0 && (
+        <CouponInput
+          examId={exam.id}
+          originalPrice={basePrice}
+          userId={user?.uid}
+          onApply={data => setAppliedCoupon(data)}
+        />
+      )}
+
       {shouldShowFreeClaim ? (
         <div style={{ marginBottom: 20 }}>
-          <Btn full size="lg" onClick={handleClaimFreeAccess} loading={claimingFree} style={{ background: "linear-gradient(135deg,#10b981,#059669)", borderColor: "transparent", minHeight: 48, boxShadow: "0 4px 14px rgba(16,185,129,0.4)" }}>
+          <Btn
+            full
+            size="lg"
+            onClick={handleClaimFreeAccess}
+            loading={claimingFree}
+            style={{
+              background: "linear-gradient(135deg,#10b981,#059669)",
+              borderColor: "transparent",
+              minHeight: 48,
+              boxShadow: "0 4px 14px rgba(16,185,129,0.4)",
+            }}
+          >
             <Icon n="gift" size={16} /> Claim Free Access 🎉
           </Btn>
-          <div style={{ marginTop: 8, fontSize: 11, color: "var(--text3)", textAlign: "center" }}>Your coupon makes this exam 100% free — click to unlock now.</div>
+          <div style={{ marginTop: 8, fontSize: 11, color: "var(--text3)", textAlign: "center" }}>
+            Your coupon makes this exam 100% free — click to unlock now.
+          </div>
         </div>
       ) : (
         !hasFullAccess && !accessLoading && (
           <ExamAccessGate
             exam={{ ...exam, pricing: exam.pricing ? { ...exam.pricing, price: displayPrice } : exam.pricing }}
             onStartFree={() => { if (dashboard.savedProgress) setShowResumeModal(true); else handleStart(false); }}
-            onPurchase={(data) => safeSetPage("checkout", { ...data, couponCode: appliedCoupon?.code, discountedPrice: displayPrice })}
-            onSubscribe={() => safeSetPage("pricing")}
-            setPage={safeSetPage}
+            onPurchase={(data) => setPage("checkout", { ...data, couponCode: appliedCoupon?.code, discountedPrice: displayPrice })}
+            onSubscribe={() => setPage("pricing")}
+            setPage={setPage}
             showToast={showToast}
             couponApplied={!!appliedCoupon}
             discountedPrice={displayPrice}
           />
         )
       )}
+
       {user && (
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text3)", marginBottom: 12, textTransform: "uppercase" }}>Study Mode</div>
@@ -931,8 +942,18 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
           )}
           {studyModes.map((m) => (
             <React.Fragment key={m.id}>
-              <div onClick={() => { setMode(m.id); if (m.id === "review") setShowReviewModal(true); else setShowReviewModal(false); }}
-                style={{ padding: "clamp(12px, 3vw, 14px) 16px", borderRadius: 16, marginBottom: showReviewModal && mode === "review" && m.id === "review" ? 0 : 10, cursor: "pointer", border: `1.5px solid ${mode === m.id ? ec : "var(--border)"}`, background: mode === m.id ? `${ec}06` : "transparent", borderBottomLeftRadius: showReviewModal && mode === "review" && m.id === "review" ? 0 : 16, borderBottomRightRadius: showReviewModal && mode === "review" && m.id === "review" ? 0 : 16 }}>
+              <div
+                onClick={() => { setMode(m.id); if (m.id === "review") setShowReviewModal(true); else setShowReviewModal(false); }}
+                style={{
+                  padding: "clamp(12px, 3vw, 14px) 16px", borderRadius: 16,
+                  marginBottom: showReviewModal && mode === "review" && m.id === "review" ? 0 : 10,
+                  cursor: "pointer",
+                  border: `1.5px solid ${mode === m.id ? ec : "var(--border)"}`,
+                  background: mode === m.id ? `${ec}06` : "transparent",
+                  borderBottomLeftRadius:  showReviewModal && mode === "review" && m.id === "review" ? 0 : 16,
+                  borderBottomRightRadius: showReviewModal && mode === "review" && m.id === "review" ? 0 : 16,
+                }}
+              >
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <div style={{ width: 40, height: 40, borderRadius: 12, background: mode === m.id ? `${ec}12` : "var(--bg3)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     <Icon n={m.icon} size={18} />
@@ -955,13 +976,17 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
                       <label style={{ fontSize: "clamp(11px,3vw,12px)", fontWeight: 600, display: "block", marginBottom: 6 }}>
                         Passing Score: <span style={{ color: ec }}>{reviewSettings.passingScore}%</span>
                       </label>
-                      <input type="range" min={30} max={100} value={reviewSettings.passingScore} onChange={e => setReviewSettings(p => ({ ...p, passingScore: Number(e.target.value) }))} style={{ width: "100%", accentColor: ec }} />
+                      <input type="range" min={30} max={100} value={reviewSettings.passingScore}
+                        onChange={e => setReviewSettings(p => ({ ...p, passingScore: Number(e.target.value) }))}
+                        style={{ width: "100%", accentColor: ec }} />
                     </div>
                     <div>
                       <label style={{ fontSize: "clamp(11px,3vw,12px)", fontWeight: 600, display: "block", marginBottom: 6 }}>
                         Duration: <span style={{ color: ec }}>{reviewSettings.duration} min</span>
                       </label>
-                      <input type="range" min={15} max={180} value={reviewSettings.duration} onChange={e => setReviewSettings(p => ({ ...p, duration: Number(e.target.value) }))} style={{ width: "100%", accentColor: ec }} />
+                      <input type="range" min={15} max={180} value={reviewSettings.duration}
+                        onChange={e => setReviewSettings(p => ({ ...p, duration: Number(e.target.value) }))}
+                        style={{ width: "100%", accentColor: ec }} />
                     </div>
                   </div>
                 </div>
@@ -970,11 +995,13 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
           ))}
         </div>
       )}
+
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {user ? (
           <>
             {!dashboard.isEnrolled ? (
-              <Btn full size="lg" onClick={handleEnroll} loading={dashboard.enrolling} style={{ background: "linear-gradient(135deg,var(--green),#059669)", borderColor: "transparent", minHeight: 48 }}>
+              <Btn full size="lg" onClick={handleEnroll} loading={dashboard.enrolling}
+                style={{ background: "linear-gradient(135deg,var(--green),#059669)", borderColor: "transparent", minHeight: 48 }}>
                 <Icon n="user-plus" size={16} /> Enroll in Exam
               </Btn>
             ) : (
@@ -984,14 +1011,18 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
                     📝 Saved progress in Part {dashboard.savedProgress.currentPart + 1}, Question {dashboard.savedProgress.currentQuestion + 1}
                   </div>
                 )}
-                <Btn full size="lg" onClick={() => { if (dashboard.savedProgress) setShowResumeModal(true); else handleStart(false); }} disabled={exam.isActive === false} style={{ background: `linear-gradient(135deg,${ec},${ec}cc)`, borderColor: "transparent", boxShadow: `0 4px 14px ${ec}40`, opacity: exam.isActive === false ? 0.6 : 1, minHeight: 48 }}>
+                <Btn full size="lg"
+                  onClick={() => { if (dashboard.savedProgress) setShowResumeModal(true); else handleStart(false); }}
+                  disabled={exam.isActive === false}
+                  style={{ background: `linear-gradient(135deg,${ec},${ec}cc)`, borderColor: "transparent", boxShadow: `0 4px 14px ${ec}40`, opacity: exam.isActive === false ? 0.6 : 1, minHeight: 48 }}>
                   <Icon n="lightning" size={16} /> Start Exam
                 </Btn>
                 <Btn full variant="ghost" loading={dashboard.unenrolling} onClick={handleUnenroll} style={{ color: "var(--red)", minHeight: 48 }}>
                   <Icon n="close" size={16} /> Unenroll
                 </Btn>
                 {dashboard.userCertificate && (
-                  <Btn full variant="outline" loading={downloadingCert} onClick={handleDownloadCertificate} style={{ justifyContent: "center", marginTop: 8, minHeight: 48 }}>
+                  <Btn full variant="outline" loading={downloadingCert} onClick={handleDownloadCertificate}
+                    style={{ justifyContent: "center", marginTop: 8, minHeight: 48 }}>
                     <Icon n="download" size={16} /> Download Certificate
                   </Btn>
                 )}
@@ -1000,9 +1031,17 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
           </>
         ) : (
           <div>
-            <Btn full size="lg" onClick={() => handleStart(false)} loading={loading} style={{ background: `linear-gradient(135deg,${ec},${ec}cc)`, borderColor: "transparent", minHeight: 48 }}>
+            <Btn full size="lg"
+              onClick={() => handleStart(false)}
+              loading={loading}
+              style={{ background: `linear-gradient(135deg,${ec},${ec}cc)`, borderColor: "transparent", minHeight: 48 }}>
               <Icon n="lightning" size={16} /> Start{" "}
-              {isFreeExam ? "Full Exam" : userAccess?.hasAccess ? "Exam" : `Free Preview (${Math.round(getAccessLimit(userAccess?.accessType || "guest") * 100)}%)`}
+              {isFreeExam
+                ? "Full Exam"
+                : userAccess?.hasAccess
+                ? "Exam"
+                : `Free Preview (${Math.round(getAccessLimit(userAccess?.accessType || "guest") * 100)}%)`
+              }
             </Btn>
             {!isFreeExam && !userAccess?.hasAccess && totalFullQuestions > 0 && (
               <div style={{ marginTop: 8, padding: "6px 10px", background: "rgba(245,158,11,0.08)", borderRadius: 8, fontSize: 11, color: "var(--text3)", textAlign: "center" }}>
@@ -1017,18 +1056,21 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
           </div>
         )}
       </div>
+
       <div style={{ textAlign: "center", marginTop: 16, fontSize: 11, color: "var(--text3)" }}>
         <Icon n="shield" size={12} /> Your progress auto-saves
       </div>
     </div>
   );
 
-  // JSX النهائي (نفس السابق)
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "36px clamp(16px, 4vw, 48px) 72px", overflowX: "hidden", width: "100%", boxSizing: "border-box" }}>
-      <button onClick={() => safeSetPage("home")} style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, marginBottom: 28, minHeight: 40 }}>
+
+      <button onClick={() => setPage("home")}
+        style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, marginBottom: 28, minHeight: 40 }}>
         <Icon n="arrow_right" size={14} style={{ transform: "rotate(180deg)" }} /> Back to Exams
       </button>
+
       <div style={{ background: `linear-gradient(145deg,var(--surface) 0%,${ec}08 100%)`, border: `1px solid var(--border)`, borderRadius: 28, padding: "clamp(20px, 4vw, 28px)", marginBottom: 32, position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: -80, right: -80, width: 200, height: 200, borderRadius: "50%", background: `radial-gradient(circle,${ec}12,transparent 70%)`, pointerEvents: "none" }} />
         <div style={{ display: "flex", gap: 28, flexWrap: "wrap" }}>
@@ -1047,7 +1089,11 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
             <div style={{ fontSize: "clamp(13px, 3vw, 14px)", color: "var(--text3)", marginBottom: 12 }}>{exam.subtitle}</div>
             {vendorName && (
               <div style={{ display: "inline-flex", alignItems: "center", gap: 10, background: "var(--bg2)", border: "1.5px solid var(--border)", borderRadius: 12, padding: "8px 14px", marginBottom: 16 }}>
-                {vendorLogo ? <img src={vendorLogo} alt={vendorName} style={{ width: 32, height: 22, objectFit: "contain" }} loading="lazy" onError={e => { e.target.src = defaultLogo; }} /> : <span style={{ fontSize: 22 }}>🏢</span>}
+                {vendorLogo ? (
+                  <img src={vendorLogo} alt={vendorName} style={{ width: 32, height: 22, objectFit: "contain" }} loading="lazy" onError={e => { e.target.src = defaultLogo; }} />
+                ) : (
+                  <span style={{ fontSize: 22 }}>🏢</span>
+                )}
                 <div>
                   <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text3)", textTransform: "uppercase" }}>Vendor</div>
                   <div style={{ fontSize: "clamp(12px, 3vw, 13px)", fontWeight: 700, color: "var(--text)" }}>{vendorName}</div>
@@ -1058,13 +1104,16 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
             <div style={{ display: "flex", alignItems: "center", gap: "clamp(12px, 3vw, 20px)", flexWrap: "wrap" }}>
               <span style={{ fontSize: "clamp(12px,3vw,13px)", color: "var(--text3)", display: "flex", alignItems: "center", gap: 6 }}><Icon n="user" size={14} /> {dashboard.enrolledCount.toLocaleString()} enrolled</span>
               <span style={{ fontSize: "clamp(12px,3vw,13px)", color: "var(--text3)", display: "flex", alignItems: "center", gap: 6 }}><Icon n="refresh" size={14} /> {dashboard.attemptsCount.toLocaleString()} attempts</span>
-              <span style={{ fontSize: "clamp(12px,3vw,13px)", color: "var(--text3)", display: "flex", alignItems: "center", gap: 6 }}><Icon n="calendar" size={14} /> Updated: {new Date().toLocaleDateString()}</span>
+              <span style={{ fontSize: "clamp(12px,3vw,13px)", color: "var(--text3)", display: "flex", alignItems: "center", gap: 6 }}><Icon n="calendar" size={14} /> Updated: {formattedDate}</span>
             </div>
           </div>
         </div>
       </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 380px)", gap: 32, alignItems: "start" }} className="exam-detail-grid">
+
         <div style={{ display: "flex", flexDirection: "column", gap: 32, minWidth: 0 }}>
+
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, padding: "clamp(20px, 4vw, 28px)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
               <h2 style={{ fontSize: "clamp(16px, 4vw, 18px)", fontWeight: 700 }}>Global Exam Specification</h2>
@@ -1075,35 +1124,59 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
                 </div>
               )}
             </div>
+            
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16, marginBottom: 28 }}>
-              <div><div style={{ fontSize: "clamp(11px, 3vw, 12px)", color: "var(--text3)" }}>Total Questions</div><div style={{ fontSize: "clamp(18px, 4vw, 20px)", fontWeight: 700 }}>{loading ? "..." : `${totalFullQuestions} items`}</div></div>
-              <div><div style={{ fontSize: "clamp(11px, 3vw, 12px)", color: "var(--text3)" }}>Duration</div><div style={{ fontSize: "clamp(18px, 4vw, 20px)", fontWeight: 700 }}>{exam.duration} min</div></div>
-              <div><div style={{ fontSize: "clamp(11px, 3vw, 12px)", color: "var(--text3)" }}>Passing Score</div><div style={{ fontSize: "clamp(18px, 4vw, 20px)", fontWeight: 700 }}>{exam.passScore}%</div></div>
-              <div><div style={{ fontSize: "clamp(11px, 3vw, 12px)", color: "var(--text3)" }}>Topics</div><div style={{ fontSize: "clamp(18px, 4vw, 20px)", fontWeight: 700 }}>{loading ? "..." : totalTopics}</div></div>
-              {numberOfParts > 1 && (<div style={{ gridColumn: "1 / -1" }}><div style={{ fontSize: "clamp(11px, 3vw, 12px)", color: "var(--text3)" }}>Exam Structure</div><div style={{ fontSize: "clamp(18px, 4vw, 20px)", fontWeight: 700 }}>{numberOfParts} parts</div></div>)}
+              <div>
+                <div style={{ fontSize: "clamp(11px, 3vw, 12px)", color: "var(--text3)" }}>Total Questions</div>
+                <div style={{ fontSize: "clamp(18px, 4vw, 20px)", fontWeight: 700 }}>{loading ? "..." : `${totalFullQuestions} items`}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: "clamp(11px, 3vw, 12px)", color: "var(--text3)" }}>Duration</div>
+                <div style={{ fontSize: "clamp(18px, 4vw, 20px)", fontWeight: 700 }}>{exam.duration} min</div>
+              </div>
+              <div>
+                <div style={{ fontSize: "clamp(11px, 3vw, 12px)", color: "var(--text3)" }}>Passing Score</div>
+                <div style={{ fontSize: "clamp(18px, 4vw, 20px)", fontWeight: 700 }}>{exam.passScore}%</div>
+              </div>
+              <div>
+                <div style={{ fontSize: "clamp(11px, 3vw, 12px)", color: "var(--text3)" }}>Topics</div>
+                <div style={{ fontSize: "clamp(18px, 4vw, 20px)", fontWeight: 700 }}>{loading ? "..." : totalTopics}</div>
+              </div>
+              {numberOfParts > 1 && (
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <div style={{ fontSize: "clamp(11px, 3vw, 12px)", color: "var(--text3)" }}>Exam Structure</div>
+                  <div style={{ fontSize: "clamp(18px, 4vw, 20px)", fontWeight: 700 }}>{numberOfParts} parts</div>
+                </div>
+              )}
             </div>
-            {!loading && Object.keys(fullQuestions.reduce((acc, q) => { acc[q.domain] = 1; return acc; }, {})).length > 0 && (
+            {!loading && Object.keys(fullDomainStats).length > 0 && (
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 6 }}>
                   <div style={{ fontSize: "clamp(11px, 3vw, 12px)", fontWeight: 600 }}>Topic Distribution</div>
                   <div style={{ fontSize: "clamp(11px, 3vw, 12px)", fontWeight: 700, color: ec }}>{successRate}% Success Rate</div>
                 </div>
-                {Object.entries(fullQuestions.reduce((acc, q) => { acc[q.domain] = (acc[q.domain] || 0) + 1; return acc; }, {})).map(([domain, cnt]) => (
+                {Object.entries(fullDomainStats).map(([domain, cnt]) => (
                   <TopicDistributionBar key={domain} domain={domain} count={cnt} total={totalFullQuestions} color={ec} />
                 ))}
               </div>
             )}
           </div>
+
           {exam.longDescription && (
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, padding: "clamp(20px, 4vw, 28px)" }}>
               <h2 style={{ fontSize: "clamp(16px, 4vw, 18px)", fontWeight: 700, marginBottom: 16 }}>About This Exam</h2>
               <div className="exam-long-desc" style={{ overflowX: "auto" }} dangerouslySetInnerHTML={{ __html: exam.longDescription }} />
             </div>
           )}
-          <SuggestedExams currentExam={exam} setPage={safeSetPage} />
+
+          <SuggestedExams currentExam={exam} setPage={setPage} />
         </div>
-        <SmartStickyPanel topOffset={24}>{RightPanelContent}</SmartStickyPanel>
+
+        <SmartStickyPanel topOffset={24}>
+          {RightPanelContent}
+        </SmartStickyPanel>
       </div>
+
       {showResumeModal && dashboard.savedProgress && (
         <Modal title="Resume Your Exam" onClose={() => setShowResumeModal(false)}>
           <div style={{ textAlign: "center", padding: "8px 0" }}>
@@ -1113,24 +1186,41 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
               at <strong style={{ color: ec }}>Question {dashboard.savedProgress.currentQuestion + 1}</strong>
             </p>
             <div style={{ display: "flex", gap: 12, flexDirection: "column" }}>
-              <Btn full onClick={handleResumeExam} style={{ background: `linear-gradient(135deg,${ec},${ec}cc)`, minHeight: 48 }}>Resume from Part {dashboard.savedProgress.currentPart + 1}</Btn>
+              <Btn full onClick={handleResumeExam} style={{ background: `linear-gradient(135deg,${ec},${ec}cc)`, minHeight: 48 }}>
+                Resume from Part {dashboard.savedProgress.currentPart + 1}
+              </Btn>
               <Btn full variant="subtle" onClick={handleStartFresh} style={{ minHeight: 48 }}>Start Over</Btn>
               <Btn full variant="ghost" onClick={() => setShowResumeModal(false)} style={{ minHeight: 48 }}>Cancel</Btn>
             </div>
           </div>
         </Modal>
       )}
+
       <style>{`
         @media (max-width: 768px) {
-          .exam-detail-grid { grid-template-columns: 1fr !important; gap: 24px !important; }
+          .exam-detail-grid {
+            grid-template-columns: 1fr !important;
+            gap: 24px !important;
+          }
           .exam-detail-grid > div:first-child { order: 2; }
           .exam-detail-grid > div:last-child  { order: 1; }
-          .exam-detail-grid > div { max-width: 100%; overflow-x: auto; }
+          .exam-detail-grid > div {
+            max-width: 100%;
+            overflow-x: auto;
+          }
           button, .btn, [role="button"] { min-height: 44px; }
           input, select, textarea { font-size: 16px !important; }
         }
-        @media (max-width: 480px) { .exam-detail-grid { gap: 16px !important; } }
-        .exam-long-desc { font-size: clamp(13px, 3vw, 14px); color: var(--text2); line-height: 1.75; word-break: break-word; overflow-wrap: break-word; }
+        @media (max-width: 480px) {
+          .exam-detail-grid { gap: 16px !important; }
+        }
+        .exam-long-desc {
+          font-size: clamp(13px, 3vw, 14px);
+          color: var(--text2);
+          line-height: 1.75;
+          word-break: break-word;
+          overflow-wrap: break-word;
+        }
         .exam-long-desc h2 { font-size: clamp(15px,4vw,17px); font-weight: 800; color: var(--text); margin: 18px 0 8px; }
         .exam-long-desc h3 { font-size: clamp(13px,3.5vw,15px); font-weight: 700; color: var(--text); margin: 14px 0 6px; }
         .exam-long-desc p  { margin: 6px 0; }
