@@ -9,7 +9,7 @@
       "destination": "/api/share?slug=:slug"
     },
     {
-      "source": "/((?!api|exam|share).*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
