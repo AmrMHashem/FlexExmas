@@ -528,6 +528,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   const [accessLoading, setAccessLoading]   = useState(true);
   const [autoApplyCoupon, setAutoApplyCoupon] = useState(null);
   const [claimingFree, setClaimingFree]     = useState(false);
+  const appliedRef = useRef(false);
 
   const abortControllerRef = useRef(null);
   const cacheRef           = useRef({});
@@ -551,21 +552,47 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   }, [exam]);
 
   // ── Auto-apply coupon from URL ────────────────────────────────────
-  useEffect(() => {
-    if (!autoApplyCoupon || !exam?.pricing?.price) return;
-    let mounted = true;
-    validateCoupon(autoApplyCoupon, exam.id, null, user?.uid || null).then(res => {
+useEffect(() => {
+  if (!autoApplyCoupon || !exam?.pricing?.price || !user?.uid) return;
+
+  if (appliedRef.current) return;
+  appliedRef.current = true;
+
+  let mounted = true;
+
+  validateCoupon(autoApplyCoupon, exam.id, null, user?.uid)
+    .then(res => {
       if (!mounted) return;
+
       if (res.valid) {
         const discountPercent = res.discount || 0;
-        const discountAmount  = res.discountAmount || (exam.pricing.price * discountPercent / 100);
-        const newPrice        = Math.max(0, exam.pricing.price - discountAmount);
-        setAppliedCoupon({ code: autoApplyCoupon, discountPercent, discountAmount, newPrice });
+        const discountAmount =
+          res.discountAmount ||
+          (exam.pricing.price * discountPercent / 100);
+
+        const newPrice = Math.max(
+          0,
+          exam.pricing.price - discountAmount
+        );
+
+        setAppliedCoupon({
+          code: autoApplyCoupon,
+          discountPercent,
+          discountAmount,
+          newPrice
+        });
       }
+
       setAutoApplyCoupon(null);
-    }).catch(() => { if (mounted) setAutoApplyCoupon(null); });
-    return () => { mounted = false; };
-  }, [autoApplyCoupon, exam?.id, exam?.pricing?.price, user?.uid]);
+    })
+    .catch(() => {
+      if (mounted) setAutoApplyCoupon(null);
+    });
+
+  return () => {
+    mounted = false;
+  };
+}, [autoApplyCoupon, exam?.id, exam?.pricing?.price, user?.uid]);
 
   // ── Vendors ───────────────────────────────────────────────────────
   useEffect(() => { getVendors().then(setVendors).catch(() => {}); }, []);
