@@ -1,6 +1,6 @@
-// pages/ExamDetail.jsx — v8.3 — Fixed mobile overflow issues
-// ✅ Fixed: horizontal overflow on mobile devices
-// ✅ When applied coupon makes exam free, show a direct claim button
+// pages/ExamDetail.jsx — v8.4 — Fixed infinite re-render loop (stable dependencies)
+// ✅ No more hysterical refresh / re-render loops
+// ✅ All effects depend only on primitive values (examId, etc.)
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useAuth } from "../hooks/useAuth";
@@ -51,7 +51,7 @@ const Stars = React.memo(function Stars({ rating = 5 }) {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Vendor Logo Map (unchanged)
+//  Vendor Logo Map
 // ─────────────────────────────────────────────────────────────────────────────
 const vendorLogos = {
   AWS: "https://upload.wikimedia.org/wikipedia/commons/9/93/Amazon_Web_Services_Logo.svg",
@@ -88,7 +88,7 @@ const getMotivationalMessage = (score) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  ScoreCard (best score) — unchanged
+//  ScoreCard (best score)
 // ─────────────────────────────────────────────────────────────────────────────
 const ScoreCard = React.memo(function ScoreCard({ score, examTitle }) {
   const percentage = Math.round(score);
@@ -120,7 +120,7 @@ const ScoreCard = React.memo(function ScoreCard({ score, examTitle }) {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  LastScoreCard — unchanged
+//  LastScoreCard
 // ─────────────────────────────────────────────────────────────────────────────
 const LastScoreCard = React.memo(function LastScoreCard({ lastScore, examTitle }) {
   if (!lastScore || lastScore === 0) return null;
@@ -177,7 +177,7 @@ const LastScoreCard = React.memo(function LastScoreCard({ lastScore, examTitle }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  TopicDistributionBar — unchanged
+//  TopicDistributionBar
 // ─────────────────────────────────────────────────────────────────────────────
 const TopicDistributionBar = React.memo(function TopicDistributionBar({ domain, count, total, color }) {
   const percentage = ((count / total) * 100).toFixed(1);
@@ -193,7 +193,7 @@ const TopicDistributionBar = React.memo(function TopicDistributionBar({ domain, 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SmartStickyPanel — unchanged except mobile width fix
+//  SmartStickyPanel (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 function SmartStickyPanel({ children, topOffset = 24 }) {
   const [isMobile, setIsMobile] = useState(() =>
@@ -339,7 +339,6 @@ function SmartStickyPanel({ children, topOffset = 24 }) {
   }, [isMobile, init]);
 
   if (isMobile) {
-    // FIX: prevent overflow on mobile
     return <div style={{ alignSelf: "start", width: "100%", maxWidth: "100%", overflowX: "hidden" }}>{children}</div>;
   }
 
@@ -347,7 +346,7 @@ function SmartStickyPanel({ children, topOffset = 24 }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  CouponInput — unchanged
+//  CouponInput (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 function CouponInput({ examId, originalPrice, onApply, userId }) {
   const [code, setCode]       = useState("");
@@ -428,7 +427,7 @@ function CouponInput({ examId, originalPrice, onApply, userId }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SuggestedExams — unchanged
+//  SuggestedExams (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 const SuggestedExams = React.memo(function SuggestedExams({ currentExam, setPage }) {
   const [suggested, setSuggested] = useState([]);
@@ -500,10 +499,33 @@ const SuggestedExams = React.memo(function SuggestedExams({ currentExam, setPage
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Main ExamDetail Component
+//  Main ExamDetail Component (FIXED: stable dependencies, no infinite loops)
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   const { user, profile } = useAuth();
+  
+  // ████████ STABLE PRIMITIVES FROM EXAM (avoid object reference changes) ████████
+  const examId       = exam?.id;
+  const examIsActive = exam?.isActive;
+  const examDuration = exam?.duration;
+  const examTitle    = exam?.title;
+  const examColor    = exam?.color || "var(--accent)";
+  const examPassScore= exam?.passScore;
+  const examCategory = exam?.category;
+  const examVendor   = exam?.vendor;
+  const examVendorImage = exam?.vendorImage;
+  const examImage    = exam?.image;
+  const examSubtitle = exam?.subtitle;
+  const examDescription = exam?.description;
+  const examLongDesc = exam?.longDescription;
+  const examDifficulty = exam?.difficulty;
+  const examNumberOfParts = exam?.numberOfParts || 1;
+  const examSuccessRate = exam?.successRate || 93;
+  const examPricing = exam?.pricing;
+  const examIsFree = !examPricing?.price || examPricing?.isFree;
+  const examBasePrice = examPricing?.price || 0;
+  // ████████████████████████████████████████████████████████████████████████████
+
   const [questions, setQuestions]           = useState([]);
   const [fullQuestions, setFullQuestions]   = useState([]);
   const [loading, setLoading]               = useState(true);
@@ -528,43 +550,43 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
 
   // ── SEO ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!exam) return;
-    document.title = `${exam.title} | FlexExams Certification Practice`;
+    if (!examTitle) return;
+    document.title = `${examTitle} | FlexExams Certification Practice`;
     const setMeta = (sel, attr, val, content) => {
       let el = document.querySelector(sel);
       if (!el) { el = document.createElement("meta"); el.setAttribute(attr, val); document.head.appendChild(el); }
       el.setAttribute("content", content);
     };
-    setMeta('meta[name="description"]', "name", "description", exam.description || exam.subtitle || `Prepare for ${exam.title} certification.`);
-    setMeta('meta[property="og:title"]', "property", "og:title", `${exam.title} - FlexExams`);
-    setMeta('meta[property="og:description"]', "property", "og:description", exam.description || `Test your knowledge with exam questions.`);
-    if (exam.image) setMeta('meta[property="og:image"]', "property", "og:image", exam.image);
+    setMeta('meta[name="description"]', "name", "description", examDescription || examSubtitle || `Prepare for ${examTitle} certification.`);
+    setMeta('meta[property="og:title"]', "property", "og:title", `${examTitle} - FlexExams`);
+    setMeta('meta[property="og:description"]', "property", "og:description", examDescription || `Test your knowledge with exam questions.`);
+    if (examImage) setMeta('meta[property="og:image"]', "property", "og:image", examImage);
     const url = new URL(window.location.href);
     const cpCode = url.searchParams.get("couponCode");
     if (cpCode) setAutoApplyCoupon(cpCode);
-  }, [exam]);
+  }, [examTitle, examDescription, examSubtitle, examImage]);
 
   // ── Auto-apply coupon from URL ────────────────────────────────────
   useEffect(() => {
-    if (!autoApplyCoupon || !exam?.pricing?.price) return;
+    if (!autoApplyCoupon || !examBasePrice) return;
     let mounted = true;
-    validateCoupon(autoApplyCoupon, exam.id, null, user?.uid || null).then(res => {
+    validateCoupon(autoApplyCoupon, examId, null, user?.uid || null).then(res => {
       if (!mounted) return;
       if (res.valid) {
         const discountPercent = res.discount || 0;
-        const discountAmount  = res.discountAmount || (exam.pricing.price * discountPercent / 100);
-        const newPrice        = Math.max(0, exam.pricing.price - discountAmount);
+        const discountAmount  = res.discountAmount || (examBasePrice * discountPercent / 100);
+        const newPrice        = Math.max(0, examBasePrice - discountAmount);
         setAppliedCoupon({ code: autoApplyCoupon, discountPercent, discountAmount, newPrice });
       }
       setAutoApplyCoupon(null);
     }).catch(() => { if (mounted) setAutoApplyCoupon(null); });
     return () => { mounted = false; };
-  }, [autoApplyCoupon, exam?.id, exam?.pricing?.price, user?.uid]);
+  }, [autoApplyCoupon, examId, examBasePrice, user?.uid]);
 
   // ── Vendors ───────────────────────────────────────────────────────
   useEffect(() => { getVendors().then(setVendors).catch(() => {}); }, []);
 
-  const vendorName = useMemo(() => exam?.vendor || exam?.category || "", [exam]);
+  const vendorName = useMemo(() => examVendor || examCategory || "", [examVendor, examCategory]);
   const vendorLogo = useMemo(() => {
     const found = vendors.find(v =>
       v.name?.toLowerCase() === vendorName?.toLowerCase() ||
@@ -572,8 +594,8 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     );
     if (found?.image) return found.image;
     if (found?.logo && found.logo.startsWith("http")) return found.logo;
-    return exam?.vendorImage || getFallbackVendorLogo(vendorName) || null;
-  }, [vendors, vendorName, exam?.vendorImage]);
+    return examVendorImage || getFallbackVendorLogo(vendorName) || null;
+  }, [vendors, vendorName, examVendorImage]);
 
   // ── FULL domain stats ─────────────────────────────────────────────
   const fullDomainStats = useMemo(() => {
@@ -602,20 +624,21 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     : "Recently updated";
 
   const studyModes = useMemo(() => [
-    { id: "examSimulation", icon: "clock", label: "⏱ Timed Exam",    desc: `Time = Questions ratio × ${exam?.duration || 0} min — Score + Certificate`, official: true },
+    { id: "examSimulation", icon: "clock", label: "⏱ Timed Exam",    desc: `Time = Questions ratio × ${examDuration || 0} min — Score + Certificate`, official: true },
     { id: "fullPractice",   icon: "exam",  label: "📖 Practice Mode", desc: `No timer — All ${fullQuestions.length} questions at your own pace`, official: false },
     { id: "review",         icon: "eye",   label: "Review Mode",      desc: "See correct answers, Set Score and Time", official: false },
-  ], [fullQuestions.length, exam?.duration]);
+  ], [fullQuestions.length, examDuration]);
 
-  // ── Load ALL questions first ──────────────────────────────────────
+  // ── Load ALL questions first (DEPENDS ONLY ON examId) ─────────────
   useEffect(() => {
-    if (!exam) return;
-    if (exam.isActive === false) showToast({ msg: "🔒 This exam is under maintenance.", type: "warning" });
+    if (!examId) return;
+    if (examIsActive === false) {
+      showToast({ msg: "🔒 This exam is under maintenance.", type: "warning" });
+    }
     let isMounted = true;
-
     const loadQuestions = async () => {
       try {
-        const allQs = await getQuestions(exam.id);
+        const allQs = await getQuestions(examId);
         if (!isMounted) return;
         setFullQuestions(allQs);
         setQuestions(allQs);
@@ -626,21 +649,21 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     };
     loadQuestions();
     return () => { isMounted = false; };
-  }, [exam, showToast]);
+  }, [examId, examIsActive, showToast]); // examId is stable string
 
-  // ── Payment access ────────────────────────────────────────────────
+  // ── Payment access (DEPENDS ONLY ON examId) ───────────────────────
   useEffect(() => {
-    if (!exam?.id) return;
+    if (!examId) return;
     setAccessLoading(true);
-    checkUserAccess(user?.uid, exam.id)
+    checkUserAccess(user?.uid, examId)
       .then(access => { setUserAccess(access); setAccessLoading(false); })
       .catch(() => { setUserAccess({ hasAccess: false, accessType: user ? "free" : "guest" }); setAccessLoading(false); });
-  }, [user?.uid, exam?.id]);
+  }, [user?.uid, examId]);
 
-  // ── Dashboard data ────────────────────────────────────────────────
+  // ── Dashboard data (DEPENDS ONLY ON examId) ───────────────────────
   useEffect(() => {
-    if (!exam || !user?.uid) return;
-    const cacheKey = `exam_dashboard_${user.uid}_${exam.id}`;
+    if (!examId || !user?.uid) return;
+    const cacheKey = `exam_dashboard_${user.uid}_${examId}`;
     const cached   = cacheRef.current[cacheKey];
     if (cached && (Date.now() - cached.timestamp) < 5 * 60 * 1000) {
       setDashboard(cached.data);
@@ -650,7 +673,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     abortControllerRef.current = new AbortController();
     const loadDashboard = async () => {
       try {
-        const data = await getExamDashboardData(user.uid, exam.id, { signal: abortControllerRef.current.signal });
+        const data = await getExamDashboardData(user.uid, examId, { signal: abortControllerRef.current.signal });
         setDashboard(data);
         cacheRef.current[cacheKey] = { data, timestamp: Date.now() };
       } catch (err) {
@@ -659,49 +682,49 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     };
     loadDashboard();
     return () => abortControllerRef.current?.abort();
-  }, [user?.uid, exam?.id]);
+  }, [user?.uid, examId]);
 
   const incrementAttempts = useCallback(async () => {
     try {
-      await incrementExamAttempts(exam.id);
+      await incrementExamAttempts(examId);
       setDashboard(prev => ({ ...prev, attemptsCount: prev.attemptsCount + 1 }));
     } catch (err) { console.error("Failed to increment attempts:", err); }
-  }, [exam?.id]);
+  }, [examId]);
 
   const handleEnroll = useCallback(async () => {
     if (!user) return;
     setDashboard(prev => ({ ...prev, enrolling: true }));
     try {
-      await enrollUserInExam(user.uid, exam.id);
+      await enrollUserInExam(user.uid, examId);
       setDashboard(prev => ({ ...prev, isEnrolled: true, enrolledCount: prev.enrolledCount + 1, enrolling: false }));
       showToast({ msg: "✅ Successfully enrolled! Ready to start.", type: "success" });
     } catch {
       showToast({ msg: "❌ Enrollment failed", type: "error" });
       setDashboard(prev => ({ ...prev, enrolling: false }));
     }
-  }, [user, exam?.id, showToast]);
+  }, [user, examId, showToast]);
 
   const handleUnenroll = useCallback(async () => {
     if (!window.confirm("Are you sure? Your progress will be permanently deleted.")) return;
     setDashboard(prev => ({ ...prev, unenrolling: true }));
     try {
-      await clearExamProgress(user.uid, exam.id);
-      await unenrollUserFromExam(user.uid, exam.id);
+      await clearExamProgress(user.uid, examId);
+      await unenrollUserFromExam(user.uid, examId);
       setDashboard(prev => ({ ...prev, isEnrolled: false, savedProgress: null, enrolledCount: Math.max(0, prev.enrolledCount - 1), unenrolling: false }));
       showToast({ msg: "✅ Successfully unenrolled", type: "success" });
     } catch {
       showToast({ msg: "❌ Unenroll failed", type: "error" });
       setDashboard(prev => ({ ...prev, unenrolling: false }));
     }
-  }, [user, exam?.id, showToast]);
+  }, [user, examId, showToast]);
 
   const handleStart = useCallback(async (resumeProgress = false) => {
-    if (exam.isActive === false) { showToast({ msg: "🔒 This exam is currently unavailable", type: "error" }); return; }
+    if (examIsActive === false) { showToast({ msg: "🔒 This exam is currently unavailable", type: "error" }); return; }
     let pool = fullQuestions.length > 0 ? [...fullQuestions] : [];
     if (pool.length === 0) {
       showToast({ msg: "⏳ Loading questions, please wait...", type: "info" });
       try {
-        const qs = await getQuestions(exam.id);
+        const qs = await getQuestions(examId);
         if (!qs || qs.length === 0) { showToast({ msg: "No questions available.", type: "warning" }); return; }
         pool = [...qs];
         setFullQuestions(qs);
@@ -713,8 +736,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     }
     const access        = userAccess;
     const limit         = getAccessLimit(access?.accessType || (user ? "free" : "guest"));
-    const isFreeExam    = !exam.pricing?.price || exam.pricing?.isFree;
-    const hasFullAccess = access?.hasAccess || isFreeExam;
+    const hasFullAccess = access?.hasAccess || examIsFree;
     if (!hasFullAccess) {
       const allowedCount = Math.max(3, Math.ceil(pool.length * limit));
       pool = pool.slice(0, allowedCount);
@@ -723,7 +745,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     let timeDuration = null;
     if (mode === "examSimulation") {
       const ratio  = pool.length / Math.max(1, fullQuestions.length);
-      timeDuration = Math.round(exam.duration * ratio) * 60;
+      timeDuration = Math.round(examDuration * ratio) * 60;
       if (timeDuration < 60) timeDuration = 60;
     } else if (mode === "review") {
       timeDuration = reviewSettings.duration * 60;
@@ -737,7 +759,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
       limitPercent: Math.round(limit * 100),
       fullExamTotal: fullQuestions.length,
     });
-  }, [exam, fullQuestions, user, userAccess, mode, reviewSettings, dashboard.savedProgress, startQuiz, showToast, incrementAttempts]);
+  }, [examId, examIsActive, examDuration, examIsFree, fullQuestions, user, userAccess, mode, reviewSettings, dashboard.savedProgress, startQuiz, showToast, incrementAttempts, exam]);
 
   const handleResumeExam = useCallback(async () => {
     setShowResumeModal(false);
@@ -747,27 +769,27 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   const handleStartFresh = useCallback(async () => {
     setShowResumeModal(false);
     try {
-      await clearExamProgress(user.uid, exam.id);
+      await clearExamProgress(user.uid, examId);
       setDashboard(prev => ({ ...prev, savedProgress: null }));
       await handleStart(false);
     } catch (err) {
       console.error(err);
       showToast({ msg: "❌ Failed to clear progress, try again", type: "error" });
     }
-  }, [user, exam?.id, handleStart, showToast]);
+  }, [user, examId, handleStart, showToast]);
 
   const handleDownloadCertificate = useCallback(async () => {
     setDownloadingCert(true);
     try {
       await generatePDFCertificate({
-        examTitle: exam.title,
+        examTitle: examTitle,
         userName:  user.displayName || profile?.name || user.email || "Candidate",
         score:     dashboard.userCertificate?.score,
         date:      dashboard.userCertificate?.date,
         certId:    dashboard.userCertificate?.certId,
         examMode:  "examSimulation",
         passed:    true,
-        filename:  `${exam.title.replace(/\s/g, "_")}_Certificate`,
+        filename:  `${examTitle?.replace(/\s/g, "_") || "Certificate"}_Certificate`,
       });
       showToast({ msg: "✅ Certificate downloaded!", type: "success" });
     } catch (err) {
@@ -775,7 +797,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
       showToast({ msg: "❌ Failed to download certificate", type: "error" });
     }
     setDownloadingCert(false);
-  }, [exam, user, profile, dashboard.userCertificate, showToast]);
+  }, [examTitle, user, profile, dashboard.userCertificate, showToast]);
 
   const handleClaimFreeAccess = useCallback(async () => {
     if (!user) {
@@ -788,21 +810,21 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     try {
       const txId = await saveTransaction(user.uid, {
         type: "exam",
-        examId: exam.id,
-        examTitle: exam.title,
+        examId: examId,
+        examTitle: examTitle,
         amount: 0,
-        originalAmount: exam.pricing?.price || 0,
+        originalAmount: examBasePrice || 0,
         paymentMethod: "free_coupon",
         couponCode: appliedCoupon?.code,
-        discount: exam.pricing?.price || 0,
+        discount: examBasePrice || 0,
         discountPercent: 100,
         currency: "USD",
         autoRenew: false,
       });
-      await grantExamAccess(user.uid, exam.id, txId);
-      const newAccess = await checkUserAccess(user.uid, exam.id);
+      await grantExamAccess(user.uid, examId, txId);
+      const newAccess = await checkUserAccess(user.uid, examId);
       setUserAccess(newAccess);
-      await enrollUserInExam(user.uid, exam.id);
+      await enrollUserInExam(user.uid, examId);
       setDashboard(prev => ({ ...prev, isEnrolled: true, enrolledCount: prev.enrolledCount + 1 }));
       showToast({ msg: "🎉 Coupon applied! You now have full access to this exam for free.", type: "success" });
       setAppliedCoupon(null);
@@ -815,7 +837,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     } finally {
       setClaimingFree(false);
     }
-  }, [user, exam, appliedCoupon, setPage, showToast, claimingFree]);
+  }, [user, examId, examTitle, examBasePrice, appliedCoupon, setPage, showToast, claimingFree]);
 
   if (!exam) {
     return (
@@ -825,17 +847,17 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     );
   }
 
-  const ec             = exam.color || "var(--accent)";
-  const successRate    = exam.successRate || 93;
-  const numberOfParts  = exam.numberOfParts || 1;
-  const isFreeExam     = !exam.pricing?.price || exam.pricing?.isFree;
+  const ec             = examColor;
+  const successRate    = examSuccessRate;
+  const numberOfParts  = examNumberOfParts;
+  const isFreeExam     = examIsFree;
   const hasFullAccess  = userAccess?.hasAccess || isFreeExam;
-  const basePrice      = exam.pricing?.price || 0;
+  const basePrice      = examBasePrice;
   const displayPrice   = appliedCoupon ? appliedCoupon.newPrice : basePrice;
-  const hasDiscount    = appliedCoupon ? true : (exam.pricing?.discount > 0);
+  const hasDiscount    = appliedCoupon ? true : (examPricing?.discount > 0);
   const discountLabel  = appliedCoupon
     ? `-${appliedCoupon.discountPercent}%`
-    : exam.pricing?.discount > 0 ? `-${exam.pricing.discount}%` : null;
+    : examPricing?.discount > 0 ? `-${examPricing.discount}%` : null;
 
   const totalFullQuestions = fullQuestions.length;
   const totalTopics = Object.keys(fullDomainStats).length;
@@ -845,7 +867,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   const RightPanelContent = (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, padding: "clamp(20px, 4vw, 28px)", overflowX: "hidden", width: "100%", boxSizing: "border-box" }}>
 
-      {exam.pricing && !hasFullAccess && (
+      {examPricing && !hasFullAccess && (
         <div style={{ marginBottom: 18 }}>
           {isFreeExam ? (
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "linear-gradient(135deg,rgba(16,185,129,0.12),rgba(5,150,105,0.08))", border: "1.5px solid rgba(16,185,129,0.35)", borderRadius: 100, padding: "5px 14px", fontSize: 11, fontWeight: 800, color: "var(--green)", boxShadow: "0 2px 8px rgba(16,185,129,0.12)" }}>
@@ -855,9 +877,9 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "linear-gradient(135deg,rgba(99,102,241,0.14),rgba(139,92,246,0.1))", border: "1.5px solid rgba(99,102,241,0.4)", borderRadius: 10, padding: "6px 14px", boxShadow: "0 2px 10px rgba(99,102,241,0.15)" }}>
-                {(appliedCoupon || (exam.pricing.originalPrice && exam.pricing.originalPrice > basePrice)) && (
+                {(appliedCoupon || (examPricing.originalPrice && examPricing.originalPrice > basePrice)) && (
                   <span style={{ fontSize: 11, color: "var(--text3)", textDecoration: "line-through", fontWeight: 600 }}>
-                    ${(appliedCoupon ? basePrice : exam.pricing.originalPrice).toFixed(2)}
+                    ${(appliedCoupon ? basePrice : examPricing.originalPrice).toFixed(2)}
                   </span>
                 )}
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2">
@@ -882,15 +904,15 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
       <h3 style={{ fontWeight: 700, marginBottom: 20, fontSize: "clamp(18px, 4vw, 20px)" }}>Prepare and Pass</h3>
 
       {user && dashboard.bestScore !== null && dashboard.bestScore > 0 && (
-        <ScoreCard score={dashboard.bestScore} examTitle={exam.title} />
+        <ScoreCard score={dashboard.bestScore} examTitle={examTitle} />
       )}
       {user && dashboard.lastScore !== null && dashboard.lastScore > 0 && (
-        <LastScoreCard lastScore={dashboard.lastScore} examTitle={exam.title} />
+        <LastScoreCard lastScore={dashboard.lastScore} examTitle={examTitle} />
       )}
 
       {!hasFullAccess && !isFreeExam && !accessLoading && basePrice > 0 && (
         <CouponInput
-          examId={exam.id}
+          examId={examId}
           originalPrice={basePrice}
           userId={user?.uid}
           onApply={data => setAppliedCoupon(data)}
@@ -920,7 +942,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
       ) : (
         !hasFullAccess && !accessLoading && (
           <ExamAccessGate
-            exam={{ ...exam, pricing: exam.pricing ? { ...exam.pricing, price: displayPrice } : exam.pricing }}
+            exam={{ ...exam, pricing: examPricing ? { ...examPricing, price: displayPrice } : examPricing }}
             onStartFree={() => { if (dashboard.savedProgress) setShowResumeModal(true); else handleStart(false); }}
             onPurchase={(data) => setPage("checkout", { ...data, couponCode: appliedCoupon?.code, discountedPrice: displayPrice })}
             onSubscribe={() => setPage("pricing")}
@@ -1013,8 +1035,8 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
                 )}
                 <Btn full size="lg"
                   onClick={() => { if (dashboard.savedProgress) setShowResumeModal(true); else handleStart(false); }}
-                  disabled={exam.isActive === false}
-                  style={{ background: `linear-gradient(135deg,${ec},${ec}cc)`, borderColor: "transparent", boxShadow: `0 4px 14px ${ec}40`, opacity: exam.isActive === false ? 0.6 : 1, minHeight: 48 }}>
+                  disabled={examIsActive === false}
+                  style={{ background: `linear-gradient(135deg,${ec},${ec}cc)`, borderColor: "transparent", boxShadow: `0 4px 14px ${ec}40`, opacity: examIsActive === false ? 0.6 : 1, minHeight: 48 }}>
                   <Icon n="lightning" size={16} /> Start Exam
                 </Btn>
                 <Btn full variant="ghost" loading={dashboard.unenrolling} onClick={handleUnenroll} style={{ color: "var(--red)", minHeight: 48 }}>
@@ -1074,19 +1096,19 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
       <div style={{ background: `linear-gradient(145deg,var(--surface) 0%,${ec}08 100%)`, border: `1px solid var(--border)`, borderRadius: 28, padding: "clamp(20px, 4vw, 28px)", marginBottom: 32, position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: -80, right: -80, width: 200, height: 200, borderRadius: "50%", background: `radial-gradient(circle,${ec}12,transparent 70%)`, pointerEvents: "none" }} />
         <div style={{ display: "flex", gap: 28, flexWrap: "wrap" }}>
-          {exam.image && (
+          {examImage && (
             <div style={{ flex: "0 0 clamp(200px, 30vw, 280px)", borderRadius: 20, overflow: "hidden", background: `${ec}08`, border: `1px solid ${ec}20` }}>
-              <img src={exam.image} alt={exam.title} style={{ width: "100%", height: "auto", objectFit: "cover" }} loading="lazy" />
+              <img src={examImage} alt={examTitle} style={{ width: "100%", height: "auto", objectFit: "cover" }} loading="lazy" />
             </div>
           )}
           <div style={{ flex: 1, minWidth: 200 }}>
             <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-              <Tag color={ec}>{exam.category}</Tag>
-              <Tag color={exam.difficulty === "Easy" ? "var(--green)" : exam.difficulty === "Hard" ? "var(--red)" : "var(--gold)"}>{exam.difficulty}</Tag>
-              {exam.isActive === false && <Tag color="var(--red)" style={{ background: "rgba(239,68,68,0.12)" }}>🔒 Maintenance</Tag>}
+              <Tag color={ec}>{examCategory}</Tag>
+              <Tag color={examDifficulty === "Easy" ? "var(--green)" : examDifficulty === "Hard" ? "var(--red)" : "var(--gold)"}>{examDifficulty}</Tag>
+              {examIsActive === false && <Tag color="var(--red)" style={{ background: "rgba(239,68,68,0.12)" }}>🔒 Maintenance</Tag>}
             </div>
-            <h1 style={{ fontSize: "clamp(24px, 5vw, 32px)", fontWeight: 800, color: "var(--text)", marginBottom: 8, wordBreak: "break-word" }}>{exam.title}</h1>
-            <div style={{ fontSize: "clamp(13px, 3vw, 14px)", color: "var(--text3)", marginBottom: 12 }}>{exam.subtitle}</div>
+            <h1 style={{ fontSize: "clamp(24px, 5vw, 32px)", fontWeight: 800, color: "var(--text)", marginBottom: 8, wordBreak: "break-word" }}>{examTitle}</h1>
+            <div style={{ fontSize: "clamp(13px, 3vw, 14px)", color: "var(--text3)", marginBottom: 12 }}>{examSubtitle}</div>
             {vendorName && (
               <div style={{ display: "inline-flex", alignItems: "center", gap: 10, background: "var(--bg2)", border: "1.5px solid var(--border)", borderRadius: 12, padding: "8px 14px", marginBottom: 16 }}>
                 {vendorLogo ? (
@@ -1100,7 +1122,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
                 </div>
               </div>
             )}
-            {exam.description && <p style={{ fontSize: "clamp(13px, 3vw, 14px)", color: "var(--text2)", lineHeight: 1.6, marginBottom: 20 }}>{exam.description}</p>}
+            {examDescription && <p style={{ fontSize: "clamp(13px, 3vw, 14px)", color: "var(--text2)", lineHeight: 1.6, marginBottom: 20 }}>{examDescription}</p>}
             <div style={{ display: "flex", alignItems: "center", gap: "clamp(12px, 3vw, 20px)", flexWrap: "wrap" }}>
               <span style={{ fontSize: "clamp(12px,3vw,13px)", color: "var(--text3)", display: "flex", alignItems: "center", gap: 6 }}><Icon n="user" size={14} /> {dashboard.enrolledCount.toLocaleString()} enrolled</span>
               <span style={{ fontSize: "clamp(12px,3vw,13px)", color: "var(--text3)", display: "flex", alignItems: "center", gap: 6 }}><Icon n="refresh" size={14} /> {dashboard.attemptsCount.toLocaleString()} attempts</span>
@@ -1132,11 +1154,11 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
               </div>
               <div>
                 <div style={{ fontSize: "clamp(11px, 3vw, 12px)", color: "var(--text3)" }}>Duration</div>
-                <div style={{ fontSize: "clamp(18px, 4vw, 20px)", fontWeight: 700 }}>{exam.duration} min</div>
+                <div style={{ fontSize: "clamp(18px, 4vw, 20px)", fontWeight: 700 }}>{examDuration} min</div>
               </div>
               <div>
                 <div style={{ fontSize: "clamp(11px, 3vw, 12px)", color: "var(--text3)" }}>Passing Score</div>
-                <div style={{ fontSize: "clamp(18px, 4vw, 20px)", fontWeight: 700 }}>{exam.passScore}%</div>
+                <div style={{ fontSize: "clamp(18px, 4vw, 20px)", fontWeight: 700 }}>{examPassScore}%</div>
               </div>
               <div>
                 <div style={{ fontSize: "clamp(11px, 3vw, 12px)", color: "var(--text3)" }}>Topics</div>
@@ -1162,10 +1184,10 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
             )}
           </div>
 
-          {exam.longDescription && (
+          {examLongDesc && (
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, padding: "clamp(20px, 4vw, 28px)" }}>
               <h2 style={{ fontSize: "clamp(16px, 4vw, 18px)", fontWeight: 700, marginBottom: 16 }}>About This Exam</h2>
-              <div className="exam-long-desc" style={{ overflowX: "auto" }} dangerouslySetInnerHTML={{ __html: exam.longDescription }} />
+              <div className="exam-long-desc" style={{ overflowX: "auto" }} dangerouslySetInnerHTML={{ __html: examLongDesc }} />
             </div>
           )}
 
