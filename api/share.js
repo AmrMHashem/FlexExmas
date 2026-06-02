@@ -1,38 +1,29 @@
-// api/share.js — FlexExams Social Share Handler v10
+// api/share.js — FlexExams Social Share Handler v11
 // ─────────────────────────────────────────────────────────────────────────────
-// Handles BOTH entry points:
-//   /exam/:slug        ← canonical URL used everywhere (social + direct links)
-//   /share/exam/:slug  ← legacy / backwards-compat
+// Handles /exam/:slug as the single canonical URL for both humans and bots.
 //
-// HUMANS → instant 302 to /?exam=:slug  (SPA reads the query param, no loop)
-// BOTS   → static OG HTML              (no redirect, full meta tags)
+// FLOW:
+//   Bot  → serve OG HTML with full meta tags (no redirect)
+//   Human Round 1 → redirect to /exam/:slug?_h=1
+//   Human Round 2 (_h=1) → read & serve the real index.html from disk
+//                           (React Router sees /exam/:slug and renders correctly)
 //
-// LOOP PREVENTION:
-//   vercel.json routes /exam/:slug → this API.
-//   We MUST NOT redirect humans back to /exam/:slug or we get an infinite loop.
-//   Solution: redirect humans to /?exam=:slug — the SPA catches it and
-//   renders the exam page. The React Router should handle /?exam=:slug.
-//   Alternatively, redirect to /e/:slug if your router has that alias.
-//
-//   If you prefer to keep /exam/:slug as the final browser URL, add this to
-//   your SPA entry (App.jsx / index.jsx):
-//
-//     const params = new URLSearchParams(window.location.search);
-//     const examSlug = params.get('exam');
-//     if (examSlug) {
-//       window.history.replaceState({}, '', `/exam/${examSlug}`);
-//       // then navigate to the exam page
-//     }
+// WHY TWO ROUNDS FOR HUMANS:
+//   vercel.json routes /exam/:slug to this API. We can't redirect humans back
+//   to /exam/:slug (infinite loop). Instead we redirect to /exam/:slug?_h=1,
+//   which re-enters the API — but now the _h=1 flag tells us to serve index.html
+//   directly. The browser URL stays as /exam/:slug the whole time. ✅
 //
 // ✅ Zero redirect loop
-// ✅ Canonical URL is /exam/:slug (no /share/ prefix needed)
-// ✅ Bots get full OG + structured data + JSON-LD
-// ✅ Humans get instant 302 — browser history is clean
+// ✅ Browser URL always shows /exam/:slug — no address bar flash
+// ✅ React Router picks up /exam/:slug and renders the exam page normally
+// ✅ Bots get full OG + JSON-LD
 // ✅ In-process LRU cache (10 min TTL, 500 slugs)
 // ✅ Edge CDN cache for bot responses
-// ✅ Retry + backoff on Firestore errors
-// ✅ Full XSS + URL sanitization
 // ─────────────────────────────────────────────────────────────────────────────
+
+import fs   from 'fs';
+import path from 'path';
 
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'exampro-1e4de';
 const API_KEY    = process.env.FIREBASE_API_KEY    || 'AIzaSyCHbNx6tveBKqN3BwKzK8Ap23d8DHmUSGs';
@@ -43,7 +34,7 @@ const TWITTER_AT = '@FlexExams';
 const FS_BASE    = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
 
 // ── Memory Cache ──────────────────────────────────────────────────────────────
-const CACHE_TTL = 10 * 60 * 1000; // 10 min
+const CACHE_TTL = 10 * 60 * 1000;
 const CACHE_MAX = 500;
 const _cache    = new Map();
 
@@ -80,6 +71,28 @@ const safeImg = (url = '') => {
   catch { return ''; }
 };
 
+// ── index.html reader ─────────────────────────────────────────────────────────
+// Vercel places the SPA's built output in /var/task/public or process.cwd()/public.
+// We read it once and cache in-process.
+let _indexHtml = null;
+function getIndexHtml() {
+  if (_indexHtml) return _indexHtml;
+  // Common Vercel output paths (Vite → dist, CRA → build, Next static → public)
+  const candidates = [
+    path.join(process.cwd(), 'public',   'index.html'),
+    path.join(process.cwd(), 'dist',     'index.html'),
+    path.join(process.cwd(), 'build',    'index.html'),
+    path.join(process.cwd(), '.output',  'public', 'index.html'),
+    '/var/task/public/index.html',
+    '/var/task/dist/index.html',
+    '/var/task/build/index.html',
+  ];
+  for (const p of candidates) {
+    try { _indexHtml = fs.readFileSync(p, 'utf8'); return _indexHtml; } catch {}
+  }
+  return null;
+}
+
 // ── Firestore ─────────────────────────────────────────────────────────────────
 const fv = f => f ? String(f.stringValue ?? f.integerValue ?? f.doubleValue ?? '').trim() : '';
 
@@ -89,7 +102,7 @@ async function fetchExam(slug) {
 
   let fields = null;
 
-  // 1. Document GET (slug = doc ID) — O(1), cheapest
+  // 1. Document GET (slug = doc ID) — O(1)
   for (let i = 0; i < 2; i++) {
     try {
       const r = await fetch(
@@ -142,7 +155,7 @@ async function fetchExam(slug) {
 }
 
 // ── OG HTML (bots only) ───────────────────────────────────────────────────────
-function botHtml({ title, desc, image, examUrl, canonicalUrl }) {
+function botHtml({ title, desc, image, canonicalUrl }) {
   const ld = JSON.stringify({ '@context':'https://schema.org', '@graph': [
     { '@type':'WebSite', '@id':`${BASE_URL}/#website`, name:SITE_NAME, url:BASE_URL },
     { '@type':'Organization', '@id':`${BASE_URL}/#organization`, name:SITE_NAME, url:BASE_URL,
@@ -191,7 +204,7 @@ function botHtml({ title, desc, image, examUrl, canonicalUrl }) {
 <img src="${image}" alt="${title}" width="600" height="315" style="max-width:100%;border-radius:12px;margin-bottom:24px" loading="eager"/>
 <h1 style="font-size:1.6rem;margin:0 0 12px;color:#a5b4fc">${title}</h1>
 <p style="max-width:480px;color:#7b93c8;line-height:1.6;margin:0 0 28px">${desc}</p>
-<a href="${examUrl}" style="padding:13px 32px;border-radius:10px;background:#6366f1;color:#fff;text-decoration:none;font-size:15px;font-weight:600">Start Practice →</a>
+<a href="${canonicalUrl}" style="padding:13px 32px;border-radius:10px;background:#6366f1;color:#fff;text-decoration:none;font-size:15px;font-weight:600">Start Practice →</a>
 </body></html>`;
 }
 
@@ -204,18 +217,12 @@ export default async function handler(req, res) {
     return res.redirect(302, BASE_URL);
   }
 
-  // Canonical exam URL — this is what og:url and JSON-LD point to
   const canonicalUrl = `${BASE_URL}/exam/${slug}`;
+  const ua           = req.headers['user-agent'] || '';
+  const bot          = isBot(ua);
+  const isHumanPass  = req.query._h === '1';
 
-  // Human redirect target — MUST differ from canonicalUrl to avoid loop.
-  // We send humans to /?exam=:slug so the SPA can handle it, then the SPA
-  // can do window.history.replaceState to restore /exam/:slug in the address bar.
-  const humanRedirect = `${BASE_URL}/?exam=${encodeURIComponent(slug)}`;
-
-  const ua  = req.headers['user-agent'] || '';
-  const bot = isBot(ua);
-
-  // Minimal safe headers — NO CSP that would break React or Google Fonts
+  // Minimal safe headers
   res.setHeader('X-Content-Type-Options',  'nosniff');
   res.setHeader('X-Frame-Options',         'SAMEORIGIN');
   res.setHeader('Referrer-Policy',         'strict-origin-when-cross-origin');
@@ -225,13 +232,14 @@ export default async function handler(req, res) {
   if (req.query.debug === '1') {
     let rawFields = null;
     try {
-      const r  = await fetch(`${FS_BASE}/exams/${encodeURIComponent(slug)}?key=${API_KEY}`, { signal: AbortSignal.timeout(3000) });
+      const r = await fetch(`${FS_BASE}/exams/${encodeURIComponent(slug)}?key=${API_KEY}`, { signal: AbortSignal.timeout(3000) });
       rawFields = (await r.json()).fields ?? null;
     } catch {}
     res.setHeader('Content-Type', 'application/json');
     return res.status(200).json({
-      slug, isBot: bot, ua,
-      canonicalUrl, humanRedirect,
+      slug, isBot: bot, isHumanPass, ua,
+      canonicalUrl,
+      indexHtmlFound: !!getIndexHtml(),
       cacheHit: cacheGet(slug) !== undefined,
       examFound: !!rawFields,
       fieldKeys: rawFields ? Object.keys(rawFields) : [],
@@ -239,10 +247,25 @@ export default async function handler(req, res) {
     });
   }
 
-  // ── HUMAN → 302 to /?exam=:slug (SPA handles it, no loop) ─────────────────
+  // ── HUMAN Round 2 (_h=1): serve real index.html ────────────────────────────
+  // Browser URL is already /exam/:slug — React Router renders the exam page.
+  if (!bot && isHumanPass) {
+    const html = getIndexHtml();
+    if (html) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type',  'text/html; charset=utf-8');
+      return res.status(200).send(html);
+    }
+    // index.html not found on disk — fall back to a clean redirect to BASE_URL
+    // and let the SPA's own 404 handling take over (better than broken page)
+    console.error('[share] index.html not found on disk — falling back to base URL');
+    return res.redirect(302, `${BASE_URL}/exam/${slug}#fallback`);
+  }
+
+  // ── HUMAN Round 1: redirect to /exam/:slug?_h=1 ────────────────────────────
   if (!bot) {
     res.setHeader('Cache-Control', 'no-store');
-    return res.redirect(302, humanRedirect);
+    return res.redirect(302, `${canonicalUrl}?_h=1`);
   }
 
   // ── BOT → OG HTML ─────────────────────────────────────────────────────────
@@ -257,5 +280,5 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
   res.setHeader('Vary', 'User-Agent');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  return res.status(200).send(botHtml({ title, desc, image, examUrl: canonicalUrl, canonicalUrl }));
+  return res.status(200).send(botHtml({ title, desc, image, canonicalUrl }));
 }
