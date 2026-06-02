@@ -359,7 +359,13 @@ function CouponInput({ examId, originalPrice, onApply, userId }) {
     setLoading(true);
     setResult(null);
     try {
-      const res = await validateCoupon(code.trim(), examId, null, userId || null);
+if (!userId) {
+  setResult({ valid: false, error: "Please login first" });
+  setLoading(false);
+  return;
+}
+
+const res = await validateCoupon(code.trim(), examId, null, userId);
       setResult(res);
       if (res.valid) {
         const discountPercent = res.discount || 0;
@@ -371,7 +377,7 @@ function CouponInput({ examId, originalPrice, onApply, userId }) {
         window.history.replaceState({}, "", url.toString());
       }
     } catch (e) {
-      setResult({ valid: false, error: "Failed to validate coupon" });
+setResult({ valid: false, error: e?.message || "Failed to validate coupon" });
     }
     setLoading(false);
   };
