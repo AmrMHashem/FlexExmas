@@ -16,7 +16,6 @@ import React, {
   useTransition,
 } from "react";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
-import { isFirestoreQuotaExceeded } from "./firebase";
 import NavBar from "./components/NavBar";
 import Footer from "./components/Footer";
 import { Toast, Spinner } from "./components/UI";
@@ -40,31 +39,8 @@ const CertificateVerify = lazy(() => import("./pages/Certificateverify"));
 const CareerDiagnostic  = lazy(() => import("./pages/CareerDiagnostic"));
 const Pricing           = lazy(() => import("./pages/Pricing"));
 const Leaderboard       = lazy(() => import("./pages/Leaderboard"));
-const Checkout          = lazy(() => import("./pages/Checkout"));
-const Terms             = lazy(() => import("./pages/Terms"));   // ✅ إضافة Terms
-// دالة لتحميل المكونات مع إعادة محاولة واحدة ومنع الحلقات اللانهائية
-const lazyWithRetry = (importFunc) => {
-  return React.lazy(() => {
-    return importFunc().catch((error) => {
-      console.error("فشل تحميل المكون:", error);
-      // نمنع إعادة تحميل الصفحة تلقائيًا ونعرض زرًا للمستخدم
-      return {
-        default: () => (
-          <div style={{ textAlign: 'center', padding: '50px' }}>
-            <h2>⚠️ حدث خطأ في تحميل الصفحة</h2>
-            <p>يرجى تحديث الصفحة يدويًا لحل المشكلة.</p>
-            <button 
-              onClick={() => window.location.reload()} 
-              style={{ padding: '10px 20px', cursor: 'pointer' }}
-            >
-              تحديث الصفحة
-            </button>
-          </div>
-        ),
-      };
-    });
-  });
-};
+const Checkout = lazy(() => import("./pages/Checkout"));
+
 // ── Page fallback spinner ─────────────────────────────────────────
 const PageFallback = () => (
   <div
@@ -114,7 +90,6 @@ const ROUTE_MAP = {
   "/leaderboard":        "leaderboard",
   "/referral":           "referral",
   "/checkout":           "checkout",
-  "/terms":              "terms",          // ✅ إضافة Terms
 };
 
 // ─────────────────────────────────────────────────────────────────
@@ -223,11 +198,6 @@ const PAGE_META = {
     title: "Checkout — FlexExams",
     description: "Complete your FlexExams purchase securely via PayPal.",
     path: "/checkout",
-  },
-  terms: {   // ✅ إضافة Terms
-    title: "Terms of Service & Privacy Policy — FlexExams",
-    description: "Read FlexExams terms of service, privacy policy, and cookie policy. Learn how we protect your data and what rights you have.",
-    path: "/terms",
   },
 };
 
@@ -515,51 +485,6 @@ h1,h2,h3,h4,h5,h6 { font-family: 'Plus Jakarta Sans',sans-serif; font-weight: 70
 `;
 
 // ─────────────────────────────────────────────────────────────────
-// QuotaBanner — shown when Firestore free-tier limit is exceeded
-// ─────────────────────────────────────────────────────────────────
-function QuotaBanner() {
-  return (
-    <div style={{
-      position: "fixed", inset: 0, background: "var(--bg)",
-      display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "center",
-      zIndex: 9999, padding: "24px",
-    }}>
-      <div style={{ fontSize: 64, marginBottom: 20 }}>🛠️</div>
-      <h1 style={{
-        fontFamily: "'Plus Jakarta Sans',sans-serif",
-        fontSize: "clamp(22px,5vw,32px)", fontWeight: 900,
-        marginBottom: 12, textAlign: "center",
-        background: "var(--gradient-accent)",
-        WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-      }}>
-        FlexExams — Maintenance Mode
-      </h1>
-      <p style={{
-        fontSize: "clamp(14px,3vw,17px)", color: "var(--text2)",
-        maxWidth: 500, textAlign: "center", lineHeight: 1.7, marginBottom: 28,
-      }}>
-        We are performing scheduled maintenance to improve your experience.
-        The platform will be back online shortly. Thank you for your patience! 🙏
-      </p>
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
-        <a href="/"
-          style={{ padding: "12px 28px", borderRadius: 12, background: "var(--gradient-accent)", color: "#fff", fontWeight: 800, fontSize: 14, textDecoration: "none", fontFamily: "inherit" }}>
-          ↩ Go to Home
-        </a>
-        <button onClick={() => { window.location.reload(); }}
-          style={{ padding: "12px 28px", borderRadius: 12, background: "var(--accent-soft)", border: "1.5px solid var(--border)", color: "var(--accent)", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>
-          🔄 Try Again
-        </button>
-      </div>
-      <p style={{ marginTop: 24, fontSize: 12, color: "var(--text3)" }}>
-        If the issue persists, please check back in a few minutes.
-      </p>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
 // Loading Screen
 // ─────────────────────────────────────────────────────────────────
 function LoadingScreen() {
@@ -619,62 +544,7 @@ function LoadingScreen() {
     </div>
   );
 }
-// ========== 🔍 DIAGNOSTIC CODE - ONE PLACE ==========
-  (function() {
-    if (typeof window === 'undefined') return;
-    if (window.__FLEX_DEBUG_ACTIVE) return;
-    window.__FLEX_DEBUG_ACTIVE = true;
-    
-    // Counters
-    window.__FLEX_MOUNT_COUNT = (window.__FLEX_MOUNT_COUNT || 0) + 1;
-    const mountNum = window.__FLEX_MOUNT_COUNT;
-    const mountTime = Date.now();
-    console.log(`🔷 [MOUNT #${mountNum}] AppInner at ${new Date().toISOString()}`);
-    
-    // Detect rapid remounts (infinite loop)
-    if (!window.__FLEX_FIRST_MOUNT_TIME) window.__FLEX_FIRST_MOUNT_TIME = mountTime;
-    if (mountNum > 3 && (mountTime - window.__FLEX_FIRST_MOUNT_TIME) < 3000) {
-      console.error("🔴🔴🔴 INFINITE LOOP DETECTED! Multiple mounts in short time.");
-      console.trace("Stack trace of mount loop:");
-      debugger; // Stops execution, opens devtools
-      throw new Error("Stop infinite mount loop");
-    }
-    
-    // Override setPage to track calls
-    const originalSetPage = React.useState ? (() => {}) : null;
-    // We need to intercept after useState is declared, but we can patch later.
-    // Alternative: Hook into history.pushState and replaceState
-    const originalPushState = history.pushState;
-    const originalReplaceState = history.replaceState;
-    history.pushState = function(...args) {
-      console.log(`📍 history.pushState to:`, args[2]);
-      console.trace("pushState called from:");
-      return originalPushState.apply(this, args);
-    };
-    history.replaceState = function(...args) {
-      console.log(`📍 history.replaceState to:`, args[2]);
-      console.trace("replaceState called from:");
-      return originalReplaceState.apply(this, args);
-    };
-    
-    // Monitor page state changes by polling (simple)
-    let lastPage = null;
-    setInterval(() => {
-      const path = window.location.pathname;
-      if (lastPage !== path) {
-        console.log(`🔄 PAGE CHANGED: "${lastPage}" -> "${path}"`);
-        lastPage = path;
-      }
-    }, 100);
-    
-    // Log any unhandled errors
-    window.addEventListener('error', (e) => {
-      console.error("🔥 Uncaught error:", e.error, e.message);
-    });
-    
-    console.log("✅ Diagnostic installed – watching for loops");
-  })();
-// ========== END DIAGNOSTIC ==========
+
 // ─────────────────────────────────────────────────────────────────
 // AppInner — النواة الرئيسية
 // ─────────────────────────────────────────────────────────────────
@@ -702,16 +572,18 @@ function AppInner() {
     setTimeout(() => setToast(null), 4000);
   }, []);
 
-  // Weekly counters auto-update function
-  const runWeeklyCountersUpdate = useCallback(async () => {
-    try {
-      const { runWeeklyCountersUpdate: update } = await import("./services/firestore");
-      await update();
-      console.log('[Info] Weekly counters updated successfully.');
-    } catch (err) {
-      console.warn('Weekly counters update failed:', err);
-    }
-  }, []);
+  // Weekly counters auto-update function (safe placeholder)
+const runWeeklyCountersUpdate = useCallback(async () => {
+  try {
+    // TODO: Replace with actual logic (e.g., update weekly stats in Firebase)
+    console.log('[Info] runWeeklyCountersUpdate called – no action implemented yet.');
+    // يمكنك إضافة كود حقيقي هنا مثلاً:
+    // const { updateWeeklyCounters } = await import("./services/analytics");
+    // await updateWeeklyCounters();
+  } catch (err) {
+    console.warn('Weekly counters update failed:', err);
+  }
+}, []);
 
   // ── nav — دالة التنقل المركزية (History API) ─────────────────
   const nav = useCallback(
@@ -931,40 +803,42 @@ function AppInner() {
     };
   }, [examsLoaded, isLoading, pendingSlug, showToast]);
 
-  // ── refreshExams — يُعاد استدعاؤه بعد أي تعديل على الأسئلة ──
-  const refreshExams = useCallback(async () => {
-    try {
-      const { getExams } = await import("./services/firestore");
-      const data = await getExams();
-      const active = data.filter((ex) => ex.isActive !== false);
-      setExams(active);
-      // إذا كان الاختبار الحالي مفتوحًا، نحدّث بياناته أيضًا
-      if (activeExam) {
-        const updated = active.find((ex) => ex.id === activeExam.id);
-        if (updated) setActiveExam(updated);
-      }
-    } catch (err) {
-      console.warn("refreshExams failed:", err);
-    }
-  }, [activeExam]);
-
-  const [quotaExceeded, setQuotaExceeded] = React.useState(() => isFirestoreQuotaExceeded());
-
-  // Listen for global quota-exceeded event
-  React.useEffect(() => {
-    const handler = () => setQuotaExceeded(true);
-    window.addEventListener("firestore:quota-exceeded", handler);
-    return () => window.removeEventListener("firestore:quota-exceeded", handler);
-  }, []);
-
-  if (quotaExceeded) return <QuotaBanner />;
   if (isLoading) return <LoadingScreen />;
 
   return (
     <>
       <NavBar page={page} setPage={nav} showToast={showToast} extraLinks={[{page:"leaderboard",label:"🏆 Leaderboard"},{page:"referral",label:"🎁 Referral"}]} />
 
-      {/* Pricing button is now inside NavBar right actions */}
+      {/* ── Floating Pricing Button (always visible) ── */}
+      {!["pricing","checkout","quiz"].includes(page) && (
+        <button
+          onClick={() => nav("pricing")}
+          title="View Plans & Pricing"
+          style={{
+            position: "fixed",
+            bottom: 28,
+            right: 24,
+            zIndex: 999,
+            background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+            border: "none",
+            borderRadius: "50%",
+            width: 52,
+            height: 52,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "0 8px 28px rgba(99,102,241,0.5)",
+            cursor: "pointer",
+            transition: "transform 0.2s, box-shadow 0.2s",
+          }}
+          onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.12)"; e.currentTarget.style.boxShadow = "0 12px 36px rgba(99,102,241,0.65)"; }}
+          onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)";    e.currentTarget.style.boxShadow = "0 8px 28px rgba(99,102,241,0.5)"; }}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+          </svg>
+        </button>
+      )}
 
       <main
         key={page}
@@ -999,8 +873,6 @@ function AppInner() {
           {page === "about" && <About />}
 
           {page === "contact" && <Contact showToast={showToast} />}
-
-          {page === "terms" && <Terms />}   {/* ✅ إضافة صفحة Terms */}
 
           {page === "exam-detail" && activeExam && (
             <ExamDetail
@@ -1057,7 +929,7 @@ function AppInner() {
           )}
 
           {page === "admin" && (
-            <Admin showToast={showToast} setPage={nav} onQuestionsChange={refreshExams} />
+            <Admin showToast={showToast} setPage={nav} />
           )}
 
           {page === "favorites" && (
