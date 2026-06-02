@@ -1,26 +1,37 @@
-// api/share.js — FlexExams Social Share Handler v9
+// api/share.js — FlexExams Social Share Handler v10
 // ─────────────────────────────────────────────────────────────────────────────
-// URL: /share/exam/:slug  (share links stay on /share/, exam page stays on /exam/)
+// Handles BOTH entry points:
+//   /exam/:slug        ← canonical URL used everywhere (social + direct links)
+//   /share/exam/:slug  ← legacy / backwards-compat
 //
-// HUMANS → instant 302 to /exam/:slug  (zero HTML, zero flash, zero loop)
-// BOTS   → static OG HTML             (no redirect, no JS)
+// HUMANS → instant 302 to /?exam=:slug  (SPA reads the query param, no loop)
+// BOTS   → static OG HTML              (no redirect, full meta tags)
 //
-// WHY /share/exam/:slug and NOT /exam/:slug:
-//   If we intercept /exam/:slug in vercel.json and redirect humans to the same
-//   URL, we get an infinite loop. Keeping share on its own path solves this
-//   cleanly — vercel.json routes /share/exam/* to API, everything else to SPA.
+// LOOP PREVENTION:
+//   vercel.json routes /exam/:slug → this API.
+//   We MUST NOT redirect humans back to /exam/:slug or we get an infinite loop.
+//   Solution: redirect humans to /?exam=:slug — the SPA catches it and
+//   renders the exam page. The React Router should handle /?exam=:slug.
+//   Alternatively, redirect to /e/:slug if your router has that alias.
+//
+//   If you prefer to keep /exam/:slug as the final browser URL, add this to
+//   your SPA entry (App.jsx / index.jsx):
+//
+//     const params = new URLSearchParams(window.location.search);
+//     const examSlug = params.get('exam');
+//     if (examSlug) {
+//       window.history.replaceState({}, '', `/exam/${examSlug}`);
+//       // then navigate to the exam page
+//     }
 //
 // ✅ Zero redirect loop
-// ✅ Zero MIME type errors (we never serve index.html from the API)
-// ✅ Zero CSP conflicts
-// ✅ Bots get full OG + structured data
-// ✅ Humans get instant 302 — browser history is clean (replace, not push)
-// ✅ Document GET → O(1) Firestore reads + runQuery fallback
+// ✅ Canonical URL is /exam/:slug (no /share/ prefix needed)
+// ✅ Bots get full OG + structured data + JSON-LD
+// ✅ Humans get instant 302 — browser history is clean
 // ✅ In-process LRU cache (10 min TTL, 500 slugs)
 // ✅ Edge CDN cache for bot responses
 // ✅ Retry + backoff on Firestore errors
 // ✅ Full XSS + URL sanitization
-// ✅ Minimal, safe security headers (no CSP that blocks React)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'exampro-1e4de';
@@ -131,19 +142,19 @@ async function fetchExam(slug) {
 }
 
 // ── OG HTML (bots only) ───────────────────────────────────────────────────────
-function botHtml({ title, desc, image, examUrl, shareUrl }) {
+function botHtml({ title, desc, image, examUrl, canonicalUrl }) {
   const ld = JSON.stringify({ '@context':'https://schema.org', '@graph': [
     { '@type':'WebSite', '@id':`${BASE_URL}/#website`, name:SITE_NAME, url:BASE_URL },
     { '@type':'Organization', '@id':`${BASE_URL}/#organization`, name:SITE_NAME, url:BASE_URL,
       logo:{ '@type':'ImageObject', url:`${BASE_URL}/logo.png` } },
-    { '@type':'EducationalOccupationalCredential', '@id':`${examUrl}#credential`,
-      name:title, description:desc, url:examUrl, credentialCategory:'certification',
+    { '@type':'EducationalOccupationalCredential', '@id':`${canonicalUrl}#credential`,
+      name:title, description:desc, url:canonicalUrl, credentialCategory:'certification',
       recognizedBy:{ '@type':'Organization', '@id':`${BASE_URL}/#organization` },
       image:{ '@type':'ImageObject', url:image, width:1200, height:630 } },
     { '@type':'BreadcrumbList', itemListElement:[
       { '@type':'ListItem', position:1, name:'Home',  item:BASE_URL },
       { '@type':'ListItem', position:2, name:'Exams', item:`${BASE_URL}/exams` },
-      { '@type':'ListItem', position:3, name:title,   item:examUrl },
+      { '@type':'ListItem', position:3, name:title,   item:canonicalUrl },
     ]},
   ]});
 
@@ -154,12 +165,12 @@ function botHtml({ title, desc, image, examUrl, shareUrl }) {
 <title>${title} | ${SITE_NAME}</title>
 <meta name="description"              content="${desc}"/>
 <meta name="robots"                   content="noindex,nofollow"/>
-<link rel="canonical"                 href="${examUrl}"/>
+<link rel="canonical"                 href="${canonicalUrl}"/>
 <meta property="og:type"              content="website"/>
 <meta property="og:site_name"         content="${SITE_NAME}"/>
 <meta property="og:title"             content="${title}"/>
 <meta property="og:description"       content="${desc}"/>
-<meta property="og:url"               content="${shareUrl}"/>
+<meta property="og:url"               content="${canonicalUrl}"/>
 <meta property="og:locale"            content="en_US"/>
 <meta property="og:image"             content="${image}"/>
 <meta property="og:image:secure_url"  content="${image}"/>
@@ -193,10 +204,16 @@ export default async function handler(req, res) {
     return res.redirect(302, BASE_URL);
   }
 
-  const examUrl  = `${BASE_URL}/exam/${slug}`;
-  const shareUrl = `${BASE_URL}/share/exam/${slug}`;
-  const ua       = req.headers['user-agent'] || '';
-  const bot      = isBot(ua);
+  // Canonical exam URL — this is what og:url and JSON-LD point to
+  const canonicalUrl = `${BASE_URL}/exam/${slug}`;
+
+  // Human redirect target — MUST differ from canonicalUrl to avoid loop.
+  // We send humans to /?exam=:slug so the SPA can handle it, then the SPA
+  // can do window.history.replaceState to restore /exam/:slug in the address bar.
+  const humanRedirect = `${BASE_URL}/?exam=${encodeURIComponent(slug)}`;
+
+  const ua  = req.headers['user-agent'] || '';
+  const bot = isBot(ua);
 
   // Minimal safe headers — NO CSP that would break React or Google Fonts
   res.setHeader('X-Content-Type-Options',  'nosniff');
@@ -212,18 +229,20 @@ export default async function handler(req, res) {
       rawFields = (await r.json()).fields ?? null;
     } catch {}
     res.setHeader('Content-Type', 'application/json');
-    return res.status(200).json({ slug, isBot: bot, ua, examUrl, shareUrl,
-      cacheHit: cacheGet(slug) !== undefined, examFound: !!rawFields,
+    return res.status(200).json({
+      slug, isBot: bot, ua,
+      canonicalUrl, humanRedirect,
+      cacheHit: cacheGet(slug) !== undefined,
+      examFound: !!rawFields,
       fieldKeys: rawFields ? Object.keys(rawFields) : [],
-      rawSample: rawFields ? JSON.stringify(rawFields).slice(0, 1500) : null });
+      rawSample: rawFields ? JSON.stringify(rawFields).slice(0, 1500) : null,
+    });
   }
 
-  // ── HUMAN → instant 302 to /exam/:slug ────────────────────────────────────
-  // /exam/:slug is handled by React (via SPA fallback in vercel.json),
-  // NOT by this API — so there is zero loop risk.
+  // ── HUMAN → 302 to /?exam=:slug (SPA handles it, no loop) ─────────────────
   if (!bot) {
     res.setHeader('Cache-Control', 'no-store');
-    return res.redirect(302, examUrl);
+    return res.redirect(302, humanRedirect);
   }
 
   // ── BOT → OG HTML ─────────────────────────────────────────────────────────
@@ -238,5 +257,5 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
   res.setHeader('Vary', 'User-Agent');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  return res.status(200).send(botHtml({ title, desc, image, examUrl, shareUrl }));
+  return res.status(200).send(botHtml({ title, desc, image, examUrl: canonicalUrl, canonicalUrl }));
 }
