@@ -1,4 +1,8 @@
-// pages/ExamDetail.jsx — v8.3 — Fixed mobile overflow issues
+// pages/ExamDetail.jsx — v8.4 — Fixed refresh loop + coupon guard + history bug
+// ✅ Fixed: infinite refresh loop caused by autoApplyCoupon useEffect
+// ✅ Fixed: appliedRef guard prevents duplicate validateCoupon calls
+// ✅ Fixed: window.history.replaceState now uses pathname only (no full URL object)
+// ✅ Fixed: coupon auto-apply blocked for unauthenticated users
 // ✅ Fixed: horizontal overflow on mobile devices
 // ✅ When applied coupon makes exam free, show a direct claim button
 
@@ -51,7 +55,7 @@ const Stars = React.memo(function Stars({ rating = 5 }) {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Vendor Logo Map (unchanged)
+//  Vendor Logo Map
 // ─────────────────────────────────────────────────────────────────────────────
 const vendorLogos = {
   AWS: "https://upload.wikimedia.org/wikipedia/commons/9/93/Amazon_Web_Services_Logo.svg",
@@ -88,7 +92,7 @@ const getMotivationalMessage = (score) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  ScoreCard (best score) — unchanged
+//  ScoreCard
 // ─────────────────────────────────────────────────────────────────────────────
 const ScoreCard = React.memo(function ScoreCard({ score, examTitle }) {
   const percentage = Math.round(score);
@@ -120,7 +124,7 @@ const ScoreCard = React.memo(function ScoreCard({ score, examTitle }) {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  LastScoreCard — unchanged
+//  LastScoreCard
 // ─────────────────────────────────────────────────────────────────────────────
 const LastScoreCard = React.memo(function LastScoreCard({ lastScore, examTitle }) {
   if (!lastScore || lastScore === 0) return null;
@@ -177,7 +181,7 @@ const LastScoreCard = React.memo(function LastScoreCard({ lastScore, examTitle }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  TopicDistributionBar — unchanged
+//  TopicDistributionBar
 // ─────────────────────────────────────────────────────────────────────────────
 const TopicDistributionBar = React.memo(function TopicDistributionBar({ domain, count, total, color }) {
   const percentage = ((count / total) * 100).toFixed(1);
@@ -193,7 +197,7 @@ const TopicDistributionBar = React.memo(function TopicDistributionBar({ domain, 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SmartStickyPanel — unchanged except mobile width fix
+//  SmartStickyPanel
 // ─────────────────────────────────────────────────────────────────────────────
 function SmartStickyPanel({ children, topOffset = 24 }) {
   const [isMobile, setIsMobile] = useState(() =>
@@ -339,7 +343,6 @@ function SmartStickyPanel({ children, topOffset = 24 }) {
   }, [isMobile, init]);
 
   if (isMobile) {
-    // FIX: prevent overflow on mobile
     return <div style={{ alignSelf: "start", width: "100%", maxWidth: "100%", overflowX: "hidden" }}>{children}</div>;
   }
 
@@ -347,7 +350,7 @@ function SmartStickyPanel({ children, topOffset = 24 }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  CouponInput — unchanged
+//  CouponInput
 // ─────────────────────────────────────────────────────────────────────────────
 function CouponInput({ examId, originalPrice, onApply, userId }) {
   const [code, setCode]       = useState("");
@@ -359,25 +362,28 @@ function CouponInput({ examId, originalPrice, onApply, userId }) {
     setLoading(true);
     setResult(null);
     try {
-if (!userId) {
-  setResult({ valid: false, error: "Please login first" });
-  setLoading(false);
-  return;
-}
+      if (!userId) {
+        setResult({ valid: false, error: "Please login first" });
+        setLoading(false);
+        return;
+      }
 
-const res = await validateCoupon(code.trim(), examId, null, userId);
+      const res = await validateCoupon(code.trim(), examId, null, userId);
       setResult(res);
       if (res.valid) {
         const discountPercent = res.discount || 0;
         const discountAmount  = res.discountAmount || (originalPrice * discountPercent / 100);
         const newPrice        = Math.max(0, originalPrice - discountAmount);
         onApply({ code: code.trim(), discountPercent, discountAmount, newPrice });
-        const url = new URL(window.location.href);
-url.searchParams.set("couponCode", code.trim());
-window.history.replaceState(null, "", `${url.pathname}?${url.searchParams.toString()}`);
+        // FIX: use pathname only, not full URL object toString()
+        window.history.replaceState(
+          null,
+          "",
+          `${window.location.pathname}?couponCode=${encodeURIComponent(code.trim())}`
+        );
       }
     } catch (e) {
-setResult({ valid: false, error: e?.message || "Failed to validate coupon" });
+      setResult({ valid: false, error: e?.message || "Failed to validate coupon" });
     }
     setLoading(false);
   };
@@ -386,9 +392,8 @@ setResult({ valid: false, error: e?.message || "Failed to validate coupon" });
     setCode("");
     setResult(null);
     onApply(null);
-    const url = new URL(window.location.href);
-url.searchParams.delete("couponCode");
-window.history.replaceState(null, "", url.pathname);
+    // FIX: use pathname only, strip query string cleanly
+    window.history.replaceState(null, "", window.location.pathname);
   };
 
   return (
@@ -434,7 +439,7 @@ window.history.replaceState(null, "", url.pathname);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SuggestedExams — unchanged
+//  SuggestedExams
 // ─────────────────────────────────────────────────────────────────────────────
 const SuggestedExams = React.memo(function SuggestedExams({ currentExam, setPage }) {
   const [suggested, setSuggested] = useState([]);
@@ -528,12 +533,14 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   const [accessLoading, setAccessLoading]   = useState(true);
   const [autoApplyCoupon, setAutoApplyCoupon] = useState(null);
   const [claimingFree, setClaimingFree]     = useState(false);
+
+  // ─── FIX: guard ref prevents duplicate validateCoupon calls ───────
   const appliedRef = useRef(false);
 
   const abortControllerRef = useRef(null);
   const cacheRef           = useRef({});
 
-  // ── SEO ──────────────────────────────────────────────────────────
+  // ── SEO + read coupon from URL ────────────────────────────────────
   useEffect(() => {
     if (!exam) return;
     document.title = `${exam.title} | FlexExams Certification Practice`;
@@ -546,53 +553,48 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     setMeta('meta[property="og:title"]', "property", "og:title", `${exam.title} - FlexExams`);
     setMeta('meta[property="og:description"]', "property", "og:description", exam.description || `Test your knowledge with exam questions.`);
     if (exam.image) setMeta('meta[property="og:image"]', "property", "og:image", exam.image);
-    const url = new URL(window.location.href);
-    const cpCode = url.searchParams.get("couponCode");
+
+    // Read coupon from URL — only set state, don't call Firebase here
+    const cpCode = new URLSearchParams(window.location.search).get("couponCode");
     if (cpCode) setAutoApplyCoupon(cpCode);
-  }, [exam]);
+  }, [exam?.id]); // FIX: depend on exam.id only, not full exam object
+
+  // ─── FIX: reset guard when exam changes ──────────────────────────
+  useEffect(() => {
+    appliedRef.current = false;
+    setAppliedCoupon(null);
+    setAutoApplyCoupon(null);
+  }, [exam?.id]);
 
   // ── Auto-apply coupon from URL ────────────────────────────────────
-useEffect(() => {
-  if (!autoApplyCoupon || !exam?.pricing?.price || !user?.uid) return;
+  // FIX: 3 guards:
+  //   1) appliedRef.current — prevents running twice (StrictMode / re-render)
+  //   2) user?.uid required — prevents Firestore deny for unauthenticated users
+  //   3) mounted flag — prevents setState after unmount
+  useEffect(() => {
+    if (!autoApplyCoupon || !exam?.pricing?.price || !user?.uid) return;
+    if (appliedRef.current) return;
 
-  if (appliedRef.current) return;
-  appliedRef.current = true;
+    appliedRef.current = true;
+    let mounted = true;
 
-  let mounted = true;
+    validateCoupon(autoApplyCoupon, exam.id, null, user.uid)
+      .then(res => {
+        if (!mounted) return;
+        if (res.valid) {
+          const discountPercent = res.discount || 0;
+          const discountAmount  = res.discountAmount || (exam.pricing.price * discountPercent / 100);
+          const newPrice        = Math.max(0, exam.pricing.price - discountAmount);
+          setAppliedCoupon({ code: autoApplyCoupon, discountPercent, discountAmount, newPrice });
+        }
+        setAutoApplyCoupon(null);
+      })
+      .catch(() => {
+        if (mounted) setAutoApplyCoupon(null);
+      });
 
-  validateCoupon(autoApplyCoupon, exam.id, null, user?.uid)
-    .then(res => {
-      if (!mounted) return;
-
-      if (res.valid) {
-        const discountPercent = res.discount || 0;
-        const discountAmount =
-          res.discountAmount ||
-          (exam.pricing.price * discountPercent / 100);
-
-        const newPrice = Math.max(
-          0,
-          exam.pricing.price - discountAmount
-        );
-
-        setAppliedCoupon({
-          code: autoApplyCoupon,
-          discountPercent,
-          discountAmount,
-          newPrice
-        });
-      }
-
-      setAutoApplyCoupon(null);
-    })
-    .catch(() => {
-      if (mounted) setAutoApplyCoupon(null);
-    });
-
-  return () => {
-    mounted = false;
-  };
-}, [autoApplyCoupon, exam?.id, exam?.pricing?.price, user?.uid]);
+    return () => { mounted = false; };
+  }, [autoApplyCoupon, exam?.id, exam?.pricing?.price, user?.uid]);
 
   // ── Vendors ───────────────────────────────────────────────────────
   useEffect(() => { getVendors().then(setVendors).catch(() => {}); }, []);
@@ -608,7 +610,7 @@ useEffect(() => {
     return exam?.vendorImage || getFallbackVendorLogo(vendorName) || null;
   }, [vendors, vendorName, exam?.vendorImage]);
 
-  // ── FULL domain stats ─────────────────────────────────────────────
+  // ── Domain stats ──────────────────────────────────────────────────
   const fullDomainStats = useMemo(() => {
     return fullQuestions.reduce((acc, q) => {
       acc[q.domain] = (acc[q.domain] || 0) + 1;
@@ -640,7 +642,7 @@ useEffect(() => {
     { id: "review",         icon: "eye",   label: "Review Mode",      desc: "See correct answers, Set Score and Time", official: false },
   ], [fullQuestions.length, exam?.duration]);
 
-  // ── Load ALL questions first ──────────────────────────────────────
+  // ── Load questions ────────────────────────────────────────────────
   useEffect(() => {
     if (!exam) return;
     if (exam.isActive === false) showToast({ msg: "🔒 This exam is under maintenance.", type: "warning" });
@@ -659,7 +661,7 @@ useEffect(() => {
     };
     loadQuestions();
     return () => { isMounted = false; };
-  }, [exam, showToast]);
+  }, [exam?.id]); // FIX: depend on exam.id not full exam object (prevents re-runs)
 
   // ── Payment access ────────────────────────────────────────────────
   useEffect(() => {
@@ -672,7 +674,7 @@ useEffect(() => {
 
   // ── Dashboard data ────────────────────────────────────────────────
   useEffect(() => {
-    if (!exam || !user?.uid) return;
+    if (!exam?.id || !user?.uid) return;
     const cacheKey = `exam_dashboard_${user.uid}_${exam.id}`;
     const cached   = cacheRef.current[cacheKey];
     if (cached && (Date.now() - cached.timestamp) < 5 * 60 * 1000) {
@@ -839,9 +841,8 @@ useEffect(() => {
       setDashboard(prev => ({ ...prev, isEnrolled: true, enrolledCount: prev.enrolledCount + 1 }));
       showToast({ msg: "🎉 Coupon applied! You now have full access to this exam for free.", type: "success" });
       setAppliedCoupon(null);
-      const url = new URL(window.location.href);
-      url.searchParams.delete("couponCode");
-      window.history.replaceState({}, "", url.toString());
+      // FIX: clean URL using pathname only
+      window.history.replaceState(null, "", window.location.pathname);
     } catch (err) {
       console.error("Free claim error:", err);
       showToast({ msg: "❌ Failed to claim free access. Please try again or contact support.", type: "error" });
