@@ -669,22 +669,38 @@ function AdminLeaderboardPanel({ showToast, users }) {
 
   // import db directly
   useEffect(() => {
+    let cancelled = false;
+    const CACHE_KEY = `fx_admin_lb_${period}`;
+    const CACHE_TTL = 5 * 60 * 1000; // 5 min
+
+    // Check sessionStorage cache first — avoids re-read on period toggle
+    try {
+      const raw = sessionStorage.getItem(CACHE_KEY);
+      if (raw) {
+        const { data, ts } = JSON.parse(raw);
+        if (Date.now() - ts < CACHE_TTL) { setLbData(data); setLoading(false); return; }
+      }
+    } catch { /* ignore */ }
+
     setLoading(true);
     import("../firebase").then(({ db: fdb }) => {
-      import("firebase/firestore").then(({ getDocs, collection, query, orderBy, limit, where }) => {
+      import("firebase/firestore").then(({ getDocs, collection, query, orderBy, limit }) => {
         const q = query(collection(fdb, "leaderboard"), orderBy("points", "desc"), limit(200));
         getDocs(q).then(snap => {
+          if (cancelled) return;
           let data = snap.docs.map((d, i) => ({ id: d.id, rank: i + 1, ...d.data() }));
           if (period !== "all") {
             const now = new Date();
             const mk = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
             data = data.filter(d => d.monthKey === mk).map((d, i) => ({ ...d, rank: i + 1 }));
           }
+          try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data, ts: Date.now() })); } catch { /* full */ }
           setLbData(data);
           setLoading(false);
-        }).catch(() => setLoading(false));
+        }).catch(() => { if (!cancelled) setLoading(false); });
       });
     });
+    return () => { cancelled = true; };
   }, [period]);
 
 // داخل AdminLeaderboardPanel component
@@ -1101,16 +1117,28 @@ function RefundsPanel({ users, exams, transactions = [], showToast, adminUid, on
   const [note, setNote]               = useState("");
   const [filter, setFilter]           = useState("all"); // all | pending | approved | rejected
 
-  const loadRefunds = async () => {
+  const loadRefunds = async (forceRefresh = false) => {
+    const SS_KEY = "fx_admin_refunds";
+    const CACHE_TTL = 3 * 60 * 1000;
+    if (!forceRefresh) {
+      try {
+        const raw = sessionStorage.getItem(SS_KEY);
+        if (raw) {
+          const { data, ts } = JSON.parse(raw);
+          if (Date.now() - ts < CACHE_TTL) { setRefunds(data); setLoading(false); return; }
+        }
+      } catch { /* ignore */ }
+    }
     setLoading(true);
     try {
       const data = await getAllRefundRequests();
-      // أحدث أولاً
-      setRefunds((data || []).sort((a, b) => {
+      const sorted = (data || []).sort((a, b) => {
         const da = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
         const db_ = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
         return db_ - da;
-      }));
+      });
+      setRefunds(sorted);
+      try { sessionStorage.setItem(SS_KEY, JSON.stringify({ data: sorted, ts: Date.now() })); } catch { /* full */ }
     } catch (e) { showToast({ msg: `Error loading refunds: ${e.message}`, type: "error" }); }
     setLoading(false);
   };
@@ -1480,16 +1508,29 @@ function AdminReferralDashboard({ showToast, adminUid }) {
   const [actionLoading, setActionLoading] = useState(null);
 
   // جلب البيانات
-  const loadReferralData = async () => {
+  const _refCacheRef = React.useRef({ data: null, ts: 0 });
+  const REF_CACHE_TTL = 5 * 60 * 1000;
+
+  const loadReferralData = async (forceRefresh = false) => {
+    // Serve from cache to avoid re-reading full collections on every mount
+    if (!forceRefresh && _refCacheRef.current.data && Date.now() - _refCacheRef.current.ts < REF_CACHE_TTL) {
+      const c = _refCacheRef.current.data;
+      setReferrals(c.referrals);
+      setUsersMap(c.usersMap);
+      setStats(c.stats);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      // 1. جلب جميع وثائق الـ referrals
-      const referralsSnap = await getDocs(collection(db, "referrals"));
+      // ✅ limit(500) on both collections — prevents unbounded reads
+      const { query: fsQuery, orderBy: fsOrder, limit: fsLimit } = await import("firebase/firestore");
+      const referralsSnap = await getDocs(fsQuery(collection(db, "referrals"), fsLimit(500)));
       const referralsData = referralsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setReferrals(referralsData);
 
-      // 2. جلب جميع المستخدمين (لأسماء وأسامي المحيلين والمحالين)
-      const usersSnap = await getDocs(collection(db, "users"));
+      // Only fetch user names — use already-loaded users from parent if available
+      const usersSnap = await getDocs(fsQuery(collection(db, "users"), fsLimit(500)));
       const usersObj = {};
       usersSnap.docs.forEach(doc => {
         usersObj[doc.id] = { id: doc.id, ...doc.data() };
@@ -1513,13 +1554,20 @@ function AdminReferralDashboard({ showToast, adminUid }) {
         if (tiers.includes("monthly_sub")) totalSubs++;
       });
 
-      setStats({
+      const statsObj = {
         totalReferrers: referralsData.length,
         totalReferredUsers: totalReferred,
         totalConverted,
         totalCouponsGranted: totalCoupons,
         totalSubscriptionsGranted: totalSubs,
-      });
+      };
+      setStats(statsObj);
+
+      // Store in cache
+      _refCacheRef.current = {
+        ts: Date.now(),
+        data: { referrals: referralsData, usersMap: usersObj, stats: statsObj },
+      };
     } catch (err) {
       console.error("Error loading referral data:", err);
       showToast({ msg: "Failed to load referral data", type: "error" });
@@ -1528,7 +1576,7 @@ function AdminReferralDashboard({ showToast, adminUid }) {
     }
   };
 
-  // التحميل عند أول مرة يدخل فيها التبويب
+  // Load once on mount — cache handles tab switches
   useEffect(() => {
     loadReferralData();
   }, []);
@@ -1802,14 +1850,25 @@ function ContactsPanel({ showToast, adminUid }) {
   const [selectedMessages, setSelectedMessages] = React.useState(new Set());
   const [deletingBatch, setDeletingBatch] = React.useState(false);
 
-  const loadMessages = async () => {
+  const _msgCacheRef = React.useRef({ data: null, ts: 0 });
+  const MSG_CACHE_TTL = 3 * 60 * 1000; // 3 min
+
+  const loadMessages = async (forceRefresh = false) => {
+    if (!forceRefresh && _msgCacheRef.current.data && Date.now() - _msgCacheRef.current.ts < MSG_CACHE_TTL) {
+      setMessages(_msgCacheRef.current.data);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const { collection: col, getDocs: gDocs, query, orderBy, getFirestore } = await import("firebase/firestore");
+      const { collection: col, getDocs: gDocs, query, orderBy, limit: lim } = await import("firebase/firestore");
       const { db: fdb } = await import("../firebase");
-      const q = query(col(fdb, "contactMessages"), orderBy("createdAt", "desc"));
+      // ✅ limit(200) — prevents unbounded read of contactMessages
+      const q = query(col(fdb, "contactMessages"), orderBy("createdAt", "desc"), lim(200));
       const snap = await gDocs(q);
-      setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      _msgCacheRef.current = { data: msgs, ts: Date.now() };
+      setMessages(msgs);
     } catch (e) {
       showToast({ msg: `Error loading messages: ${e.message}`, type: "error" });
     }
@@ -2263,16 +2322,7 @@ function ContactsPanel({ showToast, adminUid }) {
 
 export default function Admin({ showToast, setPage }) {
   const { user, isAdmin } = useAuth();
-  const [tab, setTab] = useState(() => {
-    const hash = window.location.hash.replace("#", "");
-    const valid = ["overview","exams","vendors","topics","import","questions","users","analytics","revenue","referral","reports","payments","refunds","notifications","settings"];
-    return valid.includes(hash) ? hash : "overview";
-  });
-
-  const handleSetTab = (t) => {
-    setTab(t);
-    window.location.hash = t;
-  };
+  const [tab, setTab] = useState("overview");
 
   // Data state
   const [exams, setExams] = useState([]);
@@ -2377,7 +2427,29 @@ useEffect(() => {
     });
 }, [selectedExamId, tab]);
 
-  const load = async () => {
+  // ── Admin session cache — reuse data across tab switches (TTL 5 min) ────────
+  const _adminCacheRef = useRef({ data: null, ts: 0 });
+  const ADMIN_CACHE_TTL = 5 * 60 * 1000;
+
+  const load = async (forceRefresh = false) => {
+    // Serve from cache unless forced (after create/delete/update actions)
+    if (!forceRefresh && _adminCacheRef.current.data && Date.now() - _adminCacheRef.current.ts < ADMIN_CACHE_TTL) {
+      const c = _adminCacheRef.current.data;
+      setExams(c.exams); setUsers(c.users); setResults(c.results); setStats(c.stats);
+      setReports(c.reports); setCountryStats(c.countryStats); setVendors(c.vendors); setTopics(c.tops);
+      setLastLoaded(new Date(c.ts));
+      if (c.exams?.length && !csvExamId) setCsvExamId(c.exams[0].id);
+      if (c.exams?.length && !selectedExamId) setSelectedExamId(c.exams[0].id);
+      setRealQuestionCounts(c.questionCounts || {});
+      // Still load live alert counts (lightweight)
+      import("../services/payment").then(({ getAllInstapayPayments, getAllRefundRequests }) => {
+        getAllInstapayPayments().then(ips => setPendingInstapayCount((ips || []).filter(i => i.status === "pending").length)).catch(() => {});
+        getAllRefundRequests().then(refs => setPendingRefundsCount((refs || []).filter(r => r.status === "pending").length)).catch(() => {});
+      }).catch(() => {});
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const [e, u, r, s, reps, countries, vends, tops] = await Promise.all([
@@ -2401,33 +2473,53 @@ useEffect(() => {
       setLastLoaded(new Date());
       if (e?.length && !csvExamId) setCsvExamId(e[0].id);
       if (e?.length && !selectedExamId) setSelectedExamId(e[0].id);
-      // Fetch real question counts from subcollection for all exams
-      if (e?.length) {
-        Promise.allSettled(e.map(ex =>
-          getQuestions(ex.id).then(qs => ({ id: ex.id, count: (qs || []).length })).catch(() => ({ id: ex.id, count: ex.totalQuestions || 0 }))
-        )).then(results => {
-          const map = {};
-          results.forEach(r => { if (r.status === "fulfilled") map[r.value.id] = r.value.count; });
-          setRealQuestionCounts(map);
+
+      // ✅ FIX: Use totalQuestions from exam doc — NO N+1 subcollection reads.
+      // Only fetch subcollection for exams genuinely missing the counter.
+      const qCountMap = {};
+      const missingCounter = [];
+      (e || []).forEach(ex => {
+        if (ex.totalQuestions != null) qCountMap[ex.id] = ex.totalQuestions;
+        else missingCounter.push(ex);
+      });
+      setRealQuestionCounts(qCountMap);
+      if (missingCounter.length > 0) {
+        Promise.allSettled(missingCounter.map(ex =>
+          getQuestions(ex.id).then(qs => ({ id: ex.id, count: (qs || []).length })).catch(() => ({ id: ex.id, count: 0 }))
+        )).then(res => {
+          const extra = {};
+          res.forEach(r => { if (r.status === "fulfilled") extra[r.value.id] = r.value.count; });
+          setRealQuestionCounts(prev => ({ ...prev, ...extra }));
         });
       }
-      // Load pricing settings + transactions
+
+      // Load pricing settings + transactions (deferred — non-blocking)
       getPlatformSettings().then(s => {
         if (s?.plans)   setPlans({ ...DEFAULT_PLANS, ...s.plans });
         if (s?.coupons) setCoupons(s.coupons || []);
       }).catch(() => {});
       getAllTransactions().then(txs => setTxs(txs || [])).catch(() => {});
-      // Load pending counts for alerts
+
+      // Pending alert counts
       import("../services/payment").then(({ getAllInstapayPayments, getAllRefundRequests }) => {
         getAllInstapayPayments().then(ips => setPendingInstapayCount((ips || []).filter(i => i.status === "pending").length)).catch(() => {});
         getAllRefundRequests().then(refs => setPendingRefundsCount((refs || []).filter(r => r.status === "pending").length)).catch(() => {});
       }).catch(() => {});
-      // Load pending contacts count
-      import("firebase/firestore").then(({ collection: col, getDocs: gd, query, where, orderBy }) => {
+
+      // Pending contacts count (with limit)
+      import("firebase/firestore").then(({ collection: col, getDocs: gd, query, where, limit: lim }) => {
         import("../firebase").then(({ db: fdb }) => {
-          gd(query(col(fdb, "contactMessages"), where("status", "==", "unread"))).then(snap => setPendingContactsCount(snap.size)).catch(() => {});
+          gd(query(col(fdb, "contactMessages"), where("status", "==", "unread"), lim(100))).then(snap => setPendingContactsCount(snap.size)).catch(() => {});
         });
       }).catch(() => {});
+
+      // Store in session cache
+      _adminCacheRef.current = {
+        ts: Date.now(),
+        data: { exams: e || [], users: u || [], results: r || [], stats: s,
+                reports: reps || [], countryStats: countries || [], vendors: vends || [], tops: tops || [],
+                questionCounts: qCountMap },
+      };
     } catch (err) {
       showToast({ msg: `Error loading data: ${err.message}`, type: "error" });
     }
@@ -2542,15 +2634,14 @@ useEffect(() => {
     if (Object.keys(errs).length) { setFormErr(errs); return; }
     setSaving(true);
     try {
-      const examData = { ...form, slug: generateSlug(form.title) };
       if (editTarget) {
-        await updateExam(editTarget.id, examData);
+        await updateExam(editTarget.id, form);
         showToast({ msg: "✅ Exam updated successfully", type: "success" });
       } else {
-        await createExam(examData);
+        await createExam(form);
         showToast({ msg: "🎉 Exam created successfully", type: "success" });
       }
-      await load();
+      await load(true);
       setShowForm(false);
       // Auto-refresh #6: ensure state is consistent
       setTimeout(() => load(), 500);
@@ -2604,7 +2695,7 @@ useEffect(() => {
     try {
       await updateExam(exam.id, { isActive: !exam.isActive });
       showToast({ msg: exam.isActive ? "🔒 Exam disabled" : "✅ Exam enabled", type: "info" });
-      await load();
+      await load(true);
     } catch (e) { showToast({ msg: `Error: ${e.message}`, type: "error" }); }
   };
 
@@ -2613,7 +2704,7 @@ useEffect(() => {
     try {
       await deleteExam(exam.id);
       showToast({ msg: "✅ Exam deleted", type: "info" });
-      await load();
+      await load(true);
     } catch (e) { showToast({ msg: `Error: ${e.message}`, type: "error" }); }
   };
 
@@ -2643,7 +2734,7 @@ useEffect(() => {
       showToast({ msg: `✅ Imported ${questions.length} questions!${skipped.length ? ` (${skipped.length} skipped)` : ""}`, type: "success" });
       setCsvFile(null);
       if (fileRef.current) fileRef.current.value = "";
-      await load();
+      await load(true);
     } catch (e) { showToast({ msg: `❌ Import error: ${e.message}`, type: "error" }); setImportLog(`❌ Error: ${e.message}`); }
     setImporting(false);
   };
@@ -2664,7 +2755,7 @@ useEffect(() => {
     try {
       await updateUserRole(u.id, newRole);
       showToast({ msg: `✅ Role changed to ${newRole}`, type: "success" });
-      await load();
+      await load(true);
     } catch (e) { showToast({ msg: `Error: ${e.message}`, type: "error" }); }
   };
 
@@ -2686,7 +2777,7 @@ useEffect(() => {
     try {
       await updatePlatformSettings({ coupons });
       showToast({ msg: "✅ Coupons saved!", type: "success" });
-      await load(); // Auto-refresh after save
+      await load(true); // Auto-refresh after save
     } catch (e) { showToast({ msg: `Error: ${e.message}`, type: "error" }); }
     setSavingPricing(false);
   };
@@ -2707,11 +2798,23 @@ useEffect(() => {
     setNewCoupon({ code: "", discountPercent: 10, discountAmount: 0, maxUses: 0, expiresAt: "", isActive: true, scope: "all", examIds: [], planIds: [], onePerUser: false });
   };
 
-  const loadTransactions = async () => {
+  const loadTransactions = async (forceRefresh = false) => {
+    const SS_KEY = "fx_admin_txs";
+    const CACHE_TTL = 3 * 60 * 1000; // 3 min
+    if (!forceRefresh) {
+      try {
+        const raw = sessionStorage.getItem(SS_KEY);
+        if (raw) {
+          const { data, ts } = JSON.parse(raw);
+          if (Date.now() - ts < CACHE_TTL) { setTxs(data); return; }
+        }
+      } catch { /* ignore */ }
+    }
     setTxLoading(true);
     try {
       const txs = await getAllTransactions();
       setTxs(txs);
+      try { sessionStorage.setItem(SS_KEY, JSON.stringify({ data: txs, ts: Date.now() })); } catch { /* full */ }
     } catch (e) { console.error(e); }
     setTxLoading(false);
   };
@@ -2739,7 +2842,7 @@ const refreshCoupons = async () => {
       // ✅ Pass adminUid + note to updateReportStatus — it will send notification internally
       await updateReportStatus(reportId, status, user?.uid, feedbackMsg);
       showToast({ msg: "✅ Report status updated", type: "success" });
-      await load();
+      await load(true);
       setShowReportModal(false);
     } catch (e) { showToast({ msg: `Error: ${e.message}`, type: "error" }); }
   };
@@ -2749,7 +2852,7 @@ const refreshCoupons = async () => {
     try {
       await deleteReport(reportId);
       showToast({ msg: "✅ Report deleted", type: "info" });
-      await load();
+      await load(true);
     } catch (e) { showToast({ msg: `Error: ${e.message}`, type: "error" }); }
   };
 
@@ -2763,7 +2866,7 @@ const refreshCoupons = async () => {
       const dataToSave = { name: vendorForm.name, logo: vendorForm.logo, image: vendorForm.image, color: vendorForm.color, tag: vendorForm.tag, description: vendorForm.description, suggestion: vendorForm.suggestion };
       if (editVendor) { await updateVendor(editVendor.id, dataToSave); showToast({ msg: "✅ Vendor updated", type: "success" }); }
       else { await createVendor(dataToSave); showToast({ msg: "🎉 Vendor created", type: "success" }); }
-      await load();
+      await load(true);
       setShowVendorForm(false);
       setEditVendor(null);
       setVendorForm({ name: "", logo: "🏢", image: null, imagePreview: null, imageUrl: "", color: "#3b82f6", tag: "", description: "", suggestion: "" });
@@ -2775,7 +2878,7 @@ const refreshCoupons = async () => {
   const openEditVendor = (v) => { setEditVendor(v); setVendorForm({ name: v.name || "", logo: v.logo || "🏢", image: v.image || null, imagePreview: v.image || null, imageUrl: "", color: v.color || "#3b82f6", tag: v.tag || "", description: v.description || "", suggestion: v.suggestion || "" }); setShowVendorForm(true); };
   const deleteVendorHandler = async (v) => {
     if (!window.confirm(`Delete vendor "${v.name}"?`)) return;
-    try { await deleteVendor(v.id); showToast({ msg: "✅ Vendor deleted", type: "info" }); await load(); }
+    try { await deleteVendor(v.id); showToast({ msg: "✅ Vendor deleted", type: "info" }); await load(true); }
     catch (e) { showToast({ msg: `Error: ${e.message}`, type: "error" }); }
   };
   const handleVendorImageUpload = (e) => {
@@ -2793,7 +2896,7 @@ const refreshCoupons = async () => {
       const topicData = { ...rest, stats: { jobs: statsJobs || "", growth: statsGrowth || "", avgSalary: statsSalary || "" } };
       if (editTopic) { await updateTopic(editTopic.id, topicData); showToast({ msg: "✅ Topic updated", type: "success" }); }
       else { await createTopic(topicData); showToast({ msg: "🎉 Topic created", type: "success" }); }
-      await load();
+      await load(true);
       setShowTopicForm(false);
       setEditTopic(null);
       setTopicForm({ name: "", icon: "📚", color: "#3b82f6", tag: "", description: "", suggestion: "", statsJobs: "", statsGrowth: "", statsSalary: "", image: null, imagePreview: null, imageUrl: "" });
@@ -2811,7 +2914,7 @@ const refreshCoupons = async () => {
   const openEditTopic = (t) => { setEditTopic(t); setTopicForm({ name: t.name || "", icon: t.icon || "📚", color: t.color || "#3b82f6", tag: t.tag || "", description: t.description || "", suggestion: t.suggestion || "", statsJobs: t.stats?.jobs || "", statsGrowth: t.stats?.growth || "", statsSalary: t.stats?.avgSalary || "", image: t.image || null, imagePreview: t.image || null, imageUrl: "" }); setShowTopicForm(true); };
   const deleteTopicHandler = async (t) => {
     if (!window.confirm(`Delete topic "${t.name}"?`)) return;
-    try { await deleteTopic(t.id); showToast({ msg: "✅ Topic deleted", type: "info" }); await load(); }
+    try { await deleteTopic(t.id); showToast({ msg: "✅ Topic deleted", type: "info" }); await load(true); }
     catch (e) { showToast({ msg: `Error: ${e.message}`, type: "error" }); }
   };
 
@@ -2886,7 +2989,7 @@ const deleteAllAnalyticsData = async () => {
     
     await batch.commit();
     showToast({ msg: `✅ تم حذف ${resultsSnap.size} نتيجة و ${reportsSnap.size} تقرير`, type: "success" });
-    await load(); // إعادة تحميل البيانات
+    await load(true); // إعادة تحميل البيانات
   } catch (err) {
     showToast({ msg: `❌ خطأ: ${err.message}`, type: "error" });
   }
@@ -2931,7 +3034,7 @@ const deleteAllAnalyticsData = async () => {
       {/* ── Tabs ── */}
       <div style={{ display: "flex", gap: 3, marginBottom: 28, background: "var(--bg2)", borderRadius: 16, padding: 6, boxShadow: "0 2px 8px rgba(0,0,0,0.04)", overflowX: "auto" }}>
         {TABS.map(({ key, emoji, label }) => (
-          <button key={key} onClick={() => handleSetTab(key)} style={{
+          <button key={key} onClick={() => setTab(key)} style={{
             flex: "1 0 auto", padding: "9px 14px", borderRadius: 11, border: "none",
             background: tab === key ? "var(--accent)" : "transparent",
             color: tab === key ? "#fff" : "var(--text2)", fontWeight: 700, cursor: "pointer",
@@ -2974,7 +3077,7 @@ const deleteAllAnalyticsData = async () => {
                 return (
                   <div style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 8 }}>
                     {alerts.map((a, i) => (
-                      <div key={i} onClick={() => handleSetTab(a.action)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", background: a.bg, border: `1.5px solid ${a.border}`, borderRadius: 14, cursor: "pointer", transition: "all 0.2s" }}
+                      <div key={i} onClick={() => setTab(a.action)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", background: a.bg, border: `1.5px solid ${a.border}`, borderRadius: 14, cursor: "pointer", transition: "all 0.2s" }}
                         onMouseEnter={e => e.currentTarget.style.opacity = "0.85"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
                         <span style={{ fontSize: 20 }}>{a.icon}</span>
                         <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: a.color }}>{a.text}</span>
@@ -2993,7 +3096,7 @@ const deleteAllAnalyticsData = async () => {
                 <KPICard icon="✅" label="Pass Rate" value={`${stats?.passRate || passRate}%`} sub="Global average" color="#7c3aed" trend={prevPassRate !== null ? passRate - prevPassRate : undefined} />
                 <KPICard icon="📊" label="Avg Score" value={`${avgScore}%`} sub="All exams" color="#0891b2" trend={prevAvgScore !== null ? avgScore - prevAvgScore : undefined} />
                 <KPICard icon="🏆" label="Certificates" value={results.filter(r => r.mode === "examSimulation" && r.pass).length} sub="Issued total" color="#f59e0b" />
-                <KPICard icon="⚠️" label="Pending Reports" value={reports.filter(r => r.status === "pending").length} sub="Need review" color="#dc2626" onClick={() => handleSetTab("reports")} />
+                <KPICard icon="⚠️" label="Pending Reports" value={reports.filter(r => r.status === "pending").length} sub="Need review" color="#dc2626" onClick={() => setTab("reports")} />
                 <KPICard icon="🌍" label="Countries" value={countryStats.length} sub="User locations" color="#6366f1" />
               </div>
 
@@ -3282,7 +3385,7 @@ const monthTxRevenue = transactions?.filter(t => {
                       <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", background: `${ins.color}08`, border: `1px solid ${ins.color}20`, borderRadius: 10 }}>
                         <span style={{ fontSize: 16, flexShrink: 0 }}>{ins.icon}</span>
                         <div style={{ flex: 1, fontSize: 12, color: "var(--text2)", lineHeight: 1.5 }}>{ins.text}</div>
-                        {ins.action && <Btn size="sm" variant="ghost" onClick={() => handleSetTab(ins.tab)} style={{ fontSize: 10, padding: "3px 8px", flexShrink: 0, color: ins.color }}>{ins.action}</Btn>}
+                        {ins.action && <Btn size="sm" variant="ghost" onClick={() => setTab(ins.tab)} style={{ fontSize: 10, padding: "3px 8px", flexShrink: 0, color: ins.color }}>{ins.action}</Btn>}
                       </div>
                     ))}
                   </div>
@@ -3691,28 +3794,28 @@ const monthTxRevenue = transactions?.filter(t => {
                     await cancelSubscription(userId, adminUidArg || user.uid, "Subscription cancelled by admin");
                   }
                   showToast({ msg: "✅ Transaction cancelled", type: "success" });
-                  await load();
+                  await load(true);
                 } catch (e) { showToast({ msg: `Error: ${e.message}`, type: "error" }); }
               }}
               onApproveInstapay={async (paymentId, note) => {
                 try {
                   await approveInstapayPayment(paymentId, user.uid, note);
                   showToast({ msg: "✅ Instapay approved & access granted", type: "success" });
-                  await load();
+                  await load(true);
                 } catch (e) { showToast({ msg: `Error: ${e.message}`, type: "error" }); }
               }}
               onRejectInstapay={async (paymentId, note) => {
                 try {
                   await rejectInstapayPayment(paymentId, user.uid, note);
                   showToast({ msg: "✅ Instapay rejected", type: "info" });
-                  await load();
+                  await load(true);
                 } catch (e) { showToast({ msg: `Error: ${e.message}`, type: "error" }); }
               }}
               onRefundAction={async (refundId, status, note) => {
                 try {
                   await updateRefundStatus(refundId, status, user.uid, note);
                   showToast({ msg: `✅ Refund ${status}`, type: "success" });
-                  await load();
+                  await load(true);
                 } catch (e) { showToast({ msg: `Error: ${e.message}`, type: "error" }); }
               }}
             />
@@ -3741,7 +3844,7 @@ const monthTxRevenue = transactions?.filter(t => {
                     }
                   }
                   showToast({ msg: `✅ Refund ${status}${status === "approved" ? " — access revoked" : ""}`, type: "success" });
-                  await load();
+                  await load(true);
                 } catch (e) { showToast({ msg: `Error: ${e.message}`, type: "error" }); }
               }}
             />
@@ -4019,7 +4122,7 @@ const monthTxRevenue = transactions?.filter(t => {
                       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>👥 Bulk User Management</div>
                       <div style={{ fontSize: 11, color: "var(--text3)" }}>Advanced user deletion and management available in the Users tab.</div>
                     </div>
-                    <button onClick={() => handleSetTab("users")} style={{ padding: "9px 18px", background: "var(--bg3)", color: "var(--text2)", border: "1.5px solid var(--border)", borderRadius: 10, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0 }}>
+                    <button onClick={() => setTab("users")} style={{ padding: "9px 18px", background: "var(--bg3)", color: "var(--text2)", border: "1.5px solid var(--border)", borderRadius: 10, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0 }}>
                       Go to Users
                     </button>
                   </div>
@@ -4037,6 +4140,11 @@ const monthTxRevenue = transactions?.filter(t => {
         <Modal title={editTarget ? "✏️ Edit Exam" : "➕ Create New Exam"} onClose={() => setShowForm(false)} maxWidth={700}>
           <div style={{ maxHeight: "75vh", overflowY: "auto" }}>
             <Input label="Exam Title" value={form.title} onChange={upd("title")} error={formErr.title} placeholder="e.g., AWS Solutions Architect" />
+            {form.title && (
+              <div style={{ marginBottom: 12, padding: "7px 12px", background: "var(--bg3)", borderRadius: 8, fontSize: 12, color: "var(--text3)", fontFamily: "monospace" }}>
+                🔗 slug: <span style={{ color: "var(--accent)", fontWeight: 700 }}>{generateSlug(form.title)}</span>
+              </div>
+            )}
             <Input label="Subtitle" value={form.subtitle} onChange={upd("subtitle")} placeholder="e.g., SAA-C03" />
             <div style={{ marginBottom: 16 }}>
               <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)", marginBottom: 8, display: "block" }}>Exam Image</label>
