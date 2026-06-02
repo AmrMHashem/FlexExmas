@@ -16,6 +16,7 @@ import React, {
   useTransition,
 } from "react";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
+import { isFirestoreQuotaExceeded } from "./firebase";
 import NavBar from "./components/NavBar";
 import Footer from "./components/Footer";
 import { Toast, Spinner } from "./components/UI";
@@ -492,6 +493,51 @@ h1,h2,h3,h4,h5,h6 { font-family: 'Plus Jakarta Sans',sans-serif; font-weight: 70
 `;
 
 // ─────────────────────────────────────────────────────────────────
+// QuotaBanner — shown when Firestore free-tier limit is exceeded
+// ─────────────────────────────────────────────────────────────────
+function QuotaBanner() {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "var(--bg)",
+      display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      zIndex: 9999, padding: "24px",
+    }}>
+      <div style={{ fontSize: 64, marginBottom: 20 }}>🛠️</div>
+      <h1 style={{
+        fontFamily: "'Plus Jakarta Sans',sans-serif",
+        fontSize: "clamp(22px,5vw,32px)", fontWeight: 900,
+        marginBottom: 12, textAlign: "center",
+        background: "var(--gradient-accent)",
+        WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+      }}>
+        FlexExams — Maintenance Mode
+      </h1>
+      <p style={{
+        fontSize: "clamp(14px,3vw,17px)", color: "var(--text2)",
+        maxWidth: 500, textAlign: "center", lineHeight: 1.7, marginBottom: 28,
+      }}>
+        We are performing scheduled maintenance to improve your experience.
+        The platform will be back online shortly. Thank you for your patience! 🙏
+      </p>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
+        <a href="/"
+          style={{ padding: "12px 28px", borderRadius: 12, background: "var(--gradient-accent)", color: "#fff", fontWeight: 800, fontSize: 14, textDecoration: "none", fontFamily: "inherit" }}>
+          ↩ Go to Home
+        </a>
+        <button onClick={() => { window.location.reload(); }}
+          style={{ padding: "12px 28px", borderRadius: 12, background: "var(--accent-soft)", border: "1.5px solid var(--border)", color: "var(--accent)", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>
+          🔄 Try Again
+        </button>
+      </div>
+      <p style={{ marginTop: 24, fontSize: 12, color: "var(--text3)" }}>
+        If the issue persists, please check back in a few minutes.
+      </p>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
 // Loading Screen
 // ─────────────────────────────────────────────────────────────────
 function LoadingScreen() {
@@ -825,6 +871,16 @@ function AppInner() {
     }
   }, [activeExam]);
 
+  const [quotaExceeded, setQuotaExceeded] = React.useState(() => isFirestoreQuotaExceeded());
+
+  // Listen for global quota-exceeded event
+  React.useEffect(() => {
+    const handler = () => setQuotaExceeded(true);
+    window.addEventListener("firestore:quota-exceeded", handler);
+    return () => window.removeEventListener("firestore:quota-exceeded", handler);
+  }, []);
+
+  if (quotaExceeded) return <QuotaBanner />;
   if (isLoading) return <LoadingScreen />;
 
   return (
