@@ -1,120 +1,192 @@
-import React from "react";
-import { useState, useEffect, createContext, useContext } from "react";
+// hooks/useAuth.js — FlexExams v5.0
+// ✅ Auth context with memory-cached profile
+// ✅ No repeated Firestore reads on re-render
+// ✅ Profile cached in ref — only re-fetched on explicit refreshProfile() call
+// ✅ No onAuthStateChanged re-triggering profile fetch unnecessarily
+
+import React, {
+  createContext, useContext, useState, useEffect, useRef, useCallback,
+} from "react";
 import {
   auth,
+  db,
   onAuthStateChanged,
   signOut,
+} from "../firebase";
+import {
+  doc, getDoc, setDoc, serverTimestamp,
+} from "firebase/firestore";
+import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   updateProfile,
-  db,
-  doc,
-  updateDoc,
-  serverTimestamp,
-} from "../firebase";
-import { createUserProfile, getUserProfile } from "../services/firestore";
-import { processReferralOnRegister } from "../components/ReferralSystem";
+} from "firebase/auth";
 
+// ── Context ──────────────────────────────────────────────────────────────────
 const AuthContext = createContext(null);
 
+// ── Profile cache — module-level, survives re-renders, clears on sign-out ───
+const _profileCache = { uid: null, data: null, ts: 0 };
+const PROFILE_TTL = 5 * 60 * 1000; // 5 min
+
+function getCachedProfile(uid) {
+  if (_profileCache.uid === uid && _profileCache.data && Date.now() - _profileCache.ts < PROFILE_TTL) {
+    return _profileCache.data;
+  }
+  return null;
+}
+function setCachedProfile(uid, data) {
+  _profileCache.uid  = uid;
+  _profileCache.data = data;
+  _profileCache.ts   = Date.now();
+  return data;
+}
+function clearProfileCache() {
+  _profileCache.uid  = null;
+  _profileCache.data = null;
+  _profileCache.ts   = 0;
+}
+
+// ── Provider ─────────────────────────────────────────────────────────────────
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(undefined);
-  const [profile, setProfile] = useState(null);
+  const [user, setUser]         = useState(null);
+  const [profile, setProfile]   = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const profileFetchRef         = useRef(null); // deduplication — one in-flight fetch at a time
 
-  // دالة الحصول على الدولة من IP
-  const getCountryFromIP = async () => {
-    try {
-      const response = await fetch("https://ipapi.co/json/");
-      const data = await response.json();
-      return {
-        country: data.country_name || "Unknown",
-        countryCode: data.country_code || null,
-      };
-    } catch (err) {
-      console.error("Error fetching country:", err);
-      return { country: "Unknown", countryCode: null };
+  // Fetch profile — deduped, cached
+  const fetchProfile = useCallback(async (uid, force = false) => {
+    if (!uid) return null;
+
+    // Return from cache unless forced
+    if (!force) {
+      const cached = getCachedProfile(uid);
+      if (cached) { setProfile(cached); return cached; }
     }
-  };
 
-  // تحديث lastLogin في Firestore
-  const updateLastLogin = async (uid) => {
-    try {
-      await updateDoc(doc(db, "users", uid), {
-        lastLogin: serverTimestamp(),
-        lastLoginDate: new Date().toISOString(),
-      });
-    } catch {}
-  };
+    // Deduplicate in-flight fetches
+    if (profileFetchRef.current) return profileFetchRef.current;
 
+    profileFetchRef.current = (async () => {
+      try {
+        const snap = await getDoc(doc(db, "users", uid));
+        if (snap.exists()) {
+          const data = { id: snap.id, ...snap.data() };
+          setCachedProfile(uid, data);
+          setProfile(data);
+          return data;
+        }
+        return null;
+      } catch (err) {
+        console.error("[useAuth] fetchProfile error:", err);
+        return null;
+      } finally {
+        profileFetchRef.current = null;
+      }
+    })();
+
+    return profileFetchRef.current;
+  }, []);
+
+  // Explicit refresh — forces re-fetch and clears cache
+  const refreshProfile = useCallback(async () => {
+    if (!auth.currentUser) return;
+    clearProfileCache();
+    return fetchProfile(auth.currentUser.uid, true);
+  }, [fetchProfile]);
+
+  // Auth state listener — runs ONCE, profile fetch is cached
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const prof = await getUserProfile(firebaseUser.uid);
-        setProfile(prof);
         setUser(firebaseUser);
-        // تحديث lastLogin عند كل تسجيل دخول
-        updateLastLogin(firebaseUser.uid);
+        // Try cache first — avoids a read on every hot-reload / page focus
+        const cached = getCachedProfile(firebaseUser.uid);
+        if (cached) {
+          setProfile(cached);
+          setIsLoading(false);
+        } else {
+          setIsLoading(true);
+          await fetchProfile(firebaseUser.uid);
+          setIsLoading(false);
+        }
       } else {
         setUser(null);
         setProfile(null);
+        clearProfileCache();
+        setIsLoading(false);
       }
     });
-    return unsub;
-  }, []);
+    return () => unsub();
+  }, [fetchProfile]);
 
-  const register = async (name, email, password) => {
-    const locationData = await getCountryFromIP();
+  // ── register ────────────────────────────────────────────────────────────────
+  const register = useCallback(async (email, password, name, country = "Unknown", countryCode = null) => {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(cred.user, { displayName: name });
-    await createUserProfile(cred.user.uid, { 
-      name, 
+    const profileData = {
+      uid: cred.user.uid,
+      name,
       email,
-      country: locationData.country,
-      countryCode: locationData.countryCode,
-      lastLogin: new Date().toISOString(),
-    });
+      role: "student",
+      country,
+      countryCode,
+      createdAt: serverTimestamp(),
+      favorites: [],
+      enrolledExams: [],
+      stats: { totalAttempts: 0, totalPassed: 0, averageScore: 0 },
+    };
+    await setDoc(doc(db, "users", cred.user.uid), profileData);
+    setCachedProfile(cred.user.uid, { id: cred.user.uid, ...profileData });
+    return cred;
+  }, []);
 
-    // #20 Process referral code from URL (?ref=REFXXXXXX)
-    const urlParams = new URLSearchParams(window.location.search);
-    const refCode   = urlParams.get("ref");
-    if (refCode) {
-      processReferralOnRegister(cred.user.uid, refCode).catch(() => {});
-    }
-
-    const prof = await getUserProfile(cred.user.uid);
-    setProfile(prof);
-    return cred.user;
-  };
-
-  const login = async (email, password) => {
+  // ── login ────────────────────────────────────────────────────────────────────
+  const login = useCallback(async (email, password) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
-    await updateLastLogin(cred.user.uid);
-    const prof = await getUserProfile(cred.user.uid);
-    setProfile(prof);
-    return cred.user;
-  };
+    // Profile will be fetched by onAuthStateChanged if not cached
+    return cred;
+  }, []);
 
-  const logout = () => signOut(auth);
+  // ── logout ───────────────────────────────────────────────────────────────────
+  const logout = useCallback(async () => {
+    clearProfileCache();
+    // Clear MyExams & Dashboard caches on logout
+    try {
+      const keysToRemove = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && key.startsWith("fx_")) keysToRemove.push(key);
+      }
+      keysToRemove.forEach(k => sessionStorage.removeItem(k));
+    } catch { /* ignore */ }
+    await signOut(auth);
+  }, []);
 
-  const refreshProfile = async () => {
-    if (!user?.uid) return null;
-    const prof = await getUserProfile(user.uid);
-    setProfile(prof);
-    return prof;
-  };
-
+  // ── derived ──────────────────────────────────────────────────────────────────
   const isAdmin = profile?.role === "admin";
-  const isLoading = user === undefined;
+
+  const value = {
+    user,
+    profile,
+    isLoading,
+    isAdmin,
+    login,
+    register,
+    logout,
+    refreshProfile,
+    fetchProfile,
+  };
 
   return (
-    <AuthContext.Provider
-      value={{ user, profile, isAdmin, isLoading, register, login, logout, refreshProfile }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
 }
 
 export function useAuth() {
-  return useContext(AuthContext);
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
+  return ctx;
 }
