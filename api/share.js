@@ -1,20 +1,28 @@
-// api/share.js — FlexExams Social Share Handler v12
+// api/share.js — FlexExams Social Share Handler v11
 // ─────────────────────────────────────────────────────────────────────────────
 // Handles /exam/:slug as the single canonical URL for both humans and bots.
 //
-// FLOW (simplified, no redirects):
-//   Bot  → serve OG HTML with full meta tags + JSON-LD (preserves ?couponCode)
-//   Human → serve the real index.html directly from disk.
-//           React Router sees /exam/:slug with all query parameters
-//           (e.g., ?couponCode=JUN2026) and renders the exam page.
+// FLOW:
+//   Bot  → serve OG HTML with full meta tags (no redirect)
+//   Human Round 1 → redirect to /exam/:slug?_h=1
+//   Human Round 2 (_h=1) → read & serve the real index.html from disk
+//                           (React Router sees /exam/:slug and renders correctly)
 //
-// ✅ No redirects → URL stays exactly as the user pasted (including coupon codes)
-// ✅ Bots get proper meta tags for social sharing
+// WHY TWO ROUNDS FOR HUMANS:
+//   vercel.json routes /exam/:slug to this API. We can't redirect humans back
+//   to /exam/:slug (infinite loop). Instead we redirect to /exam/:slug?_h=1,
+//   which re-enters the API — but now the _h=1 flag tells us to serve index.html
+//   directly. The browser URL stays as /exam/:slug the whole time. ✅
+//
+// ✅ Zero redirect loop
+// ✅ Browser URL always shows /exam/:slug — no address bar flash
+// ✅ React Router picks up /exam/:slug and renders the exam page normally
+// ✅ Bots get full OG + JSON-LD
 // ✅ In-process LRU cache (10 min TTL, 500 slugs)
 // ✅ Edge CDN cache for bot responses
 // ─────────────────────────────────────────────────────────────────────────────
 
-import fs from 'fs';
+import fs   from 'fs';
 import path from 'path';
 
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'exampro-1e4de';
@@ -53,10 +61,7 @@ const BOTS = [
   'yandexbot','duckduckbot','ia_archiver','archive.org_bot',
   'crawler','spider',
 ];
-const isBot = (ua = '') => {
-  const u = ua.toLowerCase();
-  return BOTS.some(s => u.includes(s));
-};
+const isBot = (ua = '') => { const u = ua.toLowerCase(); return BOTS.some(s => u.includes(s)); };
 
 // ── Sanitizers ────────────────────────────────────────────────────────────────
 const ESC = { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;' };
@@ -66,10 +71,13 @@ const safeImg = (url = '') => {
   catch { return ''; }
 };
 
-// ── index.html reader (cached in memory) ─────────────────────────────────────
+// ── index.html reader ─────────────────────────────────────────────────────────
+// Vercel places the SPA's built output in /var/task/public or process.cwd()/public.
+// We read it once and cache in-process.
 let _indexHtml = null;
 function getIndexHtml() {
   if (_indexHtml) return _indexHtml;
+  // Common Vercel output paths (Vite → dist, CRA → build, Next static → public)
   const candidates = [
     path.join(process.cwd(), 'public',   'index.html'),
     path.join(process.cwd(), 'dist',     'index.html'),
@@ -94,7 +102,7 @@ async function fetchExam(slug) {
 
   let fields = null;
 
-  // 1. Document GET (slug = doc ID)
+  // 1. Document GET (slug = doc ID) — O(1)
   for (let i = 0; i < 2; i++) {
     try {
       const r = await fetch(
@@ -118,19 +126,11 @@ async function fetchExam(slug) {
         const r = await fetch(`${FS_BASE}:runQuery?key=${API_KEY}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({
-            structuredQuery: {
-              from: [{ collectionId: 'exams' }],
-              where: {
-                fieldFilter: {
-                  field: { fieldPath: 'slug' },
-                  op: 'EQUAL',
-                  value: { stringValue: slug },
-                },
-              },
-              limit: 1,
-            },
-          }),
+          body: JSON.stringify({ structuredQuery: {
+            from: [{ collectionId: 'exams' }],
+            where: { fieldFilter: { field: { fieldPath: 'slug' }, op: 'EQUAL', value: { stringValue: slug } } },
+            limit: 1,
+          }}),
           signal: AbortSignal.timeout(3000),
         });
         if (!r.ok) throw new Error(`Query ${r.status}`);
@@ -155,51 +155,21 @@ async function fetchExam(slug) {
 }
 
 // ── OG HTML (bots only) ───────────────────────────────────────────────────────
-// Accepts an optional couponCode to include in the "Start Practice" link.
-function botHtml({ title, desc, image, canonicalUrl, couponCode }) {
-  // Build the practice link: canonical URL + couponCode if present
-  let practiceUrl = canonicalUrl;
-  if (couponCode) {
-    const separator = canonicalUrl.includes('?') ? '&' : '?';
-    practiceUrl = `${canonicalUrl}${separator}couponCode=${encodeURIComponent(couponCode)}`;
-  }
-
-  const ld = JSON.stringify({
-    '@context': 'https://schema.org',
-    '@graph': [
-      {
-        '@type': 'WebSite',
-        '@id': `${BASE_URL}/#website`,
-        name: SITE_NAME,
-        url: BASE_URL,
-      },
-      {
-        '@type': 'Organization',
-        '@id': `${BASE_URL}/#organization`,
-        name: SITE_NAME,
-        url: BASE_URL,
-        logo: { '@type': 'ImageObject', url: `${BASE_URL}/logo.png` },
-      },
-      {
-        '@type': 'EducationalOccupationalCredential',
-        '@id': `${canonicalUrl}#credential`,
-        name: title,
-        description: desc,
-        url: canonicalUrl,
-        credentialCategory: 'certification',
-        recognizedBy: { '@type': 'Organization', '@id': `${BASE_URL}/#organization` },
-        image: { '@type': 'ImageObject', url: image, width: 1200, height: 630 },
-      },
-      {
-        '@type': 'BreadcrumbList',
-        itemListElement: [
-          { '@type': 'ListItem', position: 1, name: 'Home', item: BASE_URL },
-          { '@type': 'ListItem', position: 2, name: 'Exams', item: `${BASE_URL}/exams` },
-          { '@type': 'ListItem', position: 3, name: title, item: canonicalUrl },
-        ],
-      },
-    ],
-  });
+function botHtml({ title, desc, image, canonicalUrl }) {
+  const ld = JSON.stringify({ '@context':'https://schema.org', '@graph': [
+    { '@type':'WebSite', '@id':`${BASE_URL}/#website`, name:SITE_NAME, url:BASE_URL },
+    { '@type':'Organization', '@id':`${BASE_URL}/#organization`, name:SITE_NAME, url:BASE_URL,
+      logo:{ '@type':'ImageObject', url:`${BASE_URL}/logo.png` } },
+    { '@type':'EducationalOccupationalCredential', '@id':`${canonicalUrl}#credential`,
+      name:title, description:desc, url:canonicalUrl, credentialCategory:'certification',
+      recognizedBy:{ '@type':'Organization', '@id':`${BASE_URL}/#organization` },
+      image:{ '@type':'ImageObject', url:image, width:1200, height:630 } },
+    { '@type':'BreadcrumbList', itemListElement:[
+      { '@type':'ListItem', position:1, name:'Home',  item:BASE_URL },
+      { '@type':'ListItem', position:2, name:'Exams', item:`${BASE_URL}/exams` },
+      { '@type':'ListItem', position:3, name:title,   item:canonicalUrl },
+    ]},
+  ]});
 
   return `<!DOCTYPE html>
 <html lang="en"><head>
@@ -234,7 +204,7 @@ function botHtml({ title, desc, image, canonicalUrl, couponCode }) {
 <img src="${image}" alt="${title}" width="600" height="315" style="max-width:100%;border-radius:12px;margin-bottom:24px" loading="eager"/>
 <h1 style="font-size:1.6rem;margin:0 0 12px;color:#a5b4fc">${title}</h1>
 <p style="max-width:480px;color:#7b93c8;line-height:1.6;margin:0 0 28px">${desc}</p>
-<a href="${practiceUrl}" style="padding:13px 32px;border-radius:10px;background:#6366f1;color:#fff;text-decoration:none;font-size:15px;font-weight:600">Start Practice →</a>
+<a href="${canonicalUrl}" style="padding:13px 32px;border-radius:10px;background:#6366f1;color:#fff;text-decoration:none;font-size:15px;font-weight:600">Start Practice →</a>
 </body></html>`;
 }
 
@@ -243,7 +213,6 @@ export default async function handler(req, res) {
   const raw  = (req.query.slug || '').trim();
   const slug = raw.toLowerCase();
 
-  // Validate slug format
   if (!slug || !/^[a-z0-9][a-z0-9_-]{0,79}$/i.test(slug)) {
     return res.redirect(302, BASE_URL);
   }
@@ -251,9 +220,7 @@ export default async function handler(req, res) {
   const canonicalUrl = `${BASE_URL}/exam/${slug}`;
   const ua           = req.headers['user-agent'] || '';
   const bot          = isBot(ua);
-
-  // Extract couponCode from query string (if present)
-  const couponCode = req.query.couponCode ? String(req.query.couponCode).trim() : null;
+  const isHumanPass  = req.query._h === '1';
 
   // Minimal safe headers
   res.setHeader('X-Content-Type-Options',  'nosniff');
@@ -261,7 +228,7 @@ export default async function handler(req, res) {
   res.setHeader('Referrer-Policy',         'strict-origin-when-cross-origin');
   res.setHeader('X-Robots-Tag',            'noindex, nofollow');
 
-  // ── Debug endpoint (same as original, but includes couponCode) ─────────────
+  // ── Debug ──────────────────────────────────────────────────────────────────
   if (req.query.debug === '1') {
     let rawFields = null;
     try {
@@ -270,10 +237,7 @@ export default async function handler(req, res) {
     } catch {}
     res.setHeader('Content-Type', 'application/json');
     return res.status(200).json({
-      slug,
-      isBot: bot,
-      couponCode,
-      ua,
+      slug, isBot: bot, isHumanPass, ua,
       canonicalUrl,
       indexHtmlFound: !!getIndexHtml(),
       cacheHit: cacheGet(slug) !== undefined,
@@ -283,33 +247,38 @@ export default async function handler(req, res) {
     });
   }
 
-  // ── BOT: serve SEO‑friendly HTML with meta tags ───────────────────────────
-  if (bot) {
-    let exam = null;
-    try { exam = await fetchExam(slug); } catch (e) { console.error('[share] fetchExam:', e.message); }
-
-    const title = exam?.title || 'Certification Exam Practice';
-    const desc  = exam?.description || `Practice real ${title} questions on ${SITE_NAME}. Timed tests, instant feedback, and detailed explanations.`;
-    const image = exam?.image || OG_IMAGE;
-
-    // Cache bot responses at the edge for up to 1 hour (revalidate after 1 hour)
-    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
-    res.setHeader('Vary', 'User-Agent');
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.status(200).send(botHtml({ title, desc, image, canonicalUrl, couponCode }));
+  // ── HUMAN Round 2 (_h=1): serve real index.html ────────────────────────────
+  // Browser URL is already /exam/:slug — React Router renders the exam page.
+  if (!bot && isHumanPass) {
+    const html = getIndexHtml();
+    if (html) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type',  'text/html; charset=utf-8');
+      return res.status(200).send(html);
+    }
+    // index.html not found on disk — fall back to a clean redirect to BASE_URL
+    // and let the SPA's own 404 handling take over (better than broken page)
+    console.error('[share] index.html not found on disk — falling back to base URL');
+    return res.redirect(302, `${BASE_URL}/exam/${slug}#fallback`);
   }
 
-  // ── HUMAN: serve the actual SPA index.html ─────────────────────────────────
-  // The URL remains unchanged, including couponCode and any other query parameters.
-  const html = getIndexHtml();
-  if (html) {
-    // Humans should never get stale HTML (but we can still cache briefly to reduce disk reads)
+  // ── HUMAN Round 1: redirect to /exam/:slug?_h=1 ────────────────────────────
+  if (!bot) {
     res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.status(200).send(html);
+    return res.redirect(302, `${canonicalUrl}?_h=1`);
   }
 
-  // Fallback: index.html not found on disk — redirect to base URL and let the SPA handle 404
-  console.error('[share] index.html not found on disk — falling back to base URL');
-  return res.redirect(302, `${BASE_URL}/exam/${slug}#fallback`);
+  // ── BOT → OG HTML ─────────────────────────────────────────────────────────
+  let exam = null;
+  try { exam = await fetchExam(slug); }
+  catch (e) { console.error('[share] fetchExam:', e.message); }
+
+  const title = exam?.title || 'Certification Exam Practice';
+  const desc  = exam?.description || `Practice real ${title} questions on ${SITE_NAME}. Timed tests, instant feedback, and detailed explanations.`;
+  const image = exam?.image || OG_IMAGE;
+
+  res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
+  res.setHeader('Vary', 'User-Agent');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  return res.status(200).send(botHtml({ title, desc, image, canonicalUrl }));
 }
