@@ -290,6 +290,9 @@ function SmartStickyPanel({ children, topOffset = 24 }) {
     });
   }, [topOffset, applyTransform]);
   
+useEffect(() => {
+  window.history.replaceState({}, document.title, window.location.pathname);
+}, []);
   
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -639,11 +642,18 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   }, [user?.uid, exam?.id]);
 
   // ── Dashboard data ────────────────────────────────────────────────
+  // v6.1: runs for guests too — gets enrolledCount/attempts from exam doc cache (0 reads)
+  //       for members — progress + cert are memory-cached (max 2 reads, usually 0)
   useEffect(() => {
-    if (!exam || !user?.uid) return;
-    const cacheKey = `exam_dashboard_${user.uid}_${exam.id}`;
-    const cached   = cacheRef.current[cacheKey];
-    if (cached && (Date.now() - cached.timestamp) < 5 * 60 * 1000) {
+    if (!exam) return;
+    // Cache key: guests share one key per exam; members get per-user key
+    const cacheKey = user?.uid
+      ? `exam_dashboard_${user.uid}_${exam.id}`
+      : `exam_dashboard_guest_${exam.id}`;
+    const cached = cacheRef.current[cacheKey];
+    // guests: 30 min TTL (matches exam doc cache); members: 5 min
+    const cacheTTL = user?.uid ? 5 * 60 * 1000 : 30 * 60 * 1000;
+    if (cached && (Date.now() - cached.timestamp) < cacheTTL) {
       setDashboard(cached.data);
       return;
     }
@@ -651,7 +661,8 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     abortControllerRef.current = new AbortController();
     const loadDashboard = async () => {
       try {
-        const data = await getExamDashboardData(user.uid, exam.id, { signal: abortControllerRef.current.signal });
+        // pass null for guests — getExamDashboardData returns counters-only (0 reads)
+        const data = await getExamDashboardData(user?.uid || null, exam.id);
         setDashboard(data);
         cacheRef.current[cacheKey] = { data, timestamp: Date.now() };
       } catch (err) {
