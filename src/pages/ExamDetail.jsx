@@ -291,7 +291,11 @@ function SmartStickyPanel({ children, topOffset = 24 }) {
   }, [topOffset, applyTransform]);
   
 useEffect(() => {
-  window.history.replaceState({}, document.title, window.location.pathname);
+  const url = new URL(window.location.href);
+  if (url.searchParams.has('_h')) {
+    url.searchParams.delete('_h');
+    window.history.replaceState({}, document.title, url.toString());
+  }
 }, []);
   
   useEffect(() => {
