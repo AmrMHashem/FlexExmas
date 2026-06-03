@@ -1,10 +1,14 @@
-// firestore.js — FlexExams v6.0 — Zero-Waste Firebase Edition
+// firestore.js — FlexExams v6.1 — Zero-Waste Firebase Edition
 // ✅ Memory cache + sessionStorage cache with TTL
 // ✅ Request deduplication (in-flight promises)
 // ✅ limit() on all heavy queries
 // ✅ Quota-exceeded error handler
 // ✅ No onSnapshot anywhere
 // ✅ Minimal reads — batch wherever possible
+// ✅ v6.1: enrolledCount/attempts served from exam doc cache (no extra reads)
+// ✅ v6.1: getUserCertificateForExam — memory cached (saves 1 read per ExamDetail open)
+// ✅ v6.1: getExamDashboardData for guests — zero Firestore reads (all from exam cache)
+// ✅ v6.1: counters TTL extended to 30 min (approximate values, not real-time)
 
 import {
   db,
@@ -26,7 +30,7 @@ const _mem = new Map();         // memory cache (tab-lifetime)
 const _inFlight = new Map();    // in-flight deduplication
 
 const TTL = {
-  exams:    10 * 60 * 1000,  // 10 min  — public, rarely changes
+  exams:    30 * 60 * 1000,  // 30 min — public, approximate counters OK
   vendors:  15 * 60 * 1000,  // 15 min
   topics:   15 * 60 * 1000,  // 15 min
   user:      5 * 60 * 1000,  // 5 min
@@ -34,6 +38,7 @@ const TTL = {
   notifs:    2 * 60 * 1000,  // 2 min
   lb:        5 * 60 * 1000,  // 5 min  — leaderboard
   progress:  1 * 60 * 1000,  // 1 min
+  cert:     10 * 60 * 1000,  // 10 min — certificates per user/exam
   default:   5 * 60 * 1000,
 };
 
@@ -46,6 +51,7 @@ function getTTL(key) {
   if (key.startsWith("notifs"))   return TTL.notifs;
   if (key.startsWith("lb"))       return TTL.lb;
   if (key.startsWith("progress")) return TTL.progress;
+  if (key.startsWith("cert"))     return TTL.cert;
   return TTL.default;
 }
 
@@ -393,10 +399,16 @@ export async function getExams() {
 
 export async function getExam(id) {
   const cKey = `exams:${id}`;
+  // v6.1: check mem → sessionStorage → Firestore
   const cached = memGet(cKey);
   if (cached) return cached;
+  const ssCached = ssGet(cKey);
+  if (ssCached) return memSet(cKey, ssCached);
   const snap = await fsCall(() => getDoc(doc(db, "exams", id)));
-  return snap.exists() ? memSet(cKey, { id: snap.id, ...snap.data() }) : null;
+  if (!snap.exists()) return null;
+  const data = { id: snap.id, ...snap.data() };
+  ssSet(cKey, data, TTL.exams);
+  return memSet(cKey, data);
 }
 
 export async function createExam(data) {
@@ -431,7 +443,9 @@ export async function incrementExamAttempts(examId) {
   await fsCall(() => updateDoc(doc(db, "exams", examId), {
     attempts: increment(1), updatedAt: serverTimestamp(),
   }));
-  memInvalidate(`exams:${examId}`);
+  // v6.1: delete only this exam from mem cache (not full invalidate)
+  // counters re-read on next getExam() after 30 min TTL
+  _mem.delete(`exams:${examId}`);
 }
 
 export async function getEnrolledCountForExam(examId) {
@@ -739,10 +753,15 @@ export async function getUserCertificates(userId) {
 }
 
 export async function getUserCertificateForExam(userId, examId) {
+  // ✅ v6.1: memory cached — avoids 1 Firestore read every ExamDetail open
+  const cKey = `cert:${userId}:${examId}`;
+  const cached = memGet(cKey);
+  if (cached !== null) return cached;
   const snap = await fsCall(() => getDocs(
     query(collection(db, "certificates"), where("userId", "==", userId), where("examId", "==", examId), limit(1))
   ));
-  return snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
+  const result = snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
+  return memSet(cKey, result);
 }
 
 // ======================
@@ -750,28 +769,38 @@ export async function getUserCertificateForExam(userId, examId) {
 // ======================
 export async function getExamDashboardData(userId, examId) {
   try {
-    // Single progress read covers: enrollment, bestScore, lastScore, attempts
-    const [progress, userCert] = await Promise.all([
-      getExamProgress(userId, examId),
-      getUserCertificateForExam(userId, examId),
-    ]);
-
-    // Enrollment check from already-cached user profile (no extra read)
-    const enrolled = await getEnrolledExams(userId);
-    const isEnrolled = enrolled.includes(examId);
-
-    // Exam attempts/enrolled count from cached exam doc
+    // v6.1: counters always come from cached exam doc (30 min TTL) — zero extra reads
     const examDoc = await getExam(examId);
+    const attemptsCount  = examDoc?.attempts      || 0;
+    const enrolledCount  = examDoc?.enrolledCount || 0;
+
+    // v6.1: Guests (no userId) — return counters only, zero Firestore reads
+    if (!userId) {
+      return {
+        isEnrolled: false, bestScore: null, lastScore: null,
+        attemptsCount, enrolledCount,
+        userCertificate: null, savedProgress: null,
+        enrolling: false, unenrolling: false,
+      };
+    }
+
+    // Logged-in users — 3 parallel reads, all memory-cached
+    const [progress, userCert, enrolled] = await Promise.all([
+      getExamProgress(userId, examId),           // cached 1 min
+      getUserCertificateForExam(userId, examId), // cached 10 min (v6.1)
+      getEnrolledExams(userId),                  // cached 5 min
+    ]);
+    const isEnrolled = enrolled.includes(examId);
 
     return {
       isEnrolled,
-      bestScore: progress?.bestScore || null,
-      lastScore: progress?.lastScore || null,
-      attemptsCount: examDoc?.attempts || 0,
-      enrolledCount: examDoc?.enrolledCount || 0,
+      bestScore:   progress?.bestScore || null,
+      lastScore:   progress?.lastScore || null,
+      attemptsCount,
+      enrolledCount,
       userCertificate: userCert,
-      savedProgress: progress,
-      enrolling: false,
+      savedProgress:   progress,
+      enrolling:   false,
       unenrolling: false,
     };
   } catch {
