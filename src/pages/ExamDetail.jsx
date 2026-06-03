@@ -290,9 +290,6 @@ function SmartStickyPanel({ children, topOffset = 24 }) {
     });
   }, [topOffset, applyTransform]);
   
-useEffect(() => {
-  window.history.replaceState({}, document.title, window.location.pathname);
-}, []);
   
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
