@@ -222,6 +222,17 @@ export default async function handler(req, res) {
   const bot          = isBot(ua);
   const isHumanPass  = req.query._h === '1';
 
+  // ── Preserve all extra query params (e.g. couponCode) across the two-round flow ──
+  // Build a clean params object: strip internal params (_h, slug, debug) but keep everything else
+  const extraParams = Object.entries(req.query)
+    .filter(([k]) => k !== '_h' && k !== 'slug' && k !== 'debug')
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&');
+  // Full URL that humans land on after Round 2 (keeps couponCode etc.)
+  const humanUrl = extraParams
+    ? `${canonicalUrl}?${extraParams}&_h=1`
+    : `${canonicalUrl}?_h=1`;
+
   // Minimal safe headers
   res.setHeader('X-Content-Type-Options',  'nosniff');
   res.setHeader('X-Frame-Options',         'SAMEORIGIN');
@@ -248,7 +259,7 @@ export default async function handler(req, res) {
   }
 
   // ── HUMAN Round 2 (_h=1): serve real index.html ────────────────────────────
-  // Browser URL is already /exam/:slug — React Router renders the exam page.
+  // Browser URL already shows /exam/:slug?couponCode=... — React Router renders normally.
   if (!bot && isHumanPass) {
     const html = getIndexHtml();
     if (html) {
@@ -256,16 +267,18 @@ export default async function handler(req, res) {
       res.setHeader('Content-Type',  'text/html; charset=utf-8');
       return res.status(200).send(html);
     }
-    // index.html not found on disk — fall back to a clean redirect to BASE_URL
-    // and let the SPA's own 404 handling take over (better than broken page)
-    console.error('[share] index.html not found on disk — falling back to base URL');
-    return res.redirect(302, `${BASE_URL}/exam/${slug}#fallback`);
+    // index.html not found on disk — redirect preserving extra params (minus _h)
+    console.error('[share] index.html not found on disk — falling back');
+    const fallbackUrl = extraParams
+      ? `${canonicalUrl}?${extraParams}#fallback`
+      : `${canonicalUrl}#fallback`;
+    return res.redirect(302, fallbackUrl);
   }
 
-  // ── HUMAN Round 1: redirect to /exam/:slug?_h=1 ────────────────────────────
+  // ── HUMAN Round 1: redirect — preserve couponCode and all extra params ──────
   if (!bot) {
     res.setHeader('Cache-Control', 'no-store');
-    return res.redirect(302, `${canonicalUrl}?_h=1`);
+    return res.redirect(302, humanUrl);
   }
 
   // ── BOT → OG HTML ─────────────────────────────────────────────────────────
