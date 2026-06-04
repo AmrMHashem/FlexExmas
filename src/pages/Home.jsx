@@ -22,35 +22,7 @@ function setGuestFavorites(ids) {
   try { localStorage.setItem(GUEST_FAV_KEY, JSON.stringify(ids)); } catch {}
 }
 
-const WELCOME_KEY = "FlexExams_welcome_shown";
-function WelcomePopup({ user, profile }) {
-  const [visible, setVisible] = React.useState(false);
-  React.useEffect(() => {
-    if (!user) return;
-    if (!sessionStorage.getItem(WELCOME_KEY)) {
-      const t = setTimeout(() => { setVisible(true); sessionStorage.setItem(WELCOME_KEY, "1"); }, 700);
-      return () => clearTimeout(t);
-    }
-  }, [user]);
-  if (!user || !visible) return null;
-  const name = profile?.name || user?.displayName || "Champion";
-  return (
-    <div className="welcome-popup" style={{ position:"fixed", top:88, right:24, zIndex:9999, maxWidth:340, animation:"welcomeIn 0.5s cubic-bezier(0.16,1,0.3,1) both" }}>
-      <style>{`@keyframes welcomeIn{from{opacity:0;transform:translateX(60px) scale(0.9)}to{opacity:1;transform:translateX(0) scale(1)}}`}</style>
-      <div style={{ background:"rgba(69, 12, 107, 0.52)", backdropFilter:"blur(28px)", border:"1.5px solid rgba(255,255,255,0.22)", borderRadius:22, padding:"18px 20px", boxShadow:"0 20px 60px rgba(79,70,229,0.28)" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:14, position:"relative" }}>
-          <div style={{ width:50, height:50, borderRadius:16, background:"linear-gradient(135deg,#7c3aed,#4f46e5)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, fontWeight:900, color:"#fff" }}>{name[0]?.toUpperCase()}</div>
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:15, fontWeight:800, color:"var(--text)", marginBottom:3 }}>Welcome back, {name}! 👋</div>
-            <div style={{ fontSize:12, color:"var(--text2)", fontWeight:500 }}>Ready to ace your next certification?</div>
-          </div>
-          <button onClick={() => setVisible(false)} style={{ position:"absolute", top:-6, right:-6, width:22, height:22, borderRadius:"50%", background:"rgba(0,0,0,0.2)", border:"1px solid rgba(255,255,255,0.2)", color:"var(--text)", cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"inherit" }}>×</button>
-        </div>
-        <div style={{ marginTop:14, height:3, borderRadius:99, background:"linear-gradient(90deg,#7c3aed,#4f46e5,#2563eb)" }} />
-      </div>
-    </div>
-  );
-}
+
 
 function useCounter(target, duration = 1400) {
   const [count, setCount] = useState(0);
@@ -877,7 +849,6 @@ export default function Home({ setPage, setActiveExam, exams: propExams = [], sh
               <div className="fade-up" style={{ display:"inline-flex", alignItems:"center", gap:8, background:"var(--accent-soft)", border:"2px solid var(--accent)", borderRadius:100, padding:"7px 18px", marginBottom:28, fontSize:12.5, color:"var(--accent)", fontWeight:600 }}>
                 <PI type="sparkle" size={13} color="var(--accent)" /> The Sharpest Exam Simulator on the Web
               </div>
-              <WelcomePopup user={user} profile={profile} />
              <h1
   className="fade-up delay-1"
   style={{
