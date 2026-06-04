@@ -448,24 +448,47 @@ const SuggestedExams = React.memo(function SuggestedExams({ currentExam, setPage
   }, [setPage]);
  
 useEffect(() => {
-  if (!currentExam?.suggested) return;
+  if (!currentExam?.suggested?.length) {
+    setSuggested([]);
+    setLoading(false);
+    return;
+  }
+
+  const ids = currentExam.suggested.slice(0, 4);
 
   let mounted = true;
 
-  getDocs(
-    query(
-      collection(db, "exams"),
-      where(documentId(), "in", currentExam.suggested.slice(0, 4))
-    )
-  ).then(snapshot => {
-    if (!mounted) return;
+  const fetchSuggested = async () => {
+    try {
+      setLoading(true);
 
-    setSuggested(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    setLoading(false);
-  });
+      const q = query(
+        collection(db, "exams"),
+        where(documentId(), "in", ids)
+      );
+
+      const snapshot = await getDocs(q);
+
+      if (!mounted) return;
+
+      const data = snapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+
+      setSuggested(data);
+    } catch (err) {
+      console.error("SuggestedExams error:", err);
+      setSuggested([]);
+    } finally {
+      if (mounted) setLoading(false);
+    }
+  };
+
+  fetchSuggested();
 
   return () => { mounted = false; };
-}, [currentExam?.id]);
+}, [currentExam?.id, currentExam?.suggested]);
  
   if (loading || !suggested.length) return null;
  
