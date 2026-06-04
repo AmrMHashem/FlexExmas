@@ -447,27 +447,25 @@ const SuggestedExams = React.memo(function SuggestedExams({ currentExam, setPage
     setTimeout(() => setPage("exam-detail", { exam: examObj }), 60);
   }, [setPage]);
  
-  useEffect(() => {
-    if (!currentExam) return;
-    let mounted = true;
-    getExams()
-      .then(all => {
-        if (!mounted) return;
-        const filtered = all.filter(e =>
-          e.id !== currentExam.id &&
-          e.isActive !== false &&
-          (
-            (e.vendor && currentExam.vendor && e.vendor === currentExam.vendor) ||
-            (e.category && currentExam.category && e.category === currentExam.category) ||
-            (e.topic && currentExam.topic && e.topic === currentExam.topic)
-          )
-        ).slice(0, 4);
-        setSuggested(filtered);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-    return () => { mounted = false; };
-  }, [currentExam?.id]);
+useEffect(() => {
+  if (!currentExam?.suggested) return;
+
+  let mounted = true;
+
+  getDocs(
+    query(
+      collection(db, "exams"),
+      where(documentId(), "in", currentExam.suggested.slice(0, 4))
+    )
+  ).then(snapshot => {
+    if (!mounted) return;
+
+    setSuggested(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    setLoading(false);
+  });
+
+  return () => { mounted = false; };
+}, [currentExam?.id]);
  
   if (loading || !suggested.length) return null;
  
