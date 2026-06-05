@@ -2427,11 +2427,21 @@ useEffect(() => {
     });
 }, [selectedExamId, tab]);
 
-  // ── Admin session cache — reuse data across tab switches (TTL 5 min) ────────
+// ── Admin session cache — reuse data across tab switches (TTL 5 min) ────────
   const _adminCacheRef = useRef({ data: null, ts: 0 });
   const ADMIN_CACHE_TTL = 5 * 60 * 1000;
 
   const load = async (forceRefresh = false) => {
+    // ✅ v6.2: عند forceRefresh نمسح الكاش الداخلي + sessionStorage للـ keys الأساسية
+    if (forceRefresh) {
+      _adminCacheRef.current = { data: null, ts: 0 };
+      try {
+        ["fx_exams:all", "fx_vendors:all", "fx_topics:all"].forEach(k =>
+          sessionStorage.removeItem(k)
+        );
+      } catch {}
+    }
+
     // Serve from cache unless forced (after create/delete/update actions)
     if (!forceRefresh && _adminCacheRef.current.data && Date.now() - _adminCacheRef.current.ts < ADMIN_CACHE_TTL) {
       const c = _adminCacheRef.current.data;
@@ -2475,7 +2485,6 @@ useEffect(() => {
       if (e?.length && !selectedExamId) setSelectedExamId(e[0].id);
 
       // ✅ FIX: Use totalQuestions from exam doc — NO N+1 subcollection reads.
-      // Only fetch subcollection for exams genuinely missing the counter.
       const qCountMap = {};
       const missingCounter = [];
       (e || []).forEach(ex => {
@@ -2525,7 +2534,6 @@ useEffect(() => {
     }
     setLoading(false);
   };
-
   // ── Derived analytics ──────────────────────────────────────────────────────
   const filteredResults = useMemo(() => filterByPeriod(results, analyticsPeriod), [results, analyticsPeriod]);
   const prevResults = useMemo(() => {
