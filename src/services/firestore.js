@@ -1,4 +1,4 @@
-// firestore.js — FlexExams v6.1 — Zero-Waste Firebase Edition
+// firestore.js — FlexExams v6.2 — Smart Cache Invalidation Edition
 // ✅ Memory cache + sessionStorage cache with TTL
 // ✅ Request deduplication (in-flight promises)
 // ✅ limit() on all heavy queries
@@ -9,6 +9,8 @@
 // ✅ v6.1: getUserCertificateForExam — memory cached (saves 1 read per ExamDetail open)
 // ✅ v6.1: getExamDashboardData for guests — zero Firestore reads (all from exam cache)
 // ✅ v6.1: counters TTL extended to 30 min (approximate values, not real-time)
+// ✅ v6.2: Version-based smart invalidation — users see new exams without manual cache clear
+//          ONE lightweight doc read every 5 min → compares version timestamp → fetches only if changed
 
 import {
   db,
@@ -40,6 +42,7 @@ const TTL = {
   progress:  1 * 60 * 1000,  // 1 min
   cert:     10 * 60 * 1000,  // 10 min — certificates per user/exam
   default:   5 * 60 * 1000,
+  version:   5 * 60 * 1000,  // v6.2: check version every 5 min (1 lightweight read)
 };
 
 function getTTL(key) {
@@ -65,10 +68,19 @@ function memSet(key, data) {
   _mem.set(key, { data, ts: Date.now() });
   return data;
 }
+
+// ✅ v6.2: memInvalidate now also clears sessionStorage for the same prefix
 export function memInvalidate(prefix) {
+  // مسح memory cache
   for (const k of _mem.keys()) {
     if (k.startsWith(prefix)) _mem.delete(k);
   }
+  // مسح sessionStorage cache (keys مخزنة بـ "fx_" prefix)
+  try {
+    Object.keys(sessionStorage).forEach(k => {
+      if (k.startsWith("fx_" + prefix)) sessionStorage.removeItem(k);
+    });
+  } catch { /* storage unavailable */ }
 }
 
 // sessionStorage helpers (survive page refresh within same tab)
@@ -113,10 +125,103 @@ async function fsCall(fn) {
 }
 
 // ======================
+// v6.2: VERSION-BASED SMART INVALIDATION
+// ======================
+// الفكرة: doc واحد في Firestore اسمه "settings/contentVersion"
+// فيه { examsVersion, vendorsVersion, topicsVersion } — timestamps
+// لما الأدمن يضيف/يعدل/يحذف نحدث الـ timestamp المناسب
+// اليوزر كل 5 دقايق يعمل قراءة واحدة خفيفة لهذا الـ doc
+// لو الـ timestamp اتغير → نمسح الكاش ونجيب الداتا الجديدة
+// لو مش اتغير → نكمل بالكاش بدون أي قراءة إضافية
+
+const VERSION_DOC_PATH = "settings/contentVersion";
+const VERSION_CHECK_KEY = "version:lastCheck";
+const VERSION_CACHE_KEY = "version:data";
+
+async function getContentVersion() {
+  // قراءة واحدة خفيفة كل 5 دقايق بس
+  const cached = memGet(VERSION_CACHE_KEY);
+  if (cached) return cached;
+
+  try {
+    const snap = await fsCall(() => getDoc(doc(db, "settings", "contentVersion")));
+    const data = snap.exists() ? snap.data() : { examsVersion: 0, vendorsVersion: 0, topicsVersion: 0 };
+    // نخزن في memory بـ TTL 5 دقايق
+    _mem.set(VERSION_CACHE_KEY, { data, ts: Date.now() });
+    return data;
+  } catch {
+    return { examsVersion: 0, vendorsVersion: 0, topicsVersion: 0 };
+  }
+}
+
+async function bumpContentVersion(field) {
+  // نحدث الـ version عند أي تعديل من الأدمن
+  const newVersion = Date.now();
+  try {
+    await fsCall(() => setDoc(
+      doc(db, "settings", "contentVersion"),
+      { [field]: newVersion, updatedAt: serverTimestamp() },
+      { merge: true }
+    ));
+  } catch { /* non-critical */ }
+  // مسح الـ version cache لإجبار القراءة الجديدة
+  _mem.delete(VERSION_CACHE_KEY);
+  return newVersion;
+}
+
+// يتنادى عند أول تحميل للصفحة أو كل 5 دقايق
+// يقارن الـ versions المخزنة عند اليوزر بالـ versions في Firestore
+// لو في فرق → يمسح الكاش المناسب فقط
+export async function checkAndInvalidateStaleCache() {
+  const SS_VERSION_KEY = "fx_local_versions";
+  let localVersions = {};
+  try {
+    const raw = sessionStorage.getItem(SS_VERSION_KEY);
+    if (raw) localVersions = JSON.parse(raw);
+  } catch {}
+
+  // لو آخر check أقل من 5 دقايق → skip (عشان منعملش قراءة كل لحظة)
+  const lastCheck = localVersions._lastCheck || 0;
+  if (Date.now() - lastCheck < TTL.version) return false;
+
+  try {
+    const serverVersions = await getContentVersion();
+    let invalidated = false;
+
+    if (serverVersions.examsVersion && serverVersions.examsVersion !== localVersions.examsVersion) {
+      memInvalidate("exams");
+      invalidated = true;
+    }
+    if (serverVersions.vendorsVersion && serverVersions.vendorsVersion !== localVersions.vendorsVersion) {
+      memInvalidate("vendors");
+      invalidated = true;
+    }
+    if (serverVersions.topicsVersion && serverVersions.topicsVersion !== localVersions.topicsVersion) {
+      memInvalidate("topics");
+      invalidated = true;
+    }
+
+    // حفظ الـ versions الجديدة محلياً
+    try {
+      sessionStorage.setItem(SS_VERSION_KEY, JSON.stringify({
+        ...serverVersions,
+        _lastCheck: Date.now(),
+      }));
+    } catch {}
+
+    return invalidated;
+  } catch {
+    return false;
+  }
+}
+
+// ======================
 // VENDORS
 // ======================
 export const getVendors = () =>
   dedupe("vendors:all", async () => {
+    // v6.2: فحص الـ version أولاً (قراءة واحدة خفيفة)
+    await checkAndInvalidateStaleCache();
     const cached = memGet("vendors:all") || ssGet("vendors:all");
     if (cached) return cached;
     const snap = await fsCall(() => getDocs(collection(db, "vendors")));
@@ -138,17 +243,20 @@ export const createVendor = async (vendorData) => {
     updatedAt: serverTimestamp(),
   }));
   memInvalidate("vendors");
+  await bumpContentVersion("vendorsVersion"); // v6.2
   return ref.id;
 };
 
 export const updateVendor = async (vendorId, vendorData) => {
   await fsCall(() => updateDoc(doc(db, "vendors", vendorId), { ...vendorData, updatedAt: serverTimestamp() }));
   memInvalidate("vendors");
+  await bumpContentVersion("vendorsVersion"); // v6.2
 };
 
 export const deleteVendor = async (vendorId) => {
   await fsCall(() => deleteDoc(doc(db, "vendors", vendorId)));
   memInvalidate("vendors");
+  await bumpContentVersion("vendorsVersion"); // v6.2
 };
 
 // ======================
@@ -156,6 +264,7 @@ export const deleteVendor = async (vendorId) => {
 // ======================
 export const getTopics = () =>
   dedupe("topics:all", async () => {
+    await checkAndInvalidateStaleCache();
     const cached = memGet("topics:all") || ssGet("topics:all");
     if (cached) return cached;
     const snap = await fsCall(() => getDocs(collection(db, "topics")));
@@ -178,17 +287,20 @@ export const createTopic = async (topicData) => {
     updatedAt: serverTimestamp(),
   }));
   memInvalidate("topics");
+  await bumpContentVersion("topicsVersion"); // v6.2
   return ref.id;
 };
 
 export const updateTopic = async (topicId, topicData) => {
   await fsCall(() => updateDoc(doc(db, "topics", topicId), { ...topicData, updatedAt: serverTimestamp() }));
   memInvalidate("topics");
+  await bumpContentVersion("topicsVersion"); // v6.2
 };
 
 export const deleteTopic = async (topicId) => {
   await fsCall(() => deleteDoc(doc(db, "topics", topicId)));
   memInvalidate("topics");
+  await bumpContentVersion("topicsVersion"); // v6.2
 };
 
 // ======================
@@ -235,7 +347,6 @@ export async function refreshUserRole(uid) {
 }
 
 export async function getAllUsers() {
-  // Admin only — no cache (needs fresh data), but limit 500
   const snap = await fsCall(() => getDocs(
     query(collection(db, "users"), orderBy("createdAt", "desc"), limit(500))
   ));
@@ -281,7 +392,6 @@ export async function mergeGuestFavorites(userId, guestFavIds) {
 }
 
 export async function getCountryStats() {
-  // Limit to avoid reading entire users collection — use cached exam count instead
   const snap = await fsCall(() => getDocs(
     query(collection(db, "users"), limit(300))
   ));
@@ -383,6 +493,9 @@ export function generateSlug(title = "") {
 // ======================
 export async function getExams() {
   return dedupe("exams:all", async () => {
+    // v6.2: فحص الـ version أولاً (قراءة واحدة خفيفة كل 5 دقايق)
+    await checkAndInvalidateStaleCache();
+
     const memCached = memGet("exams:all");
     if (memCached) return memCached;
     const ssCached = ssGet("exams:all");
@@ -399,7 +512,6 @@ export async function getExams() {
 
 export async function getExam(id) {
   const cKey = `exams:${id}`;
-  // v6.1: check mem → sessionStorage → Firestore
   const cached = memGet(cKey);
   if (cached) return cached;
   const ssCached = ssGet(cKey);
@@ -422,6 +534,7 @@ export async function createExam(data) {
     createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
   }));
   memInvalidate("exams");
+  await bumpContentVersion("examsVersion"); // v6.2: يخلي اليوزرز يشوفوا الاختبار الجديد
   return ref.id;
 }
 
@@ -430,6 +543,7 @@ export async function updateExam(id, data) {
   if (cleanData.title && !cleanData.slug) cleanData.slug = generateSlug(cleanData.title);
   await fsCall(() => updateDoc(doc(db, "exams", id), { ...cleanData, updatedAt: serverTimestamp() }));
   memInvalidate("exams");
+  await bumpContentVersion("examsVersion"); // v6.2
 }
 
 export async function deleteExam(id) {
@@ -437,19 +551,17 @@ export async function deleteExam(id) {
   const qSnap = await fsCall(() => getDocs(query(collection(db, "questions"), where("examId", "==", id))));
   await Promise.all(qSnap.docs.map(d => deleteDoc(d.ref)));
   memInvalidate("exams");
+  await bumpContentVersion("examsVersion"); // v6.2
 }
 
 export async function incrementExamAttempts(examId) {
   await fsCall(() => updateDoc(doc(db, "exams", examId), {
     attempts: increment(1), updatedAt: serverTimestamp(),
   }));
-  // v6.1: delete only this exam from mem cache (not full invalidate)
-  // counters re-read on next getExam() after 30 min TTL
   _mem.delete(`exams:${examId}`);
 }
 
 export async function getEnrolledCountForExam(examId) {
-  // Use stored counter from exam doc — avoids full users scan
   const exam = await getExam(examId);
   return exam?.enrolledCount ?? 0;
 }
@@ -494,6 +606,7 @@ export async function addQuestions(examId, questions) {
   }));
   memInvalidate(`questions:${examId}`);
   memInvalidate("exams");
+  await bumpContentVersion("examsVersion"); // v6.2
 }
 
 export async function deleteAllExamQuestions(examId) {
@@ -506,6 +619,7 @@ export async function deleteAllExamQuestions(examId) {
   }));
   memInvalidate(`questions:${examId}`);
   memInvalidate("exams");
+  await bumpContentVersion("examsVersion"); // v6.2
 }
 
 export async function deleteQuestion(questionId) {
@@ -520,6 +634,7 @@ export async function deleteQuestion(questionId) {
     })).catch(() => {});
     memInvalidate(`questions:${examId}`);
     memInvalidate("exams");
+    await bumpContentVersion("examsVersion"); // v6.2
   }
 }
 
@@ -692,13 +807,12 @@ export async function deleteReport(reportId) {
 }
 
 // ======================
-// SCORES — use progress subcollection (single read)
+// SCORES
 // ======================
 export async function getUserBestScore(userId, examId) {
   const progress = await getExamProgress(userId, examId);
   if (progress?.bestScore != null) return progress.bestScore;
   if (progress?.lastScore != null) return progress.lastScore;
-  // Fallback: 1 read from results
   const snap = await fsCall(() => getDocs(
     query(collection(db, "results"), where("userId", "==", userId), where("examId", "==", examId), orderBy("score", "desc"), limit(1))
   ));
@@ -753,7 +867,6 @@ export async function getUserCertificates(userId) {
 }
 
 export async function getUserCertificateForExam(userId, examId) {
-  // ✅ v6.1: memory cached — avoids 1 Firestore read every ExamDetail open
   const cKey = `cert:${userId}:${examId}`;
   const cached = memGet(cKey);
   if (cached !== null) return cached;
@@ -765,16 +878,14 @@ export async function getUserCertificateForExam(userId, examId) {
 }
 
 // ======================
-// MERGED DASHBOARD DATA — single batched fetch
+// MERGED DASHBOARD DATA
 // ======================
 export async function getExamDashboardData(userId, examId) {
   try {
-    // v6.1: counters always come from cached exam doc (30 min TTL) — zero extra reads
     const examDoc = await getExam(examId);
     const attemptsCount  = examDoc?.attempts      || 0;
     const enrolledCount  = examDoc?.enrolledCount || 0;
 
-    // v6.1: Guests (no userId) — return counters only, zero Firestore reads
     if (!userId) {
       return {
         isEnrolled: false, bestScore: null, lastScore: null,
@@ -784,11 +895,10 @@ export async function getExamDashboardData(userId, examId) {
       };
     }
 
-    // Logged-in users — 3 parallel reads, all memory-cached
     const [progress, userCert, enrolled] = await Promise.all([
-      getExamProgress(userId, examId),           // cached 1 min
-      getUserCertificateForExam(userId, examId), // cached 10 min (v6.1)
-      getEnrolledExams(userId),                  // cached 5 min
+      getExamProgress(userId, examId),
+      getUserCertificateForExam(userId, examId),
+      getEnrolledExams(userId),
     ]);
     const isEnrolled = enrolled.includes(examId);
 
@@ -813,7 +923,7 @@ export async function getExamDashboardData(userId, examId) {
 }
 
 // ======================
-// WEEKLY COUNTERS — unchanged (runs once/week)
+// WEEKLY COUNTERS
 // ======================
 const WEEKLY_UPDATE_KEY = "flexexams_last_weekly_update";
 
