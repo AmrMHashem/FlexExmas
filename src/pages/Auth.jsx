@@ -474,7 +474,7 @@ export default function Auth({ setPage, showToast, initialMode, onAuthSuccess })
         showToast({ msg: `🎉 Welcome back, ${userName}!`, type: "success" });
         if (onAuthSuccess) onAuthSuccess(); else setPage("home");
       } else {
-        await register(form.name, form.email, form.password);
+await register(form.email, form.password, form.name, form.country, null);
         showToast({ msg: `✨ Welcome aboard, ${form.name}!`, type: "success" });
         if (onAuthSuccess) onAuthSuccess(); else setPage("home");
       }
