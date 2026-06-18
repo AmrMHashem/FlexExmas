@@ -72,7 +72,17 @@ window.__firestoreQuotaExceeded = false;
 
 const _originalGetDocs = getDocs;
 const _originalGetDoc  = getDoc;
-
+// ── Update Last Login ─────────────────────────────────────────────
+export async function updateLastLogin(uid) {
+  if (!uid) return;
+  try {
+    const { updateDoc, doc, serverTimestamp: st } = await import("firebase/firestore");
+    await updateDoc(doc(db, "users", uid), {
+      lastLogin: st(),
+      lastLoginDate: new Date().toISOString(),
+    });
+  } catch { /* silent — non-critical */ }
+}
 // We patch at module level via a global flag — components check this flag
 // before rendering to show a fallback UI (handled in App.jsx)
 export function isFirestoreQuotaExceeded() {
