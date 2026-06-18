@@ -21,6 +21,10 @@ import {
   signInWithEmailAndPassword,
   updateProfile,
 } from "firebase/auth";
+// في signIn handler أو onAuthStateChanged
+import { updateLastLogin } from "../firebase";
+// بعد نجاح signIn
+await updateLastLogin(user.uid);
 
 // ── Context ──────────────────────────────────────────────────────────────────
 const AuthContext = createContext(null);
