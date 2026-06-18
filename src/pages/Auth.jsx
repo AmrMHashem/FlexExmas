@@ -492,25 +492,55 @@ await register(form.email, form.password, form.name, form.country, null);
     setLoading(false);
   }, [mode, form, validate, login, register, showToast, setPage]);
 
-  const handleGoogleSignIn = useCallback(async () => {
-    setGoogleLoading(true);
+const handleGoogleSignIn = useCallback(async () => {
+  setGoogleLoading(true);
+  try {
+    const auth = getAuth();
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    const result = await signInWithPopup(auth, provider);
+    const firebaseUser = result.user;
+    
+    // ✅ FIX: تحقق من وجود المستخدم في Firestore وأنشئه لو مش موجود
     try {
-      const auth = getAuth();
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: "select_account" });
-      const result = await signInWithPopup(auth, provider);
-      const userName = result.user.displayName || "Champion";
-      showToast({ msg: `🎉 Welcome, ${userName}!`, type: "success" });
-      if (onAuthSuccess) onAuthSuccess(); else setPage("home");
-    } catch (error) {
-      const msg = error.code === "auth/popup-closed-by-user"
-        ? "Sign-in popup was closed. Please try again."
-        : "Google sign-in failed. Please try again.";
-      setErrors({ general: msg });
-      showToast({ msg: `❌ ${msg}`, type: "error" });
+      const { doc, getDoc, setDoc, serverTimestamp } = await import("firebase/firestore");
+      const { db } = await import("../firebase");
+      const userRef = doc(db, "users", firebaseUser.uid);
+      const snap = await getDoc(userRef);
+      if (!snap.exists()) {
+        // يوزر جديد سجل أول مرة بـ Google — أنشئ الـ profile
+        const countryCode = await getCountryFromIP().catch(() => null);
+        const found = countryCode ? COUNTRIES.find(c => c.code === countryCode) : null;
+        await setDoc(userRef, {
+          uid:          firebaseUser.uid,
+          name:         firebaseUser.displayName || "User",
+          email:        firebaseUser.email || "",
+          role:         "student",
+          country:      found ? found.name : "Unknown",
+          countryCode:  countryCode || null,
+          photoURL:     firebaseUser.photoURL || null,
+          createdAt:    serverTimestamp(),
+          favorites:    [],
+          enrolledExams:[],
+          stats:        { totalAttempts: 0, totalPassed: 0, averageScore: 0 },
+        });
+      }
+    } catch (firestoreErr) {
+      console.warn("[Auth] Could not create Firestore profile for Google user:", firestoreErr);
     }
-    setGoogleLoading(false);
-  }, [showToast, setPage]);
+
+    const userName = firebaseUser.displayName || "Champion";
+    showToast({ msg: `🎉 Welcome, ${userName}!`, type: "success" });
+    if (onAuthSuccess) onAuthSuccess(); else setPage("home");
+  } catch (error) {
+    const msg = error.code === "auth/popup-closed-by-user"
+      ? "Sign-in popup was closed. Please try again."
+      : "Google sign-in failed. Please try again.";
+    setErrors({ general: msg });
+    showToast({ msg: `❌ ${msg}`, type: "error" });
+  }
+  setGoogleLoading(false);
+}, [showToast, setPage]);
 
   return (
     <>
