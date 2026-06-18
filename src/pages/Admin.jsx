@@ -3812,24 +3812,18 @@ const monthTxRevenue = transactions?.filter(t => {
               <BulkNotifyBar users={users} showToast={showToast} onExport={exportUsersToExcel} user={user} />
 
               <UserManagementPanel
-                users={users}
-                onRefresh={async () => {
-                  setLoadingQ(true);
-                  const qs = await getQuestions(selectedExamId);
-                  setExamQuestions(qs);
-                  setLoadingQ(false);
-                }}
-                showToast={showToast}
-   extraUserActions={(u) => (
-  <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
-    <UserExtraActions u={u} showToast={showToast} adminUser={user} />
-    {/* ✅ Access Roles — تظهر فقط للطلاب (مش للأدمن) */}
-    {u.role !== "admin" && (
-      <AccessRolesSelector u={u} showToast={showToast} />
-    )}
-  </div>
-)}
-              />
+  users={users}
+  onRefresh={() => load(true)}
+  showToast={showToast}
+  extraUserActions={(u) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
+      <UserExtraActions u={u} showToast={showToast} adminUser={user} />
+      {u.role !== "admin" && (
+        <AccessRolesSelector u={u} showToast={showToast} />
+      )}
+    </div>
+  )}
+/>
             </div>
           )}
 
