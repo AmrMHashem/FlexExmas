@@ -2319,7 +2319,103 @@ function ContactsPanel({ showToast, adminUid }) {
     </div>
   );
 }
+// ─── Access Roles Selector ────────────────────────────────────────────────────
+const ADMIN_ACCESS_TABS = [
+  { key: "exams",     label: "📋 Exams"     },
+  { key: "vendors",   label: "🏢 Vendors"   },
+  { key: "topics",    label: "🎓 Topics"    },
+  { key: "import",    label: "📤 Import"    },
+  { key: "questions", label: "❓ Questions" },
+];
 
+function AccessRolesSelector({ u, showToast }) {
+  const currentRoles = u.accessRoles || [];
+  const [roles, setRoles] = React.useState(currentRoles);
+  const [saving, setSaving] = React.useState(false);
+  const [saved, setSaved] = React.useState(false);
+
+  const toggle = (key) => {
+    setRoles(prev =>
+      prev.includes(key) ? prev.filter(r => r !== key) : [...prev, key]
+    );
+    setSaved(false);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const { doc, updateDoc } = await import("firebase/firestore");
+      const { db: fdb } = await import("../firebase");
+      await updateDoc(doc(fdb, "users", u.id), {
+        accessRoles: roles,
+        updatedAt: new Date(),
+      });
+      showToast({ msg: `✅ Access roles updated for ${u.name || u.email}`, type: "success" });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e) {
+      showToast({ msg: `❌ ${e.message}`, type: "error" });
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column", gap: 10,
+      padding: "14px 18px", background: "rgba(99,102,241,0.04)",
+      border: "1.5px solid rgba(99,102,241,0.2)",
+      borderRadius: 14, marginTop: 10,
+    }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+        🔑 Section Access (Manager Permissions)
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {ADMIN_ACCESS_TABS.map(tab => {
+          const active = roles.includes(tab.key);
+          return (
+            <button
+              key={tab.key}
+              onClick={() => toggle(tab.key)}
+              style={{
+                padding: "6px 14px", borderRadius: 99, fontFamily: "inherit",
+                border: `1.5px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                background: active ? "rgba(99,102,241,0.12)" : "transparent",
+                color: active ? "var(--accent)" : "var(--text3)",
+                fontWeight: 700, fontSize: 12, cursor: "pointer",
+                transition: "all 0.18s",
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            padding: "7px 18px", borderRadius: 10,
+            border: "none", background: saving ? "var(--bg3)" : "var(--accent)",
+            color: saving ? "var(--text3)" : "#fff",
+            fontWeight: 800, fontSize: 12, cursor: saving ? "not-allowed" : "pointer",
+            fontFamily: "inherit", transition: "all 0.18s",
+          }}
+        >
+          {saving ? "Saving…" : "💾 Save Roles"}
+        </button>
+        {saved && (
+          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--green)" }}>✓ Saved</span>
+        )}
+        {roles.length > 0 && (
+          <span style={{ fontSize: 11, color: "var(--text3)" }}>
+            {roles.length} section{roles.length > 1 ? "s" : ""} enabled
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
 export default function Admin({ showToast, setPage }) {
   const { user, isAdmin } = useAuth();
   const [tab, setTab] = useState("overview");
@@ -3724,9 +3820,15 @@ const monthTxRevenue = transactions?.filter(t => {
                   setLoadingQ(false);
                 }}
                 showToast={showToast}
-                extraUserActions={(u) => (
-                  <UserExtraActions u={u} showToast={showToast} adminUser={user} />
-                )}
+   extraUserActions={(u) => (
+  <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
+    <UserExtraActions u={u} showToast={showToast} adminUser={user} />
+    {/* ✅ Access Roles — تظهر فقط للطلاب (مش للأدمن) */}
+    {u.role !== "admin" && (
+      <AccessRolesSelector u={u} showToast={showToast} />
+    )}
+  </div>
+)}
               />
             </div>
           )}
