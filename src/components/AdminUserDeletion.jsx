@@ -1,6 +1,7 @@
 // components/AdminUserDeletion.jsx
 // Secure User Deletion — Uses Firebase Cloud Function (deleteUserCompletely)
-// which removes user from Auth + Firestore + Storage + all subcollections
+// ✅ extraUserActions prop support
+// ✅ Last Active fix — reads lastLogin (Timestamp) or lastLoginDate (ISO string)
 import React, { useState, useMemo } from "react";
 import { db } from "../firebase";
 import {
@@ -20,6 +21,45 @@ const Icon = ({ name, size = 16, color = "currentColor" }) => {
   };
   return icons[name] || null;
 };
+
+// ✅ FIX: parse any lastLogin format correctly
+function parseLastLogin(u) {
+  // Priority 1: Firestore Timestamp
+  if (u.lastLogin?.toDate) return u.lastLogin.toDate();
+  // Priority 2: ISO string or number stored as lastLogin
+  if (u.lastLogin) {
+    const d = new Date(u.lastLogin);
+    if (!isNaN(d.getTime())) return d;
+  }
+  // Priority 3: lastLoginDate field
+  if (u.lastLoginDate?.toDate) return u.lastLoginDate.toDate();
+  if (u.lastLoginDate) {
+    const d = new Date(u.lastLoginDate);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return null;
+}
+
+function LastActiveCell({ u }) {
+  const d = parseLastLogin(u);
+  if (!d) return <span style={{ color: "var(--text3)", opacity: 0.5 }}>Never</span>;
+
+  const diff = Date.now() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  const hrs  = Math.floor(mins / 60);
+  const days = Math.floor(hrs / 24);
+
+  const fullDateTime = d.toLocaleString("en-GB", {
+    day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+
+  if (mins < 1)  return <span title={fullDateTime} style={{ color: "var(--green)", fontWeight: 700 }}>Just now</span>;
+  if (mins < 60) return <span title={fullDateTime} style={{ color: "var(--green)", fontWeight: 600 }}>{mins}m ago</span>;
+  if (hrs  < 24) return <span title={fullDateTime} style={{ color: "#f59e0b", fontWeight: 600 }}>{hrs}h ago</span>;
+  if (days < 7)  return <span title={fullDateTime} style={{ color: "var(--text2)" }}>{days}d ago</span>;
+  return <span title={fullDateTime}>{fullDateTime}</span>;
+}
 
 // ─── Confirmation Modal ───────────────────────────────────────────
 function DeleteConfirmModal({ count, onConfirm, onCancel, deleting }) {
@@ -103,11 +143,14 @@ function DeleteConfirmModal({ count, onConfirm, onCancel, deleting }) {
 }
 
 // ─── Main User Management Panel ───────────────────────────────────
-export default function UserManagementPanel({ users, onRefresh, showToast }) {
+// ✅ Added: extraUserActions prop — renders extra UI below each user row
+export default function UserManagementPanel({ users, onRefresh, showToast, extraUserActions }) {
   const [search, setSearch]           = useState("");
   const [selected, setSelected]       = useState(new Set());
   const [showConfirm, setShowConfirm] = useState(false);
   const [deleting, setDeleting]       = useState(false);
+  // ✅ Track expanded rows (for extraUserActions)
+  const [expanded, setExpanded]       = useState(new Set());
 
   const filtered = useMemo(() =>
     users.filter(u =>
@@ -146,6 +189,15 @@ export default function UserManagementPanel({ users, onRefresh, showToast }) {
     });
   };
 
+  const toggleExpand = (id) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   // ─── Secure deletion via Cloud Function ──────────────────────
   const deleteSelected = async () => {
     if (selected.size === 0) return;
@@ -154,7 +206,6 @@ export default function UserManagementPanel({ users, onRefresh, showToast }) {
     try {
       const ids = [...selected];
 
-      // Try Cloud Function first (deletes Auth + Firestore + Storage)
       let usedCloudFn = false;
       try {
         const functions = getFunctions();
@@ -171,7 +222,6 @@ export default function UserManagementPanel({ users, onRefresh, showToast }) {
           type: "success",
         });
       } catch (fnErr) {
-        // Cloud Function not deployed yet — fall back to Firestore-only deletion
         console.warn("Cloud function not available, falling back to Firestore deletion:", fnErr.message);
 
         const BATCH_SIZE = 400;
@@ -184,7 +234,6 @@ export default function UserManagementPanel({ users, onRefresh, showToast }) {
           await batch.commit();
         }
 
-        // Delete related data
         for (const uid of ids) {
           try {
             const resultsSnap = await getDocs(query(collection(db, "results"), where("userId", "==", uid)));
@@ -216,6 +265,7 @@ export default function UserManagementPanel({ users, onRefresh, showToast }) {
   };
 
   const selectedCount = selected.size;
+  const hasExtraActions = typeof extraUserActions === "function";
 
   return (
     <div>
@@ -230,7 +280,6 @@ export default function UserManagementPanel({ users, onRefresh, showToast }) {
 
       {/* Toolbar */}
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
-        {/* Search */}
         <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
           <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text3)" }}>
             <Icon name="search" size={15} />
@@ -249,7 +298,6 @@ export default function UserManagementPanel({ users, onRefresh, showToast }) {
           />
         </div>
 
-        {/* Selection info + delete */}
         {selectedCount > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 10, animation: "fadeIn 0.2s ease" }}>
             <div style={{
@@ -293,13 +341,14 @@ export default function UserManagementPanel({ users, onRefresh, showToast }) {
         {/* Header */}
         <div style={{
           display: "grid",
-          gridTemplateColumns: "44px 1fr 1fr 120px 100px 120px 80px",
+          gridTemplateColumns: hasExtraActions
+            ? "44px 1fr 1fr 120px 100px 140px 80px 44px"
+            : "44px 1fr 1fr 120px 100px 140px 80px",
           padding: "10px 16px", borderBottom: "1px solid var(--border)",
           background: "var(--bg3)", fontSize: 11, fontWeight: 800,
           color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.06em",
           gap: 8,
         }}>
-          {/* Select all checkbox */}
           <div
             onClick={toggleAll}
             style={{
@@ -318,6 +367,7 @@ export default function UserManagementPanel({ users, onRefresh, showToast }) {
           <span>Joined</span>
           <span>Last Active</span>
           <span>Role</span>
+          {hasExtraActions && <span></span>}
         </div>
 
         {/* Rows */}
@@ -327,102 +377,121 @@ export default function UserManagementPanel({ users, onRefresh, showToast }) {
           </div>
         ) : (
           filtered.map((u, i) => {
-            const isChecked = selected.has(u.id);
+            const isChecked  = selected.has(u.id);
+            const isExpanded = expanded.has(u.id);
             return (
-              <div
-                key={u.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "44px 1fr 1fr 120px 100px 120px 80px",
-                  padding: "12px 16px", gap: 8,
-                  borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : "none",
-                  background: isChecked ? "rgba(99,102,241,0.06)" : "transparent",
-                  alignItems: "center", transition: "background 0.15s",
-                }}
-              >
-                {/* Checkbox */}
+              <div key={u.id} style={{ borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : "none" }}>
+                {/* Main row */}
                 <div
-                  onClick={() => toggleOne(u.id)}
                   style={{
-                    width: 20, height: 20, borderRadius: 6, cursor: "pointer",
-                    border: "2px solid " + (isChecked ? "var(--accent)" : "var(--border)"),
-                    background: isChecked ? "var(--accent)" : "transparent",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    transition: "all 0.2s", flexShrink: 0,
+                    display: "grid",
+                    gridTemplateColumns: hasExtraActions
+                      ? "44px 1fr 1fr 120px 100px 140px 80px 44px"
+                      : "44px 1fr 1fr 120px 100px 140px 80px",
+                    padding: "12px 16px", gap: 8,
+                    background: isChecked ? "rgba(99,102,241,0.06)" : "transparent",
+                    alignItems: "center", transition: "background 0.15s",
                   }}
                 >
-                  {isChecked && <Icon name="check" size={11} color="#fff" />}
-                </div>
-
-                {/* Name */}
-                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                  <div style={{
-                    width: 32, height: 32, borderRadius: 10, flexShrink: 0,
-                    background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 13, fontWeight: 900, color: "#fff",
-                  }}>
-                    {(u.name || u.email || "?")[0].toUpperCase()}
+                  {/* Checkbox */}
+                  <div
+                    onClick={() => toggleOne(u.id)}
+                    style={{
+                      width: 20, height: 20, borderRadius: 6, cursor: "pointer",
+                      border: "2px solid " + (isChecked ? "var(--accent)" : "var(--border)"),
+                      background: isChecked ? "var(--accent)" : "transparent",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      transition: "all 0.2s", flexShrink: 0,
+                    }}
+                  >
+                    {isChecked && <Icon name="check" size={11} color="#fff" />}
                   </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {u.name || "—"}
+
+                  {/* Name */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: 10, flexShrink: 0,
+                      background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 13, fontWeight: 900, color: "#fff",
+                    }}>
+                      {(u.name || u.email || "?")[0].toUpperCase()}
                     </div>
-                    {u.role === "admin" && (
-                      <div style={{ fontSize: 10, color: "var(--accent)", fontWeight: 800 }}>ADMIN</div>
-                    )}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {u.name || "—"}
+                      </div>
+                      {u.role === "admin" && (
+                        <div style={{ fontSize: 10, color: "var(--accent)", fontWeight: 800 }}>ADMIN</div>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Email */}
+                  <div style={{ fontSize: 12, color: "var(--text2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {u.email || "—"}
+                  </div>
+
+                  {/* Country */}
+                  <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                    {u.country || "—"}
+                  </div>
+
+                  {/* Join date */}
+                  <div style={{ fontSize: 11, color: "var(--text3)" }}>
+                    {u.createdAt
+                      ? new Date(u.createdAt?.toDate?.() || u.createdAt).toLocaleDateString()
+                      : "—"
+                    }
+                  </div>
+
+                  {/* ✅ Last Active — fixed component */}
+                  <div style={{ fontSize: 11, color: "var(--text3)" }}>
+                    <LastActiveCell u={u} />
+                  </div>
+
+                  {/* Role badge */}
+                  <div>
+                    <span style={{
+                      fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 100,
+                      background: u.role === "admin" ? "rgba(99,102,241,0.12)" : "rgba(100,116,139,0.1)",
+                      color: u.role === "admin" ? "var(--accent)" : "var(--text3)",
+                      textTransform: "uppercase", letterSpacing: "0.05em",
+                    }}>
+                      {u.role || "user"}
+                    </span>
+                  </div>
+
+                  {/* ✅ Expand toggle (only if extraUserActions provided) */}
+                  {hasExtraActions && (
+                    <button
+                      onClick={() => toggleExpand(u.id)}
+                      title={isExpanded ? "Collapse" : "Manage access & actions"}
+                      style={{
+                        width: 28, height: 28, borderRadius: 7,
+                        border: `1.5px solid ${isExpanded ? "var(--accent)" : "var(--border)"}`,
+                        background: isExpanded ? "rgba(99,102,241,0.1)" : "transparent",
+                        color: isExpanded ? "var(--accent)" : "var(--text3)",
+                        cursor: "pointer", fontSize: 12,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        transition: "all 0.18s", flexShrink: 0,
+                      }}
+                    >
+                      {isExpanded ? "▲" : "▼"}
+                    </button>
+                  )}
                 </div>
 
-                {/* Email */}
-                <div style={{ fontSize: 12, color: "var(--text2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {u.email || "—"}
-                </div>
-
-                {/* Country */}
-                <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                  {u.country || "—"}
-                </div>
-
-                {/* Join date */}
-                <div style={{ fontSize: 11, color: "var(--text3)" }}>
-                  {u.createdAt
-                    ? new Date(u.createdAt?.toDate?.() || u.createdAt).toLocaleDateString()
-                    : "—"
-                  }
-                </div>
-
-                {/* Last Active */}
-                <div style={{ fontSize: 11, color: "var(--text3)" }}>
-                  {u.lastLogin || u.lastLoginDate
-                    ? (() => {
-                        const d = new Date(u.lastLogin?.toDate?.() || u.lastLoginDate?.toDate?.() || u.lastLoginDate || u.lastLogin);
-                        if (isNaN(d.getTime())) return <span style={{ color: "var(--text3)", opacity: 0.5 }}>Unknown</span>;
-                        const diff = Date.now() - d.getTime();
-                        const mins = Math.floor(diff / 60000);
-                        const hrs = Math.floor(mins / 60);
-                        const days = Math.floor(hrs / 24);
-                        const fullDateTime = d.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-                        if (mins < 1) return <span title={fullDateTime} style={{ color: "var(--green)", fontWeight: 700 }}>Just now</span>;
-                        if (mins < 60) return <span title={fullDateTime} style={{ color: "var(--green)", fontWeight: 600 }}>{mins}m ago · {fullDateTime}</span>;
-                        if (hrs < 24) return <span title={fullDateTime} style={{ color: "#f59e0b", fontWeight: 600 }}>{hrs}h ago · {fullDateTime}</span>;
-                        return <span title={fullDateTime}>{fullDateTime}</span>;
-                      })()
-                    : <span style={{ color: "var(--text3)", opacity: 0.5 }}>Never</span>
-                  }
-                </div>
-
-                {/* Role badge */}
-                <div>
-                  <span style={{
-                    fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 100,
-                    background: u.role === "admin" ? "rgba(99,102,241,0.12)" : "rgba(100,116,139,0.1)",
-                    color: u.role === "admin" ? "var(--accent)" : "var(--text3)",
-                    textTransform: "uppercase", letterSpacing: "0.05em",
+                {/* ✅ Expanded extra actions panel */}
+                {hasExtraActions && isExpanded && (
+                  <div style={{
+                    padding: "14px 16px 18px 72px",
+                    background: "rgba(99,102,241,0.03)",
+                    borderTop: "1px solid var(--border)",
                   }}>
-                    {u.role || "user"}
-                  </span>
-                </div>
+                    {extraUserActions(u)}
+                  </div>
+                )}
               </div>
             );
           })
