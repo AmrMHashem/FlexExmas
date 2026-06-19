@@ -11,13 +11,23 @@ service cloud.firestore {
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // ✅ FIX v3: حقل subscription مُحمى — لا يُكتب مباشرة من المستخدم.
+    // ✅ NEW: limited "manager" access — granted from Admin → Users → Manage Access.
+    // accessRoles is an array on the user doc, e.g. ["exams","vendors","topics","import","questions"]
+    function isManager(section) {
+      return isAuth() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accessRoles is list &&
+             section in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accessRoles;
+    }
+
+    // ✅ FIX v4: تم تعديل الحقول المحمية لتشمل "purchases" فقط (وليس "purchasedExams")
     function notChangingProtectedFields() {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
         'role', 'createdAt', 'uid',
         'subscription',
         'points', 'purchases', 'totalScore', 'leaderboardRank', 'referralRewards',
-        'isAdmin', 'billing', 'paymentStatus'
+        'isAdmin', 'billing', 'paymentStatus',
+        'accessRoles' // ✅ NEW: only admins can grant/revoke section access
       ]);
     }
 
@@ -36,23 +46,23 @@ service cloud.firestore {
     // ======================= الامتحانات =======================
     match /exams/{examId} {
       allow read, list: if true;
-      allow create, update, delete: if isAdmin();
+      allow create, update, delete: if isAdmin() || isManager('exams') || isManager('import');
       match /questions/{questionId} {
         allow read, list: if true;
-        allow create, update, delete: if isAdmin();
+        allow create, update, delete: if isAdmin() || isManager('exams') || isManager('questions') || isManager('import');
       }
     }
 
     // ======================= الأسئلة =======================
     match /questions/{questionId} {
       allow read, list: if true;
-      allow create, update, delete: if isAdmin();
+      allow create, update, delete: if isAdmin() || isManager('questions') || isManager('import');
     }
 
     // ======================= إحصائيات الامتحانات =======================
     match /examStats/{examId} {
       allow read, list: if true;
-      allow create, update, delete: if isAdmin();
+      allow create, update, delete: if isAdmin() || isManager('exams');
     }
 
     // ======================= النتائج =======================
@@ -78,13 +88,13 @@ service cloud.firestore {
     // ======================= الموردون =======================
     match /vendors/{vendorId} {
       allow read, list: if true;
-      allow create, update, delete: if isAdmin();
+      allow create, update, delete: if isAdmin() || isManager('vendors');
     }
 
     // ======================= المواضيع =======================
     match /topics/{topicId} {
       allow read, list: if true;
-      allow create, update, delete: if isAdmin();
+      allow create, update, delete: if isAdmin() || isManager('topics');
     }
 
     // ======================= الشهادات =======================
@@ -111,7 +121,12 @@ service cloud.firestore {
         && request.resource.data.amount >= 0
         && (request.resource.data.status == 'completed' || request.resource.data.status == 'pending')
       );
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin() || (isAuth()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt'])
+        && request.resource.data.status == 'cancelled'
+      );
+      allow delete: if isAdmin();
     }
 
     // ======================= لوحة المتصدرين =======================
@@ -126,17 +141,42 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
-    // ======================= الإشعارات (تم التعديل) =======================
+    // ======================= الإشعارات =======================
     match /notifications/{notificationId} {
       allow read: if isAdmin() || (isAuth() && resource.data.userId == request.auth.uid);
-      // ✅ المستخدم العادي يمكنه إنشاء إشعار لنفسه فقط
       allow create: if isAdmin() || (isAuth() && request.resource.data.userId == request.auth.uid);
-      // ✅ المستخدم يمكنه تحديث حقل isRead فقط
       allow update: if isAdmin() || (isAuth() 
         && resource.data.userId == request.auth.uid 
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']));
-      // ✅ المستخدم يمكنه حذف إشعاراته الخاصة
       allow delete: if isAdmin() || (isAuth() && resource.data.userId == request.auth.uid);
+    }
+
+    // ======================= رسائل الاتصال (CONTACT MESSAGES) =======================
+    match /contactMessages/{messageId} {
+      allow create: if request.resource.data.keys().hasOnly([
+        'name', 'email', 'subject', 'type', 'message', 'senderType', 
+        'userId', 'userName', 'status', 'adminReply', 'repliedAt', 'createdAt'
+      ])
+      && request.resource.data.name is string
+      && request.resource.data.name.size() > 0
+      && request.resource.data.name.size() <= 100
+      && request.resource.data.email is string
+      && request.resource.data.email.size() <= 100
+      && request.resource.data.email.matches('^[^@\\s]+@([^@\\s]+\\.)+[^@\\s]+$')
+      && request.resource.data.subject is string
+      && request.resource.data.subject.size() > 0
+      && request.resource.data.subject.size() <= 200
+      && request.resource.data.message is string
+      && request.resource.data.message.size() > 0
+      && request.resource.data.message.size() <= 5000
+      && request.resource.data.status == 'unread'
+      && (request.resource.data.senderType == 'member' || request.resource.data.senderType == 'visitor');
+
+      allow read, list: if isAdmin();
+      allow update: if isAdmin() && (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'adminReply', 'repliedAt'])
+      );
+      allow delete: if isAdmin();
     }
 
     // ======================= طلبات الاسترداد =======================
@@ -156,10 +196,15 @@ service cloud.firestore {
     // ======================= الاشتراكات =======================
     match /subscriptions/{userId} {
       allow read: if isAdmin() || isOwner(userId);
-      allow create, update: if isAdmin() || (isOwner(userId)
+      allow create: if isAdmin() || (isOwner(userId)
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == 'active'
         && request.resource.data.keys().hasAll(['userId', 'planId', 'status', 'startDate', 'endDate'])
+      );
+      allow update: if isAdmin() || (isOwner(userId)
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt'])
+        && (request.resource.data.status == 'cancelled' || request.resource.data.status == 'inactive')
       );
       allow delete: if isAdmin();
     }
