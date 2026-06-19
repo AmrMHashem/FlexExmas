@@ -1,6 +1,4 @@
-// NavBar.jsx — v6.7 AccessRoles-aware admin button
-// ✅ isManager = user has accessRoles (shows Admin button but limited access)
-// ✅ Mobile menu shows admin for both full admin + managers
+// NavBar.jsx — v6.6 Mobile consolidated dropdown + theme toggle only on mobile
 import React, { useState, useEffect, useRef } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { Btn, Spinner } from "./UI";
@@ -30,7 +28,6 @@ const NI = ({ n, s = 16 }) => {
     myexams: <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>,
     diamond: <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 15 10-15-10-5zM2 7l10 5 10-5M12 22V12"/></svg>,
     menu: <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
-    key: <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>,
   };
   return <span style={{ display: "flex", alignItems: "center" }}>{icons[n] || null}</span>;
 };
@@ -73,13 +70,7 @@ const DESKTOP_DROPDOWN_ITEMS = [
 ];
 
 const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
-  const { user, profile, isAdmin, isLoading, logout, refreshProfile } = useAuth();
-
-  // ✅ isManager: عضو عنده accessRoles بس مش admin كامل
-  const isManager = !isAdmin && profile?.accessRoles && profile.accessRoles.length > 0;
-  // ✅ canAccessAdmin: إما admin كامل أو manager
-  const canAccessAdmin = isAdmin || isManager;
-
+  const { user, profile, isAdmin, isManager, isLoading, logout, refreshProfile } = useAuth();
   const [refreshing, setRefreshing]   = useState(false);
   const [scrolled, setScrolled]       = useState(false);
   const [moreOpen, setMoreOpen]       = useState(false);
@@ -90,13 +81,14 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
   const [isMobile, setIsMobile] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [notifsLoaded, setNotifsLoaded]   = useState(false);
-
+  
   const moreRef    = useRef(null);
   const pricingRef = useRef(null);
   const bellRef    = useRef(null);
   const infoDropdownRef = useRef(null);
   const mobileMenuRef = useRef(null);
 
+  // Detect mobile viewport
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth <= 768);
     checkMobile();
@@ -145,7 +137,10 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
     const onScroll = () => {
       if (ticking) return;
       ticking = true;
-      requestAnimationFrame(() => { setScrolled(window.scrollY > 10); ticking = false; });
+      requestAnimationFrame(() => {
+        setScrolled(window.scrollY > 10);
+        ticking = false;
+      });
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
@@ -157,40 +152,47 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // Outside-click handlers
-  const makeOutsideClick = (openState, setter, ref) => {
-    useEffect(() => {
-      if (!openState) return;
-      const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setter(false); };
-      const id = setTimeout(() => document.addEventListener("pointerdown", handler), 0);
-      return () => { clearTimeout(id); document.removeEventListener("pointerdown", handler); };
-    }, [openState]);
-  };
-
   useEffect(() => {
     if (!moreOpen) return;
-    const handler = (e) => { if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false); };
+    const handler = (e) => {
+      if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false);
+    };
     const id = setTimeout(() => document.addEventListener("pointerdown", handler), 0);
     return () => { clearTimeout(id); document.removeEventListener("pointerdown", handler); };
   }, [moreOpen]);
 
   useEffect(() => {
+    if (!pricingOpen) return;
+    const handler = (e) => {
+      if (pricingRef.current && !pricingRef.current.contains(e.target)) setPricingOpen(false);
+    };
+    const id = setTimeout(() => document.addEventListener("pointerdown", handler), 0);
+    return () => { clearTimeout(id); document.removeEventListener("pointerdown", handler); };
+  }, [pricingOpen]);
+
+  useEffect(() => {
     if (!bellOpen) return;
-    const handler = (e) => { if (bellRef.current && !bellRef.current.contains(e.target)) setBellOpen(false); };
+    const handler = (e) => {
+      if (bellRef.current && !bellRef.current.contains(e.target)) setBellOpen(false);
+    };
     const id = setTimeout(() => document.addEventListener("pointerdown", handler), 0);
     return () => { clearTimeout(id); document.removeEventListener("pointerdown", handler); };
   }, [bellOpen]);
 
   useEffect(() => {
     if (!infoDropdownOpen) return;
-    const handler = (e) => { if (infoDropdownRef.current && !infoDropdownRef.current.contains(e.target)) setInfoDropdownOpen(false); };
+    const handler = (e) => {
+      if (infoDropdownRef.current && !infoDropdownRef.current.contains(e.target)) setInfoDropdownOpen(false);
+    };
     const id = setTimeout(() => document.addEventListener("pointerdown", handler), 0);
     return () => { clearTimeout(id); document.removeEventListener("pointerdown", handler); };
   }, [infoDropdownOpen]);
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
-    const handler = (e) => { if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target)) setMobileMenuOpen(false); };
+    const handler = (e) => {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target)) setMobileMenuOpen(false);
+    };
     const id = setTimeout(() => document.addEventListener("pointerdown", handler), 0);
     return () => { clearTimeout(id); document.removeEventListener("pointerdown", handler); };
   }, [mobileMenuOpen]);
@@ -221,8 +223,8 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
     const p = await refreshProfile();
     setRefreshing(false);
     showToast({
-      msg: p?.role === "admin" ? "✅ Admin access granted" : p?.accessRoles?.length > 0 ? "✅ Manager access confirmed" : "Profile synced",
-      type: p?.role === "admin" || p?.accessRoles?.length > 0 ? "success" : "info",
+      msg: p?.role === "admin" ? "✅ Admin access granted" : "Profile synced",
+      type: p?.role === "admin" ? "success" : "info",
     });
     setMobileMenuOpen(false);
   };
@@ -267,25 +269,7 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
     return <span style={badgeStyle}>{display}</span>;
   };
 
-  // ✅ Admin button style — different for full admin vs manager
-  const adminBtnStyle = isAdmin ? {
-    padding: "8px 14px", borderRadius: 12,
-    background: "rgba(245,158,11,0.12)",
-    border: "1.5px solid rgba(245,158,11,0.3)",
-    color: "var(--gold)", fontSize: 12, fontWeight: 700,
-    cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
-    transition: "all 0.2s", whiteSpace: "nowrap", flexShrink: 0,
-  } : {
-    // Manager style — purple/accent instead of gold
-    padding: "8px 14px", borderRadius: 12,
-    background: "rgba(99,102,241,0.1)",
-    border: "1.5px solid rgba(99,102,241,0.35)",
-    color: "var(--accent)", fontSize: 12, fontWeight: 700,
-    cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
-    transition: "all 0.2s", whiteSpace: "nowrap", flexShrink: 0,
-  };
-
-  // Mobile dropdown menu
+  // Mobile dropdown menu items
   const renderMobileMenu = () => (
     <div ref={mobileMenuRef} style={{ position: "relative" }}>
       <button
@@ -333,19 +317,8 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
                 <MenuItem icon="heart" label="Favorites" onClick={() => nav("favorites")} />
                 <MenuItem icon="myexams" label="My Exams" onClick={() => nav("my-exams")} />
                 <MenuItem icon="diamond" label="Upgrade Plan" onClick={() => nav("pricing")} />
-                {/* ✅ Show for both full admin AND managers */}
-                {canAccessAdmin && (
-                  <MenuItem
-                    icon={isAdmin ? "settings" : "key"}
-                    label={isAdmin ? "Admin Panel" : "Manager Panel"}
-                    onClick={() => nav("admin")}
-                    highlight
-                  />
-                )}
-                {/* ✅ Show sync only for non-admin non-manager OR always */}
-                {!isAdmin && (
-                  <MenuItem icon="refresh" label="Sync Permissions" onClick={handleRefreshRole} loading={refreshing} />
-                )}
+                {!isAdmin && !isManager && <MenuItem icon="refresh" label="Sync Permissions" onClick={handleRefreshRole} loading={refreshing} />}
+                {(isAdmin || isManager) && <MenuItem icon="settings" label={isAdmin ? "Admin Panel" : "Manager Panel"} onClick={() => nav("admin")} highlight />}
                 <div style={{ height: 1, background: "var(--border)", margin: "8px 12px" }} />
                 <MenuItem icon="logout" label="Sign Out" onClick={handleLogout} danger />
               </>
@@ -383,19 +356,22 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
       <nav style={{
         position: "fixed", top: 0, left: 0, right: 0, zIndex: 1000,
         background: scrolled ? "var(--bg-glass)" : "var(--bg2)",
-        backdropFilter: "var(--nav-blur)", WebkitBackdropFilter: "var(--nav-blur)",
+        backdropFilter: "var(--nav-blur)",
+        WebkitBackdropFilter: "var(--nav-blur)",
         borderBottom: `1px solid ${scrolled ? "var(--border2)" : "var(--border)"}`,
         padding: "0 clamp(16px, 4vw, 48px)",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
+        display: "flex", alignItems: "center",
+        justifyContent: "space-between",
         height: "var(--navbar-height, 68px)",
-        transition: "background 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s, border-color 0.3s",
+        transition: "background 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s",
         boxShadow: scrolled ? "var(--card-shadow)" : "none",
       }}>
         {/* Logo */}
         <div
           onClick={() => nav("home")}
           style={{ display: "flex", alignItems: "center", gap: 0, cursor: "pointer",
-            flexShrink: 0, userSelect: "none", overflow: "visible", marginRight: "12px" }}
+            flexShrink: 0, userSelect: "none", transition: "none",
+            overflow: "visible", marginRight: "12px" }}
         >
           <LogoMark size={70} style={{ marginBottom: "-19px", overflow: "visible" }} />
           <div>
@@ -413,7 +389,7 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
           </div>
         </div>
 
-        {/* Desktop nav links */}
+        {/* Desktop nav links (unchanged) */}
         {!isMobile && (
           <div className="desktop-links" style={{
             display: "flex", gap: 4, alignItems: "center",
@@ -424,8 +400,11 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
               const active = page === p;
               return (
                 <button key={p} onClick={() => nav(p)} style={{
-                  padding: "8px 12px", borderRadius: 50, border: "none",
-                  background: active ? "linear-gradient(135deg,rgba(99,102,241,0.15),rgba(168,85,247,0.15))" : "transparent",
+                  padding: "8px 12px", borderRadius: 50,
+                  border: "none",
+                  background: active
+                    ? "linear-gradient(135deg,rgba(99,102,241,0.15),rgba(168,85,247,0.15))"
+                    : "transparent",
                   color: active ? "var(--accent)" : "var(--text2)",
                   fontSize: 13, fontWeight: 600, cursor: "pointer",
                   display: "inline-flex", alignItems: "center", gap: 6,
@@ -439,13 +418,12 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
                 </button>
               );
             })}
-
-            {/* Info dropdown */}
             <div ref={infoDropdownRef} style={{ position: "relative", overflow: "visible" }}>
               <button
                 onClick={() => setInfoDropdownOpen(prev => !prev)}
                 style={{
-                  padding: "8px 12px", borderRadius: 50, border: "none",
+                  padding: "8px 12px", borderRadius: 50,
+                  border: "none",
                   background: infoDropdownOpen ? "rgba(139,92,246,0.1)" : "transparent",
                   color: infoDropdownOpen ? "var(--accent)" : "var(--text2)",
                   fontSize: 13, fontWeight: 600, cursor: "pointer",
@@ -466,13 +444,16 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
                   zIndex: 1100, padding: "6px 0", backdropFilter: "var(--nav-blur)",
                 }}>
                   {DESKTOP_DROPDOWN_ITEMS.map(({ p, ic, lb }) => (
-                    <button key={p} onClick={() => nav(p)} style={{
-                      display: "flex", alignItems: "center", gap: 12, width: "100%",
-                      padding: "10px 16px", border: "none", background: "transparent",
-                      color: page === p ? "var(--accent)" : "var(--text)",
-                      fontSize: 13, fontWeight: page === p ? 600 : 500,
-                      cursor: "pointer", transition: "background 0.15s", fontFamily: "inherit",
-                    }}
+                    <button
+                      key={p}
+                      onClick={() => nav(p)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 12, width: "100%",
+                        padding: "10px 16px", border: "none", background: "transparent",
+                        color: page === p ? "var(--accent)" : "var(--text)",
+                        fontSize: 13, fontWeight: page === p ? 600 : 500,
+                        cursor: "pointer", transition: "background 0.15s", fontFamily: "inherit",
+                      }}
                       onMouseEnter={e => e.currentTarget.style.background = "var(--bg3)"}
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                     >
@@ -482,42 +463,39 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
                 </div>
               )}
             </div>
-
             {user && (
               <>
-                <button onClick={() => nav("my-exams")} style={{
-                  padding: "8px 14px", borderRadius: 12,
-                  border: "1.5px solid var(--border)", background: "var(--bg3)",
-                  color: "var(--text2)", fontSize: 12, fontWeight: 600,
-                  cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
-                  transition: "all 0.2s", whiteSpace: "nowrap", flexShrink: 0,
-                }}
+                <button
+                  onClick={() => nav("my-exams")}
+                  style={{
+                    padding: "8px 14px", borderRadius: 12,
+                    border: "1.5px solid var(--border)", background: "var(--bg3)",
+                    color: "var(--text2)", fontSize: 12, fontWeight: 600,
+                    cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
+                    transition: "all 0.2s", whiteSpace: "nowrap", flexShrink: 0,
+                  }}
                   onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.color = "var(--accent)"; e.currentTarget.style.background = "var(--accent-soft)"; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text2)"; e.currentTarget.style.background = "var(--bg3)"; }}
                   className="hide-mobile"
                 >
                   <NI n="book" s={13} /> My Exams
                 </button>
-
-                {/* ✅ Admin button — shows for full admin AND managers */}
-                {canAccessAdmin && (
+                {(isAdmin || isManager) && (
                   <button
                     onClick={() => nav("admin")}
-                    style={adminBtnStyle}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.background = isAdmin
-                        ? "rgba(245,158,11,0.2)"
-                        : "rgba(99,102,241,0.18)";
+                    style={{
+                      padding: "8px 14px", borderRadius: 12,
+                      background: "rgba(245,158,11,0.12)",
+                      border: "1.5px solid rgba(245,158,11,0.3)",
+                      color: "var(--gold)", fontSize: 12, fontWeight: 700,
+                      cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
+                      transition: "all 0.2s", whiteSpace: "nowrap", flexShrink: 0,
                     }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.background = isAdmin
-                        ? "rgba(245,158,11,0.12)"
-                        : "rgba(99,102,241,0.1)";
-                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(245,158,11,0.2)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(245,158,11,0.12)"; }}
                     className="hide-mobile"
                   >
-                    <NI n={isAdmin ? "settings" : "key"} s={13} />
-                    {isAdmin ? "Admin" : "Manager"}
+                    <NI n="settings" s={13} /> {isAdmin ? "Admin" : "Manager"}
                   </button>
                 )}
               </>
@@ -528,8 +506,8 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
         {/* Right side actions */}
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0, marginLeft: 8 }}>
           {!isMobile ? (
+            // Desktop: keep original buttons
             <>
-              {/* Favorites */}
               <button
                 className="desktop-only"
                 onClick={() => nav("favorites")}
@@ -539,7 +517,6 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
                 onMouseLeave={e => { if (page !== "favorites") { e.currentTarget.style.background = "var(--bg3)"; e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text3)"; } }}
               ><NI n="heart" s={16} /></button>
 
-              {/* Bell */}
               {user && (
                 <div ref={bellRef} style={{ position: "relative" }}>
                   <button
@@ -548,8 +525,8 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
                     style={{
                       ...iconBtn(bellOpen || unreadCount > 0, {
                         border: unreadCount > 0 ? "rgba(99,102,241,0.5)" : "var(--border)",
-                        bg: unreadCount > 0 ? "rgba(99,102,241,0.1)" : "var(--bg3)",
-                        color: unreadCount > 0 ? "var(--accent)" : "var(--text3)",
+                        bg:     unreadCount > 0 ? "rgba(99,102,241,0.1)" : "var(--bg3)",
+                        color:  unreadCount > 0 ? "var(--accent)" : "var(--text3)",
                       }),
                       position: "relative",
                     }}
@@ -589,15 +566,16 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
                         };
                         const nColor = NOTIF_COLORS[n.type] || NOTIF_COLORS.default;
                         return (
-                          <div key={n.id} onClick={() => handleNotificationClick(n.id)}
-                            style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid var(--border)", cursor: "pointer", opacity: n.isRead ? 0.65 : 1, background: n.isRead ? "transparent" : `${nColor}08`, transition: "background 0.15s" }}
-                            onMouseEnter={e => e.currentTarget.style.background = `${nColor}12`}
-                            onMouseLeave={e => e.currentTarget.style.background = n.isRead ? "transparent" : `${nColor}08`}
-                          >
+                          <div key={n.id} onClick={() => handleNotificationClick(n.id)} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid var(--border)", cursor: "pointer", opacity: n.isRead ? 0.65 : 1, background: n.isRead ? "transparent" : `${nColor}08`, transition: "background 0.15s" }} onMouseEnter={e => e.currentTarget.style.background = `${nColor}12`} onMouseLeave={e => e.currentTarget.style.background = n.isRead ? "transparent" : `${nColor}08`}>
                             <div style={{ width: 34, height: 34, borderRadius: 10, background: n.isRead ? "var(--bg3)" : `${nColor}18`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0, border: `1px solid ${nColor}22` }}>{NOTIF_ICONS[n.type] || NOTIF_ICONS.default}</div>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontWeight: n.isRead ? 600 : 800, fontSize: 12, color: "var(--text)", marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n.title}</div>
                               <div style={{ fontSize: 11, color: "var(--text2)", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{n.body}</div>
+                              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 3 }}>
+                                {n.data?.examTitle && <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 99, background: "rgba(6,182,212,0.1)", color: "#0891b2" }}>📋 {n.data.examTitle.slice(0,18)}</span>}
+                                {n.data?.planId && <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 99, background: "rgba(99,102,241,0.1)", color: "var(--accent)" }}>✨ {n.data.planId}</span>}
+                                {n.data?.amount && <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 99, background: "rgba(16,185,129,0.1)", color: "#10b981" }}>${Number(n.data.amount).toFixed(2)}</span>}
+                              </div>
                               <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 3 }}>{n.createdAt?.toDate ? n.createdAt.toDate().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}</div>
                             </div>
                             {!n.isRead && <div style={{ width: 7, height: 7, borderRadius: "50%", background: nColor, flexShrink: 0, marginTop: 4 }} />}
@@ -609,16 +587,22 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
                 </div>
               )}
 
-              {/* Pro / Upgrade button */}
               {!user ? (
-                <button onClick={() => nav("pricing")} title="Unlock full potential" style={{
-                  display: "flex", alignItems: "center", gap: 8,
-                  padding: "0 16px", height: 40, borderRadius: 40, border: "none",
-                  background: "linear-gradient(135deg, #6366f1, #a855f7)", color: "#fff",
-                  fontWeight: 700, fontSize: 13, letterSpacing: "0.01em",
-                  cursor: "pointer", flexShrink: 0, transition: "opacity 0.2s ease, box-shadow 0.2s ease",
-                  fontFamily: "inherit", boxShadow: "0 2px 6px rgba(139, 92, 246, 0.3)",
-                }}
+                <button
+                  onClick={() => nav("pricing")}
+                  title="Unlock full potential"
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "0 16px", height: 40, borderRadius: 40,
+                    border: "none",
+                    background: "linear-gradient(135deg, #6366f1, #a855f7)",
+                    color: "#fff",
+                    fontWeight: 700, fontSize: 13, letterSpacing: "0.01em",
+                    cursor: "pointer", flexShrink: 0,
+                    transition: "opacity 0.2s ease, box-shadow 0.2s ease",
+                    fontFamily: "inherit",
+                    boxShadow: "0 2px 6px rgba(139, 92, 246, 0.3)",
+                  }}
                   onMouseEnter={e => { e.currentTarget.style.opacity = "0.9"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(139, 92, 246, 0.4)"; }}
                   onMouseLeave={e => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.boxShadow = "0 2px 6px rgba(139, 92, 246, 0.3)"; }}
                 >
@@ -627,14 +611,20 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
                   <span className="auth-label-short" style={{ fontWeight: 800 }}>Pro</span>
                 </button>
               ) : (
-                <button onClick={() => nav("pricing")} title="Upgrade plan" style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  padding: "0 14px", height: 38, borderRadius: 38,
-                  border: "1.5px solid rgba(168,85,247,0.5)",
-                  background: "rgba(168,85,247,0.08)", color: "#a855f7",
-                  fontWeight: 700, fontSize: 12.5, cursor: "pointer", flexShrink: 0,
-                  transition: "all 0.2s ease", fontFamily: "inherit",
-                }}
+                <button
+                  onClick={() => nav("pricing")}
+                  title="Upgrade plan"
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    padding: "0 14px", height: 38, borderRadius: 38,
+                    border: "1.5px solid rgba(168,85,247,0.5)",
+                    background: "rgba(168,85,247,0.08)",
+                    color: "#a855f7",
+                    fontWeight: 700, fontSize: 12.5,
+                    cursor: "pointer", flexShrink: 0,
+                    transition: "all 0.2s ease",
+                    fontFamily: "inherit",
+                  }}
                   onMouseEnter={e => { e.currentTarget.style.background = "rgba(168,85,247,0.18)"; e.currentTarget.style.borderColor = "rgba(168,85,247,0.8)"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "rgba(168,85,247,0.08)"; e.currentTarget.style.borderColor = "rgba(168,85,247,0.5)"; }}
                 >
@@ -652,7 +642,6 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
                 </div>
               ) : user ? (
                 <>
-                  {/* ✅ Show sync for non-admin OR managers who want to refresh */}
                   {!isAdmin && (
                     <button
                       className="desktop-only"
@@ -666,30 +655,21 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
                       {refreshing ? <Spinner size={15} color="var(--accent)" /> : <NI n="refresh" s={16} />}
                     </button>
                   )}
-                  {/* Account button */}
                   <button
                     onClick={() => nav("dashboard")}
                     style={{
                       display: "flex", alignItems: "center", gap: 8,
                       padding: "6px 12px 6px 8px", borderRadius: 40,
-                      border: `1.5px solid ${isAdmin ? "rgba(245,158,11,0.4)" : isManager ? "rgba(99,102,241,0.4)" : "var(--border)"}`,
-                      background: isAdmin ? "rgba(245,158,11,0.08)" : isManager ? "rgba(99,102,241,0.08)" : "var(--bg3)",
+                      border: `1.5px solid ${isAdmin ? "rgba(245,158,11,0.4)" : "var(--border)"}`,
+                      background: isAdmin ? "rgba(245,158,11,0.08)" : "var(--bg3)",
                       color: "var(--text)", cursor: "pointer", fontSize: 13,
                       fontWeight: 600, fontFamily: "inherit", flexShrink: 0, minHeight: 44,
                       transition: "all 0.2s",
                     }}
                     onMouseEnter={e => { e.currentTarget.style.background = isAdmin ? "rgba(245,158,11,0.15)" : "var(--accent-soft)"; e.currentTarget.style.borderColor = "var(--accent)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = isAdmin ? "rgba(245,158,11,0.08)" : isManager ? "rgba(99,102,241,0.08)" : "var(--bg3)"; e.currentTarget.style.borderColor = isAdmin ? "rgba(245,158,11,0.4)" : isManager ? "rgba(99,102,241,0.4)" : "var(--border)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = isAdmin ? "rgba(245,158,11,0.08)" : "var(--bg3)"; e.currentTarget.style.borderColor = isAdmin ? "rgba(245,158,11,0.4)" : "var(--border)"; }}
                   >
-                    <div style={{
-                      width: 32, height: 32, borderRadius: "50%", fontSize: 13, fontWeight: 800, color: "#fff",
-                      background: isAdmin
-                        ? "linear-gradient(135deg,#F59E0B,#D97706)"
-                        : isManager
-                          ? "linear-gradient(135deg,#6366f1,#8b5cf6)"
-                          : "var(--gradient-accent)",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                    }}>{firstChar}</div>
+                    <div style={{ width: 32, height: 32, borderRadius: "50%", fontSize: 13, fontWeight: 800, color: "#fff", background: isAdmin ? "linear-gradient(135deg,#F59E0B,#D97706)" : "var(--gradient-accent)", display: "flex", alignItems: "center", justifyContent: "center" }}>{firstChar}</div>
                     <span className="hide-small" style={{ fontSize: 13 }}>Account</span>
                   </button>
                   <button
@@ -702,13 +682,17 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
                 </>
               ) : (
                 <>
-                  <button onClick={() => goToAuth("login")} className="auth-signin-btn" style={{
-                    height: 36, padding: "0 16px", borderRadius: 20,
-                    border: "1.5px solid var(--border)", background: "var(--bg3)", color: "var(--text2)",
-                    fontSize: 13, fontWeight: 600, cursor: "pointer",
-                    whiteSpace: "nowrap", flexShrink: 0, transition: "all 0.2s",
-                    display: "flex", alignItems: "center", gap: 6, fontFamily: "inherit",
-                  }}
+                  <button
+                    onClick={() => goToAuth("login")}
+                    className="auth-signin-btn"
+                    style={{
+                      height: 36, padding: "0 16px", borderRadius: 20,
+                      border: "1.5px solid var(--border)",
+                      background: "var(--bg3)", color: "var(--text2)",
+                      fontSize: 13, fontWeight: 600, cursor: "pointer",
+                      whiteSpace: "nowrap", flexShrink: 0, transition: "all 0.2s",
+                      display: "flex", alignItems: "center", gap: 6, fontFamily: "inherit",
+                    }}
                     onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.color = "var(--accent)"; e.currentTarget.style.background = "var(--accent-soft)"; }}
                     onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text2)"; e.currentTarget.style.background = "var(--bg3)"; }}
                   >
@@ -716,15 +700,18 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
                     <span className="auth-label-full">Sign In</span>
                     <span className="auth-label-short">In</span>
                   </button>
-                  <button onClick={() => goToAuth("register")} className="auth-signup-btn" style={{
-                    height: 36, padding: "0 16px", borderRadius: 20, border: "none",
-                    background: "linear-gradient(135deg,#6366f1,#a855f7)", color: "#fff",
-                    fontSize: 13, fontWeight: 700, cursor: "pointer",
-                    display: "flex", alignItems: "center", gap: 6,
-                    boxShadow: "0 2px 6px rgba(139,92,246,0.35)",
-                    whiteSpace: "nowrap", flexShrink: 0, transition: "all 0.2s",
-                    fontFamily: "inherit",
-                  }}
+                  <button
+                    onClick={() => goToAuth("register")}
+                    className="auth-signup-btn"
+                    style={{
+                      height: 36, padding: "0 16px", borderRadius: 20, border: "none",
+                      background: "linear-gradient(135deg,#6366f1,#a855f7)", color: "#fff",
+                      fontSize: 13, fontWeight: 700, cursor: "pointer",
+                      display: "flex", alignItems: "center", gap: 6,
+                      boxShadow: "0 2px 6px rgba(139,92,246,0.35)",
+                      whiteSpace: "nowrap", flexShrink: 0, transition: "all 0.2s",
+                      fontFamily: "inherit",
+                    }}
                     onMouseEnter={e => { e.currentTarget.style.opacity = "0.9"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(139,92,246,0.5)"; }}
                     onMouseLeave={e => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.boxShadow = "0 2px 6px rgba(139,92,246,0.35)"; }}
                   >
@@ -736,7 +723,7 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
               )}
             </>
           ) : (
-            // Mobile
+            // Mobile: show theme toggle + menu dropdown
             <>
               <ThemeToggle />
               {renderMobileMenu()}
@@ -745,28 +732,34 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
         </div>
       </nav>
 
-      {/* Bottom Tab Bar (mobile) */}
+      {/* Bottom Tab Bar (mobile) - unchanged */}
       <div className="bottom-tab-bar" aria-label="Main navigation">
         {PRIMARY_TABS.map(({ p, ic, lb }) => {
           const isMore   = p === "more";
           const isActive = isMore ? activeTab === "more" : activeTab === p;
           return (
-            <button key={p} onClick={() => isMore ? setMoreOpen((v) => !v) : nav(p)}
-              aria-label={lb} aria-current={isActive ? "page" : undefined}
+            <button
+              key={p}
+              onClick={() => isMore ? setMoreOpen((v) => !v) : nav(p)}
+              aria-label={lb}
+              aria-current={isActive ? "page" : undefined}
               style={{
                 flex: 1, display: "flex", flexDirection: "column",
                 alignItems: "center", justifyContent: "center", gap: 4,
                 background: "none", border: "none", cursor: "pointer",
                 padding: "6px 0 4px", position: "relative",
                 color: isActive ? "var(--accent)" : "var(--text3)",
-                transition: "color 0.2s", WebkitTapHighlightColor: "transparent",
+                transition: "color 0.2s",
+                WebkitTapHighlightColor: "transparent",
                 minWidth: 0, flexShrink: 1, overflow: "hidden",
               }}
             >
               {isActive && (
                 <span style={{
-                  position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
-                  width: 28, height: 3, borderRadius: "0 0 4px 4px", background: "var(--accent)",
+                  position: "absolute", top: 0, left: "50%",
+                  transform: "translateX(-50%)",
+                  width: 28, height: 3, borderRadius: "0 0 4px 4px",
+                  background: "var(--accent)",
                 }} />
               )}
               <span style={{
@@ -789,21 +782,34 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
         })}
       </div>
 
-      {/* More bottom sheet */}
+      {/* More bottom sheet - unchanged */}
       {moreOpen && (
-        <div className="more-backdrop" onClick={() => setMoreOpen(false)}
-          style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(0,0,0,0.45)", animation: "fadeIn 0.2s ease" }}
+        <div
+          className="more-backdrop"
+          onClick={() => setMoreOpen(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 1100,
+            background: "rgba(0,0,0,0.45)",
+            animation: "fadeIn 0.2s ease",
+          }}
         />
       )}
-      <div ref={moreRef} className="more-sheet" style={{
-        position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 1101,
-        background: "var(--bg2)", borderTop: "1px solid var(--border)",
-        borderRadius: "20px 20px 0 0",
-        padding: "12px 0 calc(env(safe-area-inset-bottom, 0px) + 80px)",
-        transform: moreOpen ? "translateY(0)" : "translateY(100%)",
-        transition: "transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
-        willChange: "transform", boxShadow: "0 -8px 32px rgba(0,0,0,0.15)",
-      }}>
+      <div
+        ref={moreRef}
+        className="more-sheet"
+        style={{
+          position: "fixed", left: 0, right: 0, bottom: 0,
+          zIndex: 1101,
+          background: "var(--bg2)",
+          borderTop: "1px solid var(--border)",
+          borderRadius: "20px 20px 0 0",
+          padding: "12px 0 calc(env(safe-area-inset-bottom, 0px) + 80px)",
+          transform: moreOpen ? "translateY(0)" : "translateY(100%)",
+          transition: "transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+          willChange: "transform",
+          boxShadow: "0 -8px 32px rgba(0,0,0,0.15)",
+        }}
+      >
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
           <div style={{ width: 40, height: 4, borderRadius: 4, background: "var(--border2)" }} />
         </div>
@@ -813,8 +819,7 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
         </div>
         <div style={{ padding: "0 12px", display: "flex", flexDirection: "column", gap: 2 }}>
           {user && (
-            <button onClick={() => { nav("dashboard"); sessionStorage.setItem("dashboardTab", "notifications"); setTimeout(() => window.dispatchEvent(new CustomEvent("dashboard:tab", { detail: "notifications" })), 100); }}
-              style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 12px", borderRadius: 14, border: "none", background: "transparent", color: "var(--text)", fontSize: 15, fontWeight: 500, cursor: "pointer", textAlign: "left", fontFamily: "inherit", transition: "background 0.15s" }}>
+            <button onClick={() => { nav("dashboard"); sessionStorage.setItem("dashboardTab", "notifications"); setTimeout(() => window.dispatchEvent(new CustomEvent("dashboard:tab", { detail: "notifications" })), 100); }} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 12px", borderRadius: 14, border: "none", background: page === "dashboard" ? "var(--accent-soft)" : "transparent", color: page === "dashboard" ? "var(--accent)" : "var(--text)", fontSize: 15, fontWeight: page === "dashboard" ? 700 : 500, cursor: "pointer", textAlign: "left", fontFamily: "inherit", transition: "background 0.15s", WebkitTapHighlightColor: "transparent" }}>
               <span style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, position: "relative", background: unreadCount > 0 ? "rgba(99,102,241,0.1)" : "var(--bg3)", border: `1px solid ${unreadCount > 0 ? "rgba(99,102,241,0.25)" : "var(--border)"}`, display: "flex", alignItems: "center", justifyContent: "center", color: unreadCount > 0 ? "var(--accent)" : "var(--text3)" }}>
                 <NI n="bell" s={18} />
                 {renderNotifBadge(unreadCount, "small")}
@@ -823,70 +828,34 @@ const NavBar = React.memo(function NavBar({ page, setPage, showToast }) {
               {unreadCount > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", background: "rgba(99,102,241,0.1)", padding: "2px 8px", borderRadius: 99 }}>{unreadCount} new</span>}
             </button>
           )}
-
           {MORE_ITEMS.map(({ p, ic, lb }) => {
             const isActive = page === p;
             return (
-              <button key={p} onClick={() => nav(p)}
-                style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 12px", borderRadius: 14, border: "none", background: isActive ? "var(--accent-soft)" : "transparent", color: isActive ? "var(--accent)" : "var(--text)", fontSize: 15, fontWeight: isActive ? 700 : 500, cursor: "pointer", textAlign: "left", fontFamily: "inherit", transition: "background 0.15s" }}
-                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "var(--bg3)"; }}
-                onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
-              >
-                <span style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, background: isActive ? "rgba(139,92,246,0.15)" : "var(--bg3)", border: `1px solid ${isActive ? "rgba(139,92,246,0.25)" : "var(--border)"}`, display: "flex", alignItems: "center", justifyContent: "center", color: isActive ? "var(--accent)" : "var(--text3)" }}><NI n={ic} s={18} /></span>
+              <button key={p} onClick={() => nav(p)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 12px", borderRadius: 14, border: "none", background: isActive ? "var(--accent-soft)" : "transparent", color: isActive ? "var(--accent)" : "var(--text)", fontSize: 15, fontWeight: isActive ? 700 : 500, cursor: "pointer", textAlign: "left", fontFamily: "inherit", transition: "background 0.15s", WebkitTapHighlightColor: "transparent" }} onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "var(--bg3)"; }} onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}>
+                <span style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, background: isActive ? "rgba(139,92,246,0.15)" : "var(--bg3)", border: `1px solid ${isActive ? "rgba(139,92,246,0.25)" : "var(--border)"}`, display: "flex", alignItems: "center", justifyContent: "center", color: isActive ? "var(--accent)" : "var(--text3)", transition: "all 0.15s" }}><NI n={ic} s={18} /></span>
                 <span style={{ flex: 1 }}>{lb}</span>
                 <NI n="chevronRight" s={16} />
               </button>
             );
           })}
-
-          {/* ✅ Admin/Manager panel in bottom sheet */}
-          {canAccessAdmin && (
-            <button onClick={() => nav("admin")}
-              style={{
-                display: "flex", alignItems: "center", gap: 14, padding: "13px 12px", borderRadius: 14, border: "none",
-                background: page === "admin"
-                  ? (isAdmin ? "rgba(245,158,11,0.12)" : "rgba(99,102,241,0.1)")
-                  : "transparent",
-                color: page === "admin" ? (isAdmin ? "var(--gold)" : "var(--accent)") : "var(--text)",
-                fontSize: 15, fontWeight: page === "admin" ? 700 : 500, cursor: "pointer", textAlign: "left", fontFamily: "inherit", transition: "background 0.15s",
-              }}
-            >
-              <span style={{
-                width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-                background: page === "admin"
-                  ? (isAdmin ? "rgba(245,158,11,0.12)" : "rgba(99,102,241,0.1)")
-                  : "var(--bg3)",
-                border: `1px solid ${page === "admin" ? (isAdmin ? "rgba(245,158,11,0.3)" : "rgba(99,102,241,0.3)") : "var(--border)"}`,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                color: page === "admin" ? (isAdmin ? "var(--gold)" : "var(--accent)") : "var(--text3)",
-              }}>
-                <NI n={isAdmin ? "settings" : "key"} s={18} />
-              </span>
+          {(isAdmin || isManager) && (
+            <button onClick={() => nav("admin")} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 12px", borderRadius: 14, border: "none", background: page === "admin" ? "rgba(245,158,11,0.12)" : "transparent", color: page === "admin" ? "var(--gold)" : "var(--text)", fontSize: 15, fontWeight: page === "admin" ? 700 : 500, cursor: "pointer", textAlign: "left", fontFamily: "inherit", transition: "background 0.15s" }}>
+              <span style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, background: page === "admin" ? "rgba(245,158,11,0.12)" : "var(--bg3)", border: `1px solid ${page === "admin" ? "rgba(245,158,11,0.3)" : "var(--border)"}`, display: "flex", alignItems: "center", justifyContent: "center", color: page === "admin" ? "var(--gold)" : "var(--text3)" }}><NI n="settings" s={18} /></span>
               <span style={{ flex: 1 }}>{isAdmin ? "Admin Panel" : "Manager Panel"}</span>
               <NI n="chevronRight" s={16} />
             </button>
           )}
-
           <div style={{ height: 1, background: "var(--border)", margin: "8px 0" }} />
-
           {user ? (
             <>
-              {!isAdmin && (
-                <button onClick={async () => { setMoreOpen(false); await handleRefreshRole(); }} disabled={refreshing}
-                  style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 12px", borderRadius: 14, border: "none", background: "transparent", color: "var(--text)", fontSize: 15, fontWeight: 500, cursor: "pointer", textAlign: "left", fontFamily: "inherit", transition: "background 0.15s" }}
-                  onMouseEnter={e => e.currentTarget.style.background = "var(--bg3)"}
-                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                >
+              {!isAdmin && !isManager && (
+                <button onClick={async () => { setMoreOpen(false); await handleRefreshRole(); }} disabled={refreshing} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 12px", borderRadius: 14, border: "none", background: "transparent", color: "var(--text)", fontSize: 15, fontWeight: 500, cursor: "pointer", textAlign: "left", fontFamily: "inherit", transition: "background 0.15s" }} onMouseEnter={e => e.currentTarget.style.background = "var(--bg3)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                   <span style={{ width: 40, height: 40, borderRadius: 12, background: "var(--bg3)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text3)", flexShrink: 0 }}>{refreshing ? <Spinner size={16} color="var(--accent)" /> : <NI n="refresh" s={18} />}</span>
                   <span>Sync Permissions</span>
                   <NI n="chevronRight" s={16} />
                 </button>
               )}
-              <button onClick={() => { setMoreOpen(false); handleLogout(); }}
-                style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 12px", borderRadius: 14, border: "none", background: "transparent", color: "var(--red)", fontSize: 15, fontWeight: 500, cursor: "pointer", textAlign: "left", fontFamily: "inherit", transition: "background 0.15s" }}
-                onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.08)"}
-                onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-              >
+              <button onClick={() => { setMoreOpen(false); handleLogout(); }} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 12px", borderRadius: 14, border: "none", background: "transparent", color: "var(--red)", fontSize: 15, fontWeight: 500, cursor: "pointer", textAlign: "left", fontFamily: "inherit", transition: "background 0.15s" }} onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.08)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                 <span style={{ width: 40, height: 40, borderRadius: 12, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--red)", flexShrink: 0 }}><NI n="logout" s={18} /></span>
                 <span>Sign Out</span>
               </button>
