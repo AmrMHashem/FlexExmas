@@ -12,6 +12,7 @@ import {
   db,
   onAuthStateChanged,
   signOut,
+  updateLastLogin,
 } from "../firebase";
 import {
   doc, getDoc, setDoc, serverTimestamp,
@@ -95,11 +96,22 @@ export function AuthProvider({ children }) {
     return fetchProfile(auth.currentUser.uid, true);
   }, [fetchProfile]);
 
+  // Track which uid we've already pinged "lastLogin" for in this browser
+  // session — avoids an extra write on every hot-reload / re-render.
+  const lastLoginPingRef = useRef(null);
+
   // Auth state listener — runs ONCE, profile fetch is cached
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
+
+        // ✅ Update "Last Active" — one write per sign-in session, not per render
+        if (lastLoginPingRef.current !== firebaseUser.uid) {
+          lastLoginPingRef.current = firebaseUser.uid;
+          updateLastLogin(firebaseUser.uid);
+        }
+
         // Try cache first — avoids a read on every hot-reload / page focus
         const cached = getCachedProfile(firebaseUser.uid);
         if (cached) {
@@ -114,6 +126,7 @@ export function AuthProvider({ children }) {
         setUser(null);
         setProfile(null);
         clearProfileCache();
+        lastLoginPingRef.current = null;
         setIsLoading(false);
       }
     });
@@ -166,11 +179,18 @@ export function AuthProvider({ children }) {
   // ── derived ──────────────────────────────────────────────────────────────────
   const isAdmin = profile?.role === "admin";
 
+  // ✅ Section-limited "manager" access — granted via Admin → Users → Manage Access.
+  // accessRoles is an array of section keys e.g. ["exams","vendors","topics","import","questions"]
+  const accessRoles = Array.isArray(profile?.accessRoles) ? profile.accessRoles : [];
+  const isManager = !isAdmin && accessRoles.length > 0;
+
   const value = {
     user,
     profile,
     isLoading,
     isAdmin,
+    isManager,
+    accessRoles,
     login,
     register,
     logout,
