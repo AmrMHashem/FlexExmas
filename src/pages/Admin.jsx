@@ -382,6 +382,10 @@ const TABS = [
   { key: "settings",    icon: "settings",label: "Settings",    emoji: "⚙️" },
 ];
 
+// ✅ Section keys a limited "manager" (non-full-admin with accessRoles) can ever
+// be granted access to — kept in sync with ADMIN_ACCESS_TABS below.
+const MANAGER_ALLOWED_TABS = ["exams", "vendors", "topics", "import", "questions"];
+
 // ─── Helper: filter results by period ─────────────────────────────────────────
 function filterByPeriod(results, period) {
   if (period === "all") return results;
@@ -2328,7 +2332,7 @@ const ADMIN_ACCESS_TABS = [
   { key: "questions", label: "❓ Questions" },
 ];
 
-function AccessRolesSelector({ u, showToast }) {
+function AccessRolesSelector({ u, showToast, onUpdated }) {
   const currentRoles = u.accessRoles || [];
   const [roles, setRoles] = React.useState(currentRoles);
   const [saving, setSaving] = React.useState(false);
@@ -2352,6 +2356,7 @@ function AccessRolesSelector({ u, showToast }) {
       });
       showToast({ msg: `✅ Access roles updated for ${u.name || u.email}`, type: "success" });
       setSaved(true);
+      onUpdated && onUpdated(u.id, roles);
       setTimeout(() => setSaved(false), 3000);
     } catch (e) {
       showToast({ msg: `❌ ${e.message}`, type: "error" });
@@ -2416,8 +2421,248 @@ function AccessRolesSelector({ u, showToast }) {
     </div>
   );
 }
+
+// ─── Access Control Panel ─────────────────────────────────────────────────────
+// ✅ One button to grant section access to several selected members at once,
+// ✅ One place to see/control everyone who currently holds manager access.
+function AccessControlPanel({ users, showToast, onUpdated }) {
+  const [mode, setMode] = React.useState("grant"); // "grant" | "manage"
+  const [search, setSearch] = React.useState("");
+  const [selectedIds, setSelectedIds] = React.useState(new Set());
+  const [rolesToGrant, setRolesToGrant] = React.useState([]);
+  const [saving, setSaving] = React.useState(false);
+
+  const candidates = React.useMemo(
+    () => users.filter(u => u.role !== "admin"),
+    [users]
+  );
+
+  const filtered = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return candidates;
+    return candidates.filter(u =>
+      (u.name || "").toLowerCase().includes(q) ||
+      (u.email || "").toLowerCase().includes(q)
+    );
+  }, [candidates, search]);
+
+  const managers = React.useMemo(
+    () => users.filter(u => Array.isArray(u.accessRoles) && u.accessRoles.length > 0),
+    [users]
+  );
+
+  const toggleUser = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleRole = (key) => {
+    setRolesToGrant(prev =>
+      prev.includes(key) ? prev.filter(r => r !== key) : [...prev, key]
+    );
+  };
+
+  const grantToSelected = async () => {
+    if (selectedIds.size === 0) {
+      showToast({ msg: "⚠️ Select at least one member first", type: "error" });
+      return;
+    }
+    if (rolesToGrant.length === 0) {
+      showToast({ msg: "⚠️ Pick at least one section to grant", type: "error" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const { doc, updateDoc } = await import("firebase/firestore");
+      const { db: fdb } = await import("../firebase");
+      const ids = Array.from(selectedIds);
+      await Promise.all(ids.map(id => {
+        const existing = users.find(u => u.id === id)?.accessRoles || [];
+        const merged = Array.from(new Set([...existing, ...rolesToGrant]));
+        onUpdated && onUpdated(id, merged);
+        return updateDoc(doc(fdb, "users", id), { accessRoles: merged, updatedAt: new Date() });
+      }));
+      showToast({ msg: `✅ Access granted to ${ids.length} member${ids.length > 1 ? "s" : ""}`, type: "success" });
+      setSelectedIds(new Set());
+      setRolesToGrant([]);
+    } catch (e) {
+      showToast({ msg: `❌ ${e.message}`, type: "error" });
+    }
+    setSaving(false);
+  };
+
+  const revokeAll = async (u) => {
+    setSaving(true);
+    try {
+      const { doc, updateDoc } = await import("firebase/firestore");
+      const { db: fdb } = await import("../firebase");
+      await updateDoc(doc(fdb, "users", u.id), { accessRoles: [], updatedAt: new Date() });
+      onUpdated && onUpdated(u.id, []);
+      showToast({ msg: `✅ Access revoked for ${u.name || u.email}`, type: "success" });
+    } catch (e) {
+      showToast({ msg: `❌ ${e.message}`, type: "error" });
+    }
+    setSaving(false);
+  };
+
+  const revokeOne = async (u, key) => {
+    const next = (u.accessRoles || []).filter(r => r !== key);
+    setSaving(true);
+    try {
+      const { doc, updateDoc } = await import("firebase/firestore");
+      const { db: fdb } = await import("../firebase");
+      await updateDoc(doc(fdb, "users", u.id), { accessRoles: next, updatedAt: new Date() });
+      onUpdated && onUpdated(u.id, next);
+      showToast({ msg: `✅ ${ADMIN_ACCESS_TABS.find(t => t.key === key)?.label || key} access removed`, type: "success" });
+    } catch (e) {
+      showToast({ msg: `❌ ${e.message}`, type: "error" });
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div style={{
+      background: "var(--bg2)", border: "1.5px solid var(--border)",
+      borderRadius: 16, padding: 18, marginBottom: 18,
+    }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button onClick={() => setMode("grant")} style={{
+          padding: "7px 16px", borderRadius: 10, fontFamily: "inherit",
+          border: `1.5px solid ${mode === "grant" ? "var(--accent)" : "var(--border)"}`,
+          background: mode === "grant" ? "rgba(99,102,241,0.12)" : "transparent",
+          color: mode === "grant" ? "var(--accent)" : "var(--text2)",
+          fontWeight: 800, fontSize: 12, cursor: "pointer",
+        }}>➕ Grant Access</button>
+        <button onClick={() => setMode("manage")} style={{
+          padding: "7px 16px", borderRadius: 10, fontFamily: "inherit",
+          border: `1.5px solid ${mode === "manage" ? "var(--accent)" : "var(--border)"}`,
+          background: mode === "manage" ? "rgba(99,102,241,0.12)" : "transparent",
+          color: mode === "manage" ? "var(--accent)" : "var(--text2)",
+          fontWeight: 800, fontSize: 12, cursor: "pointer",
+        }}>
+          🔑 Manage Access ({managers.length})
+        </button>
+      </div>
+
+      {mode === "grant" ? (
+        <div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+            {ADMIN_ACCESS_TABS.map(tab => {
+              const active = rolesToGrant.includes(tab.key);
+              return (
+                <button key={tab.key} onClick={() => toggleRole(tab.key)} style={{
+                  padding: "6px 14px", borderRadius: 99, fontFamily: "inherit",
+                  border: `1.5px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                  background: active ? "rgba(99,102,241,0.12)" : "transparent",
+                  color: active ? "var(--accent)" : "var(--text3)",
+                  fontWeight: 700, fontSize: 12, cursor: "pointer",
+                }}>{tab.label}</button>
+              );
+            })}
+          </div>
+
+          <input
+            type="text" placeholder="🔍 Search members…" value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{
+              width: "100%", padding: "9px 14px", marginBottom: 10,
+              background: "var(--bg3)", border: "1.5px solid var(--border)",
+              borderRadius: 11, color: "var(--text)", fontSize: 13,
+              fontFamily: "inherit", outline: "none", boxSizing: "border-box",
+            }}
+          />
+
+          <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 12, marginBottom: 12 }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: 16, textAlign: "center", color: "var(--text3)", fontSize: 12 }}>No members found.</div>
+            ) : filtered.map(u => {
+              const checked = selectedIds.has(u.id);
+              return (
+                <div key={u.id} onClick={() => toggleUser(u.id)} style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "9px 12px",
+                  borderBottom: "1px solid var(--border)", cursor: "pointer",
+                  background: checked ? "rgba(99,102,241,0.06)" : "transparent",
+                }}>
+                  <div style={{
+                    width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                    border: `2px solid ${checked ? "var(--accent)" : "var(--border)"}`,
+                    background: checked ? "var(--accent)" : "transparent",
+                  }} />
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{u.name || "—"}</div>
+                  <div style={{ fontSize: 11, color: "var(--text3)" }}>{u.email}</div>
+                  {Array.isArray(u.accessRoles) && u.accessRoles.length > 0 && (
+                    <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--accent)", fontWeight: 700 }}>
+                      {u.accessRoles.length} section{u.accessRoles.length > 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button onClick={grantToSelected} disabled={saving} style={{
+              padding: "9px 20px", borderRadius: 10, border: "none",
+              background: saving ? "var(--bg3)" : "var(--accent)",
+              color: saving ? "var(--text3)" : "#fff", fontWeight: 800, fontSize: 12,
+              cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit",
+            }}>
+              {saving ? "Granting…" : `💾 Grant to ${selectedIds.size} selected`}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div>
+          {managers.length === 0 ? (
+            <div style={{ padding: 16, textAlign: "center", color: "var(--text3)", fontSize: 12 }}>
+              No members currently have section access.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {managers.map(u => (
+                <div key={u.id} style={{
+                  display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+                  padding: "10px 14px", border: "1px solid var(--border)", borderRadius: 12,
+                }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{u.name || "—"}</div>
+                  <div style={{ fontSize: 11, color: "var(--text3)" }}>{u.email}</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: 1 }}>
+                    {(u.accessRoles || []).map(key => {
+                      const tab = ADMIN_ACCESS_TABS.find(t => t.key === key);
+                      return (
+                        <span key={key} onClick={() => !saving && revokeOne(u, key)} title="Click to remove" style={{
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                          padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700,
+                          background: "rgba(99,102,241,0.1)", color: "var(--accent)",
+                          cursor: saving ? "not-allowed" : "pointer",
+                        }}>
+                          {tab?.label || key} ✕
+                        </span>
+                      );
+                    })}
+                  </div>
+                  <button onClick={() => revokeAll(u)} disabled={saving} style={{
+                    padding: "6px 14px", borderRadius: 9, border: "1.5px solid rgba(239,68,68,0.3)",
+                    background: "rgba(239,68,68,0.06)", color: "#ef4444", fontWeight: 700,
+                    fontSize: 11, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit",
+                  }}>
+                    Revoke All
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Admin({ showToast, setPage }) {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isManager, accessRoles, profile } = useAuth();
   const [tab, setTab] = useState("overview");
 
   // Data state
@@ -2505,10 +2750,17 @@ export default function Admin({ showToast, setPage }) {
 
   // ── Load only on mount (no auto-refresh to protect Firebase limits) ──────────
 useEffect(() => {
-  if (isAdmin) {
+  if (isAdmin || isManager) {
     load();
   }
-}, [isAdmin]);
+}, [isAdmin, isManager]);
+// ── Managers land on their first allowed tab, never on admin-only tabs ──────
+useEffect(() => {
+  if (!isAdmin && isManager) {
+    const allowed = MANAGER_ALLOWED_TABS.filter(k => accessRoles.includes(k));
+    if (allowed.length && !allowed.includes(tab)) setTab(allowed[0]);
+  }
+}, [isAdmin, isManager, accessRoles]);
 useEffect(() => {
   if (!selectedExamId || tab !== "questions") return;
   setLoadingQ(true);
@@ -2716,7 +2968,12 @@ useEffect(() => {
   const certificatesIssued = useMemo(() => filteredResults.filter(r => r.mode === "examSimulation" && r.pass).length, [filteredResults]);
   const failedExams = useMemo(() => filteredResults.filter(r => !r.pass).length, [filteredResults]);
 
-  if (!isAdmin) {
+  // ✅ Sync accessRoles changes into local state instantly — no extra Firestore read
+  const handleAccessUpdated = (userId, roles) => {
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, accessRoles: roles } : u));
+  };
+
+  if (!isAdmin && !isManager) {
     return (
       <div style={{ textAlign: "center", padding: "80px 24px" }}>
         <div style={{ fontSize: 64, marginBottom: 16 }}>🚫</div>
@@ -3137,7 +3394,7 @@ const deleteAllAnalyticsData = async () => {
 
       {/* ── Tabs ── */}
       <div style={{ display: "flex", gap: 3, marginBottom: 28, background: "var(--bg2)", borderRadius: 16, padding: 6, boxShadow: "0 2px 8px rgba(0,0,0,0.04)", overflowX: "auto" }}>
-        {TABS.map(({ key, emoji, label }) => (
+        {(isAdmin ? TABS : TABS.filter(t => MANAGER_ALLOWED_TABS.includes(t.key) && accessRoles.includes(t.key))).map(({ key, emoji, label }) => (
           <button key={key} onClick={() => setTab(key)} style={{
             flex: "1 0 auto", padding: "9px 14px", borderRadius: 11, border: "none",
             background: tab === key ? "var(--accent)" : "transparent",
@@ -3811,19 +4068,28 @@ const monthTxRevenue = transactions?.filter(t => {
               {/* ── Bulk Actions Bar ── */}
               <BulkNotifyBar users={users} showToast={showToast} onExport={exportUsersToExcel} user={user} />
 
+              {/* ── Grant / Manage section access for selected members ── */}
+              <AccessControlPanel users={users} showToast={showToast} onUpdated={handleAccessUpdated} />
+
               <UserManagementPanel
-  users={users}
-  onRefresh={() => load(true)}
-  showToast={showToast}
-  extraUserActions={(u) => (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
-      <UserExtraActions u={u} showToast={showToast} adminUser={user} />
-      {u.role !== "admin" && (
-        <AccessRolesSelector u={u} showToast={showToast} />
-      )}
-    </div>
-  )}
-/>
+                users={users}
+                onRefresh={async () => {
+                  setLoadingQ(true);
+                  const qs = await getQuestions(selectedExamId);
+                  setExamQuestions(qs);
+                  setLoadingQ(false);
+                }}
+                showToast={showToast}
+   extraUserActions={(u) => (
+  <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
+    <UserExtraActions u={u} showToast={showToast} adminUser={user} />
+    {/* ✅ Access Roles — تظهر فقط للطلاب (مش للأدمن) */}
+    {u.role !== "admin" && (
+      <AccessRolesSelector u={u} showToast={showToast} onUpdated={handleAccessUpdated} />
+    )}
+  </div>
+)}
+              />
             </div>
           )}
 
