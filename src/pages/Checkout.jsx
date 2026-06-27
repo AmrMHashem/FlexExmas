@@ -1,4 +1,7 @@
-// pages/Checkout.jsx — FlexExams v7.0 (PayPal Live Client-side capture)
+// pages/Checkout.jsx — FlexExams v7.1 (PayPal Live Client-side capture)
+// ✅ v7.1 FIX (Bug #1): لا يتم اعتبار الدفع ناجحًا إلا إذا نجح actions.order.capture()
+//    فعليًا وكانت حالة الطلب COMPLETED. قبل ذلك كان أي خطأ في capture() يُتجاهل
+//    ويُعتبر الدفع ناجحًا، فيُمنح الوصول للاختبار بدون تحصيل فعلي للمال.
 // ✅ PayPal Client ID updated to Live
 // ✅ Instapay: Direct deep link + sender name field
 
@@ -119,6 +122,12 @@ const Icon = ({ name, size = 18, color = "currentColor", style: s }) => {
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="10" />
         <polyline points="9 12 11 14 15 10" />
+      </svg>
+    ),
+    x: (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
       </svg>
     ),
   };
@@ -261,6 +270,14 @@ function AutoRenewToggle({ value, onChange, planId }) {
 }
 
 // ─── PayPal Button (Client-side capture) ─────────────────────────────────────
+// ⚠️ FIX (Bug #1):
+//  - actions.order.capture() القديم كان يُغلَّف بـ try/catch يبلع الخطأ ("ignore")
+//    وبعد ذلك ينادي onSuccess بشكل غير مشروط — أي خطأ في الكابتشر (رفض من البنك،
+//    مشكلة شبكة، رفض من PayPal) كان يظهر للمستخدم كـ "دفع ناجح" ويُمنح الوصول
+//    للاختبار، بينما لا يحدث أي تحصيل فعلي للمال ولا يُضاف للحساب.
+//  - الحل: لا ننادي onSuccess إلا لو نجح capture() فعليًا وكانت
+//    details.status === "COMPLETED". أي حالة تانية (أو استثناء) تُعتبر فشل
+//    ونستدعي onError مع رسالة واضحة، وما يُسجَّل أي transaction ولا يُمنح أي وصول.
 function PayPalButton({ amount, description, currency = "USD", onSuccess, onError, disabled }) {
   const containerRef = useRef(null);
   const rendered = useRef(false);
@@ -316,25 +333,54 @@ function PayPalButton({ amount, description, currency = "USD", onSuccess, onErro
                 },
               ],
             }),
+
+          // ✅ النسخة المُصححة
           onApprove: async (data, actions) => {
             setProcessing(true);
             try {
-              let details = null;
-              try {
-                details = await actions.order.capture();
-              } catch (err) {
-                /* ignore */
+              const details = await actions.order.capture(); // لو فشلت هترمي استثناء فعليًا الآن
+
+              // تحقق صريح من حالة العملية الفعلية من رد PayPal
+              const status = details?.status;
+              // لازم يكون فيه على الأقل purchase_unit واحد فيه capture بحالة COMPLETED
+              const captureNode =
+                details?.purchase_units?.[0]?.payments?.captures?.[0] || null;
+              const captureStatus = captureNode?.status;
+
+              const isReallyPaid =
+                status === "COMPLETED" || captureStatus === "COMPLETED";
+
+              if (!isReallyPaid) {
+                // الدفع لم يكتمل فعليًا — لا نمنح أي وصول ولا نسجل transaction ناجحة
+                onError(
+                  new Error(
+                    `Payment was not completed (status: ${status || captureStatus || "unknown"}). No charge was made. Please try again or use a different payment method.`
+                  )
+                );
+                setProcessing(false);
+                return;
               }
+
               onSuccess({
                 orderID: data.orderID,
                 payerID: data.payerID,
                 details,
+                captureId: captureNode?.id || null,
+                captureStatus: captureStatus || status,
               });
             } catch (err) {
-              onError(err);
+              // أي فشل في actions.order.capture() (شبكة، رفض من البنك، رفض PayPal...)
+              // يُعتبر فشل حقيقي في الدفع — لا "نجاح وهمي" بعد الآن
+              console.error("PayPal capture failed:", err);
+              onError(
+                new Error(
+                  "PayPal could not complete the charge (capture failed). No money was charged. Please try again."
+                )
+              );
             }
             setProcessing(false);
           },
+
           onError: (err) => {
             onError(err);
             setProcessing(false);
@@ -623,7 +669,6 @@ function InstapayForm({ amount, description, userId, planId, examId, onSuccess, 
     let fallbackUrl = '';
 
     if (isAndroid) {
-      // Android intent مع package صحيح
       deepLink = `intent://pay?receiver=${encodeURIComponent(receiver)}&amount=${amountEGPNum}#Intent;scheme=instapay;package=com.egyptianbanks.instapay;end;`;
       fallbackUrl = 'https://play.google.com/store/apps/details?id=com.egyptianbanks.instapay';
     } else if (isIOS) {
@@ -634,10 +679,8 @@ function InstapayForm({ amount, description, userId, planId, examId, onSuccess, 
       fallbackUrl = '';
     }
 
-    // محاولة فتح التطبيق
     window.location.href = deepLink;
 
-    // بعد 2 ثانية، إذا لم يتم فتح التطبيق (لا يزال المتصفح مرئياً)، اعرض رسالة
     setTimeout(() => {
       if (!document.hidden) {
         const userConfirmed = confirm(
@@ -1075,6 +1118,9 @@ export default function Checkout({ setPage, showToast, checkoutData }) {
           paymentMethod: data.method || "paypal",
           paypalOrderId: data.orderID || null,
           paypalPayerId: data.payerID || null,
+          // ✅ نخزن أيضًا captureId و captureStatus لو متاحين (دليل تحصيل فعلي)
+          paypalCaptureId: data.captureId || null,
+          paypalCaptureStatus: data.captureStatus || null,
           referenceId: data.orderID || null,
           status: "completed",
           couponCode: couponAppliedState ? couponCode : null,
