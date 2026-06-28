@@ -1,6 +1,8 @@
 // pages/ExamDetail.jsx — v8.3 — Fixed mobile overflow issues
 // ✅ Fixed: horizontal overflow on mobile devices
 // ✅ When applied coupon makes exam free, show a direct claim button
+// ✅ v8.4 FIX: re-check subscription access fresh before starting quiz
+//    (prevents expired subscription from granting quiz access when page was kept open)
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useAuth } from "../hooks/useAuth";
@@ -289,15 +291,15 @@ function SmartStickyPanel({ children, topOffset = 24 }) {
       }
     });
   }, [topOffset, applyTransform]);
-  
-useEffect(() => {
-  const url = new URL(window.location.href);
-  if (url.searchParams.has('_h')) {
-    url.searchParams.delete('_h');
-    window.history.replaceState({}, document.title, url.toString());
-  }
-}, []);
-  
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('_h')) {
+      url.searchParams.delete('_h');
+      window.history.replaceState({}, document.title, url.toString());
+    }
+  }, []);
+
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", onResize, { passive: true });
@@ -441,57 +443,57 @@ function CouponInput({ examId, originalPrice, onApply, userId }) {
 const SuggestedExams = React.memo(function SuggestedExams({ currentExam, setPage }) {
   const [suggested, setSuggested] = useState([]);
   const [loading, setLoading]     = useState(true);
- 
+
   const goToExam = useCallback((examObj) => {
     window.scrollTo({ top: 0, behavior: "smooth" });
     setTimeout(() => setPage("exam-detail", { exam: examObj }), 60);
   }, [setPage]);
- 
-useEffect(() => {
-  if (!currentExam?.suggested?.length) {
-    setSuggested([]);
-    setLoading(false);
-    return;
-  }
 
-  const ids = currentExam.suggested.slice(0, 4);
-
-  let mounted = true;
-
-  const fetchSuggested = async () => {
-    try {
-      setLoading(true);
-
-      const q = query(
-        collection(db, "exams"),
-        where(documentId(), "in", ids)
-      );
-
-      const snapshot = await getDocs(q);
-
-      if (!mounted) return;
-
-      const data = snapshot.docs.map(d => ({
-        id: d.id,
-        ...d.data()
-      }));
-
-      setSuggested(data);
-    } catch (err) {
-      console.error("SuggestedExams error:", err);
+  useEffect(() => {
+    if (!currentExam?.suggested?.length) {
       setSuggested([]);
-    } finally {
-      if (mounted) setLoading(false);
+      setLoading(false);
+      return;
     }
-  };
 
-  fetchSuggested();
+    const ids = currentExam.suggested.slice(0, 4);
 
-  return () => { mounted = false; };
-}, [currentExam?.id, currentExam?.suggested]);
- 
+    let mounted = true;
+
+    const fetchSuggested = async () => {
+      try {
+        setLoading(true);
+
+        const q = query(
+          collection(db, "exams"),
+          where(documentId(), "in", ids)
+        );
+
+        const snapshot = await getDocs(q);
+
+        if (!mounted) return;
+
+        const data = snapshot.docs.map(d => ({
+          id: d.id,
+          ...d.data()
+        }));
+
+        setSuggested(data);
+      } catch (err) {
+        console.error("SuggestedExams error:", err);
+        setSuggested([]);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    fetchSuggested();
+
+    return () => { mounted = false; };
+  }, [currentExam?.id, currentExam?.suggested]);
+
   if (loading || !suggested.length) return null;
- 
+
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, padding: "clamp(20px,4vw,28px)" }}>
       <h2 style={{ fontSize: "clamp(16px,4vw,18px)", fontWeight: 700, marginBottom: 20 }}>Related Exams</h2>
@@ -667,16 +669,12 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   }, [user?.uid, exam?.id]);
 
   // ── Dashboard data ────────────────────────────────────────────────
-  // v6.1: runs for guests too — gets enrolledCount/attempts from exam doc cache (0 reads)
-  //       for members — progress + cert are memory-cached (max 2 reads, usually 0)
   useEffect(() => {
     if (!exam) return;
-    // Cache key: guests share one key per exam; members get per-user key
     const cacheKey = user?.uid
       ? `exam_dashboard_${user.uid}_${exam.id}`
       : `exam_dashboard_guest_${exam.id}`;
     const cached = cacheRef.current[cacheKey];
-    // guests: 30 min TTL (matches exam doc cache); members: 5 min
     const cacheTTL = user?.uid ? 5 * 60 * 1000 : 30 * 60 * 1000;
     if (cached && (Date.now() - cached.timestamp) < cacheTTL) {
       setDashboard(cached.data);
@@ -686,7 +684,6 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     abortControllerRef.current = new AbortController();
     const loadDashboard = async () => {
       try {
-        // pass null for guests — getExamDashboardData returns counters-only (0 reads)
         const data = await getExamDashboardData(user?.uid || null, exam.id);
         setDashboard(data);
         cacheRef.current[cacheKey] = { data, timestamp: Date.now() };
@@ -732,6 +729,8 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     }
   }, [user, exam?.id, showToast]);
 
+  // ── handleStart — v8.4 FIX: always re-check access fresh before launching quiz
+  //    هذا يمنع الاشتراك المنتهي من منح وصول للاختبار لو ظل المستخدم في الصفحة
   const handleStart = useCallback(async (resumeProgress = false) => {
     if (exam.isActive === false) { showToast({ msg: "🔒 This exam is currently unavailable", type: "error" }); return; }
     let pool = fullQuestions.length > 0 ? [...fullQuestions] : [];
@@ -748,7 +747,13 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
         return;
       }
     }
-    const access        = userAccess;
+
+    // ── v8.4 FIX: re-fetch access fresh every time quiz is started ──
+    // هذا يضمن أن الاشتراك المنتهي لا يمنح وصولاً حتى لو ظلت الصفحة مفتوحة
+    const freshAccess = await checkUserAccess(user?.uid, exam.id);
+    setUserAccess(freshAccess);
+
+    const access        = freshAccess;
     const limit         = getAccessLimit(access?.accessType || (user ? "free" : "guest"));
     const isFreeExam    = !exam.pricing?.price || exam.pricing?.isFree;
     const hasFullAccess = access?.hasAccess || isFreeExam;
@@ -774,7 +779,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
       limitPercent: Math.round(limit * 100),
       fullExamTotal: fullQuestions.length,
     });
-  }, [exam, fullQuestions, user, userAccess, mode, reviewSettings, dashboard.savedProgress, startQuiz, showToast, incrementAttempts]);
+  }, [exam, fullQuestions, user, mode, reviewSettings, dashboard.savedProgress, startQuiz, showToast, incrementAttempts]);
 
   const handleResumeExam = useCallback(async () => {
     setShowResumeModal(false);
@@ -1161,7 +1166,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
                 </div>
               )}
             </div>
-            
+
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16, marginBottom: 28 }}>
               <div>
                 <div style={{ fontSize: "clamp(11px, 3vw, 12px)", color: "var(--text3)" }}>Total Questions</div>
