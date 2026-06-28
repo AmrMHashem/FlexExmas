@@ -4,9 +4,6 @@ import { useAuth } from "../hooks/useAuth";
 import { saveResult, saveExamProgress, getExamProgress, clearExamProgress } from "../services/firestore";
 import { updateLeaderboardStats } from "./Leaderboard";
 import { processReferralOnPurchase } from "../components/ReferralSystem";
-// ✅ FIX (Bug #2): نستورد فحص الـ access نتأكد منه هنا بشكل مباشر ومستقل
-//    عن أي state قديم اتحسب في ExamDetail قبل كده.
-import { checkUserAccess, getAccessLimit } from "../services/payment";
 
 import {
   Btn,
@@ -46,66 +43,7 @@ function stripHtml(html) {
 
 export default function Quiz({ quizData, setPage, setResultData, showToast }) {
   const { user, profile } = useAuth();
-  // ✅ FIX (Bug #2): نسمّي القايمة الأصلية rawQuestions، والمستخدمة فعليًا في
-  // الكويز هي questions (state) اللي ممكن تتقصّ لو الـ access اتغيّر/انتهى.
-  const { exam, questions: rawQuestions, mode, duration, reviewSettings, isGuest } = quizData;
-
-  // ====== Bug #2 FIX: Live access re-verification guard ======
-  // بنعيد التحقق من حالة الوصول (الاشتراك / الشراء) لحظة دخول الكويز فعليًا،
-  // بدل الاعتماد الكامل على userAccess اللي اتحسب في ExamDetail وقت تحميل
-  // الصفحة فقط — لو الاشتراك انتهى وكان التاب مفتوح من قبل كده، أو لو فيه أي
-  // تأخير بين فتح صفحة الامتحان والضغط على Start، هنا بيتم تصحيح الوضع فورًا.
-  const [questions, setQuestions] = useState(rawQuestions);
-  const [accessChecked, setAccessChecked] = useState(false);
-  const [accessBlocked, setAccessBlocked] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        if (!exam?.id) { if (mounted) setAccessChecked(true); return; }
-
-        const isFreeExam = !exam.pricing?.price || exam.pricing?.isFree;
-        if (isFreeExam) {
-          if (mounted) setAccessChecked(true);
-          return;
-        }
-
-        const access = await checkUserAccess(user?.uid, exam.id);
-        if (!mounted) return;
-
-        if (!access?.hasAccess) {
-          // مفيش access كامل (سواء كان الاشتراك انتهى، أو الشراء اترفند، أو ضيف)
-          const limit = getAccessLimit(access?.accessType || (user ? "free" : "guest"));
-          const fullTotal = quizData.fullExamTotal || rawQuestions.length;
-          const allowedCount = Math.max(3, Math.ceil(fullTotal * limit));
-
-          if (rawQuestions.length > allowedCount) {
-            // كان معاه access كامل وقت ما بدأ (أو الصفحة قديمة) لكن دلوقتي مفيش —
-            // نقصّ الأسئلة فورًا على المعاينة المجانية المسموحة بس
-            showToast({
-              msg: "⚠️ انتهى اشتراكك أو صلاحية الوصول لهذا الاختبار — تم تحويلك للمعاينة المجانية المتاحة فقط.",
-              type: "warning",
-            });
-            setQuestions(rawQuestions.slice(0, allowedCount));
-          }
-        } else {
-          // عنده access كامل فعليًا — نتأكد إن الأسئلة كاملة (مش متقصوصة بالغلط)
-          setQuestions(rawQuestions);
-        }
-
-        setAccessChecked(true);
-      } catch (err) {
-        console.error("Quiz access re-check failed:", err);
-        // في حالة فشل الفحص، نكمل بالـ pool اللي جاي من ExamDetail (fail-open
-        // مقصود هنا عشان مانوقفش امتحان شغال بسبب مشكلة شبكة عابرة)
-        if (mounted) setAccessChecked(true);
-      }
-    })();
-    return () => { mounted = false; };
-    // يتم التنفيذ مرة واحدة فقط عند بداية تحميل الكويز
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const { exam, questions, mode, duration, reviewSettings, isGuest } = quizData;
 
   // ====== Exam Segmentation ======
   const isSegmented = mode === "examSimulation" && questions.length > 40;
@@ -464,9 +402,6 @@ export default function Quiz({ quizData, setPage, setResultData, showToast }) {
     setSaving(true);
 
     let correct = 0;
-    // ✅ FIX (Bug #2): التصحيح بيتم على questions (الـ state اللي ممكن تكون
-    // اتقصّت بسبب انتهاء access)، مش على rawQuestions الأصلية اللي ممكن تكون
-    // أكبر من المسموح فعليًا.
     const details = questions.map((q, qIdx) => {
       let userAns = [];
       let flaggedStatus = false;
@@ -513,12 +448,8 @@ export default function Quiz({ quizData, setPage, setResultData, showToast }) {
     const timeTaken = Math.round((Date.now() - started) / 1000);
 
     // isLimited: came from ExamDetail when user has partial access
-    // ✅ FIX (Bug #2): لو الكويز اتقص هنا بسبب انتهاء access (questions.length
-    // أصغر من rawQuestions.length)، نعتبره limited برضو حتى لو ExamDetail
-    // كانت بعتت isLimited=false وقت بدء الامتحان.
-    const wasTrimmedHere = questions.length < rawQuestions.length;
-    const isLimited = quizData.isLimited || wasTrimmedHere || false;
-    const fullExamTotal = quizData.fullExamTotal || quizData.exam?.totalQuestions || rawQuestions.length || null;
+    const isLimited = quizData.isLimited || false;
+    const fullExamTotal = quizData.fullExamTotal || quizData.exam?.totalQuestions || null;
 
     const result = {
       examId: exam.id,
@@ -573,7 +504,7 @@ export default function Quiz({ quizData, setPage, setResultData, showToast }) {
     setResultData(result);
     setSaving(false);
     setPage("result");
-  }, [answers, flagged, questions, rawQuestions, exam, user, profile, started, mode, reviewSettings, isSegmented, totalParts, setPage, setResultData, getLocalProgressKey, quizData.isLimited, quizData.fullExamTotal, quizData.exam, isGuest]);
+  }, [answers, flagged, questions, exam, user, profile, started, mode, reviewSettings, isSegmented, totalParts, setPage, setResultData, getLocalProgressKey]);
 
   const handleContinueNextPart = async () => {
     await saveProgressToFirestore();
@@ -616,22 +547,6 @@ export default function Quiz({ quizData, setPage, setResultData, showToast }) {
     setShowExitConfirm(false);
     setPage("exam-detail");
   };
-
-  // ========== Access re-check loading screen ==========
-  // ✅ FIX (Bug #2): قبل ما نعرض أي سؤال، لازم ننتظر نتيجة فحص الـ access
-  // الحقيقي، عشان منعرضش أسئلة هيتم قصها لحظة بعد كده.
-  if (!accessChecked) {
-    return (
-      <div style={{
-        position: "fixed", inset: 0, background: "var(--bg)",
-        display: "flex", flexDirection: "column", alignItems: "center",
-        justifyContent: "center", zIndex: 999, gap: 12,
-      }}>
-        <Spinner size={40} color="var(--accent)" />
-        <p style={{ color: "var(--text2)", fontSize: 14 }}>Verifying your access...</p>
-      </div>
-    );
-  }
 
   // ========== Resume choice modal ==========
   if (showResumeChoice) {
