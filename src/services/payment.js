@@ -692,13 +692,24 @@ export async function grantExamAccess(userId, examId, txId) {
 }
 
 // ─── Check User Access ────────────────────────────────────────────
+// FIX: اشتراك منتهي التاريخ يُعامل معاملة الاشتراك الملغي تماماً —
+//      لا يُمنح الوصول حتى لو status لا يزال "active" في Firestore
 export async function checkUserAccess(userId, examId) {
   if (!userId) return { hasAccess: false, accessType: "guest" };
   try {
     const subSnap = await getDoc(doc(db, "subscriptions", userId));
     const subData = subSnap.exists() ? subSnap.data() : null;
 
-    const subBlocked = subData && ["cancelled", "refunded"].includes(subData.status);
+    // ── FIX: اعتبر الاشتراك المنتهي بالتاريخ مسدوداً تماماً ──
+    // سواء كان status "active" أو "cancelled" أو "refunded"
+    // لو endDate فات → مسدود من الوصول عبر الاشتراك
+    const subExpired = subData
+      ? new Date(subData.endDate) <= new Date()
+      : false;
+
+    const subBlocked = subData
+      ? (["cancelled", "refunded"].includes(subData.status) || subExpired)
+      : false;
 
     const snap = await getDoc(doc(db, "users", userId));
     const userData = snap.exists() ? snap.data() : null;
@@ -710,6 +721,7 @@ export async function checkUserAccess(userId, examId) {
 
     const subRefunded = userData?.subscriptionRefunded === true;
 
+    // ── لو الاشتراك مسدود أو منتهي أو مسترد — لا وصول عبر الاشتراك ──
     if (!subBlocked && !subRefunded) {
       if (subData?.status === "active" && new Date(subData.endDate) > new Date()) {
         return { hasAccess: true, accessType: "subscription", subscription: subData };
@@ -718,7 +730,10 @@ export async function checkUserAccess(userId, examId) {
       if (!userData) return { hasAccess: false, accessType: "free" };
 
       const embeddedSub = userData.subscription;
-      if (embeddedSub?.status === "active" && new Date(embeddedSub.endDate) > new Date()) {
+      if (
+        embeddedSub?.status === "active" &&
+        new Date(embeddedSub.endDate) > new Date()
+      ) {
         return { hasAccess: true, accessType: "subscription", subscription: embeddedSub };
       }
 
@@ -741,6 +756,7 @@ export async function checkUserAccess(userId, examId) {
 
     if (!userData) return { hasAccess: false, accessType: "free" };
 
+    // ── الاختبارات المشتراة بشكل منفرد لا تتأثر بانتهاء الاشتراك ──
     if (examId && userData.purchasedExams) {
       const purchased = userData.purchasedExams;
       const hasPurchased = Array.isArray(purchased)
