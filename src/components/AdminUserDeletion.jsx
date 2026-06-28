@@ -22,6 +22,61 @@ const Icon = ({ name, size = 16, color = "currentColor" }) => {
   return icons[name] || null;
 };
 
+// ─── Country Code → Full Name Map ─────────────────────────────────
+const COUNTRY_NAMES = {
+  AF: "Afghanistan", AL: "Albania", DZ: "Algeria", AD: "Andorra", AO: "Angola",
+  AG: "Antigua and Barbuda", AR: "Argentina", AM: "Armenia", AU: "Australia",
+  AT: "Austria", AZ: "Azerbaijan", BS: "Bahamas", BH: "Bahrain", BD: "Bangladesh",
+  BB: "Barbados", BY: "Belarus", BE: "Belgium", BZ: "Belize", BJ: "Benin",
+  BT: "Bhutan", BO: "Bolivia", BA: "Bosnia and Herzegovina", BW: "Botswana",
+  BR: "Brazil", BN: "Brunei", BG: "Bulgaria", BF: "Burkina Faso", BI: "Burundi",
+  CV: "Cape Verde", KH: "Cambodia", CM: "Cameroon", CA: "Canada",
+  CF: "Central African Republic", TD: "Chad", CL: "Chile", CN: "China",
+  CO: "Colombia", KM: "Comoros", CG: "Congo", CD: "Congo (DRC)", CR: "Costa Rica",
+  CI: "Côte d'Ivoire", HR: "Croatia", CU: "Cuba", CY: "Cyprus", CZ: "Czech Republic",
+  DK: "Denmark", DJ: "Djibouti", DM: "Dominica", DO: "Dominican Republic",
+  EC: "Ecuador", EG: "Egypt", SV: "El Salvador", GQ: "Equatorial Guinea",
+  ER: "Eritrea", EE: "Estonia", SZ: "Eswatini", ET: "Ethiopia", FJ: "Fiji",
+  FI: "Finland", FR: "France", GA: "Gabon", GM: "Gambia", GE: "Georgia",
+  DE: "Germany", GH: "Ghana", GR: "Greece", GD: "Grenada", GT: "Guatemala",
+  GN: "Guinea", GW: "Guinea-Bissau", GY: "Guyana", HT: "Haiti", HN: "Honduras",
+  HU: "Hungary", IS: "Iceland", IN: "India", ID: "Indonesia", IR: "Iran",
+  IQ: "Iraq", IE: "Ireland", IL: "Israel", IT: "Italy", JM: "Jamaica",
+  JP: "Japan", JO: "Jordan", KZ: "Kazakhstan", KE: "Kenya", KI: "Kiribati",
+  KW: "Kuwait", KG: "Kyrgyzstan", LA: "Laos", LV: "Latvia", LB: "Lebanon",
+  LS: "Lesotho", LR: "Liberia", LY: "Libya", LI: "Liechtenstein", LT: "Lithuania",
+  LU: "Luxembourg", MG: "Madagascar", MW: "Malawi", MY: "Malaysia", MV: "Maldives",
+  ML: "Mali", MT: "Malta", MH: "Marshall Islands", MR: "Mauritania", MU: "Mauritius",
+  MX: "Mexico", FM: "Micronesia", MD: "Moldova", MC: "Monaco", MN: "Mongolia",
+  ME: "Montenegro", MA: "Morocco", MZ: "Mozambique", MM: "Myanmar", NA: "Namibia",
+  NR: "Nauru", NP: "Nepal", NL: "Netherlands", NZ: "New Zealand", NI: "Nicaragua",
+  NE: "Niger", NG: "Nigeria", NO: "Norway", OM: "Oman", PK: "Pakistan",
+  PW: "Palau", PA: "Panama", PG: "Papua New Guinea", PY: "Paraguay", PE: "Peru",
+  PH: "Philippines", PL: "Poland", PT: "Portugal", QA: "Qatar", RO: "Romania",
+  RU: "Russia", RW: "Rwanda", KN: "Saint Kitts and Nevis", LC: "Saint Lucia",
+  VC: "Saint Vincent and the Grenadines", WS: "Samoa", SM: "San Marino",
+  ST: "Sao Tome and Principe", SA: "Saudi Arabia", SN: "Senegal", RS: "Serbia",
+  SC: "Seychelles", SL: "Sierra Leone", SG: "Singapore", SK: "Slovakia",
+  SI: "Slovenia", SB: "Solomon Islands", SO: "Somalia", ZA: "South Africa",
+  SS: "South Sudan", ES: "Spain", LK: "Sri Lanka", SD: "Sudan", SR: "Suriname",
+  SE: "Sweden", CH: "Switzerland", SY: "Syria", TW: "Taiwan", TJ: "Tajikistan",
+  TZ: "Tanzania", TH: "Thailand", TL: "Timor-Leste", TG: "Togo", TO: "Tonga",
+  TT: "Trinidad and Tobago", TN: "Tunisia", TR: "Turkey", TM: "Turkmenistan",
+  TV: "Tuvalu", UG: "Uganda", UA: "Ukraine", AE: "United Arab Emirates",
+  GB: "United Kingdom", US: "United States", UY: "Uruguay", UZ: "Uzbekistan",
+  VU: "Vanuatu", VE: "Venezuela", VN: "Vietnam", YE: "Yemen", ZM: "Zambia",
+  ZW: "Zimbabwe", PS: "Palestine", XK: "Kosovo", TF: "French Southern Territories",
+};
+
+function getCountryName(value) {
+  if (!value) return "—";
+  const upper = value.trim().toUpperCase();
+  // If it's a 2-letter code, look it up
+  if (upper.length === 2 && COUNTRY_NAMES[upper]) return COUNTRY_NAMES[upper];
+  // If it's a 3-letter code or already a full name, return as-is
+  return value;
+}
+
 // ✅ FIX: parse any lastLogin format correctly
 function parseLastLogin(u) {
   // Priority 1: Firestore Timestamp
@@ -157,7 +212,8 @@ export default function UserManagementPanel({ users, onRefresh, showToast, extra
       !search.trim() ||
       u.name?.toLowerCase().includes(search.toLowerCase()) ||
       u.email?.toLowerCase().includes(search.toLowerCase()) ||
-      u.country?.toLowerCase().includes(search.toLowerCase())
+      u.country?.toLowerCase().includes(search.toLowerCase()) ||
+      getCountryName(u.country)?.toLowerCase().includes(search.toLowerCase())
     ),
     [users, search]
   );
@@ -342,8 +398,8 @@ export default function UserManagementPanel({ users, onRefresh, showToast, extra
         <div style={{
           display: "grid",
           gridTemplateColumns: hasExtraActions
-            ? "44px 1fr 1fr 120px 100px 140px 80px 44px"
-            : "44px 1fr 1fr 120px 100px 140px 80px",
+            ? "44px 1fr 1fr 160px 100px 140px 80px 44px"
+            : "44px 1fr 1fr 160px 100px 140px 80px",
           padding: "10px 16px", borderBottom: "1px solid var(--border)",
           background: "var(--bg3)", fontSize: 11, fontWeight: 800,
           color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.06em",
@@ -386,8 +442,8 @@ export default function UserManagementPanel({ users, onRefresh, showToast, extra
                   style={{
                     display: "grid",
                     gridTemplateColumns: hasExtraActions
-                      ? "44px 1fr 1fr 120px 100px 140px 80px 44px"
-                      : "44px 1fr 1fr 120px 100px 140px 80px",
+                      ? "44px 1fr 1fr 160px 100px 140px 80px 44px"
+                      : "44px 1fr 1fr 160px 100px 140px 80px",
                     padding: "12px 16px", gap: 8,
                     background: isChecked ? "rgba(99,102,241,0.06)" : "transparent",
                     alignItems: "center", transition: "background 0.15s",
@@ -432,9 +488,9 @@ export default function UserManagementPanel({ users, onRefresh, showToast, extra
                     {u.email || "—"}
                   </div>
 
-                  {/* Country */}
-                  <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                    {u.country || "—"}
+                  {/* Country — full name */}
+                  <div style={{ fontSize: 12, color: "var(--text3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={getCountryName(u.country)}>
+                    {getCountryName(u.country)}
                   </div>
 
                   {/* Join date */}
