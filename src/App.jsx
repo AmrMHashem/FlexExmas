@@ -1,5 +1,7 @@
-// App.jsx — FlexExams v5.0 — History Router Edition (SEO-Optimized)
+// App.jsx — FlexExams v5.1 — URL Filter Routing
 // ✅ History API routing — clean URLs /topics /exams /exam/slug
+// ✅ /exams/topic/IT-Fundamentals — topic filter in URL
+// ✅ /exams/vendor/Cisco — vendor filter in URL
 // ✅ No more # in URLs → better SEO & social sharing
 // ✅ Per-page canonical + og:url updates
 // ✅ Structured data per page (BreadcrumbList + WebPage)
@@ -41,7 +43,7 @@ const CareerDiagnostic  = lazy(() => import("./pages/CareerDiagnostic"));
 const Pricing           = lazy(() => import("./pages/Pricing"));
 const Leaderboard       = lazy(() => import("./pages/Leaderboard"));
 const Checkout          = lazy(() => import("./pages/Checkout"));
-const Terms             = lazy(() => import("./pages/Terms"));   // ✅ إضافة Terms
+const Terms             = lazy(() => import("./pages/Terms"));
 
 // ── Page fallback spinner ─────────────────────────────────────────
 const PageFallback = () => (
@@ -70,6 +72,19 @@ const slugify = (text) =>
     .slice(0, 70) || "exam";
 
 // ─────────────────────────────────────────────────────────────────
+// filterSlugify — slug للفلتر (يحافظ على الأحرف الكبيرة والمسافات→-)
+// ─────────────────────────────────────────────────────────────────
+export const filterSlugify = (text) =>
+  (text || "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9\u0600-\u06FF\-_.]/g, "")
+    .slice(0, 80);
+
+export const filterDeslugify = (slug) =>
+  (slug || "").replace(/-/g, " ").trim();
+
+// ─────────────────────────────────────────────────────────────────
 // ROUTE MAP — pathname → page key
 // ─────────────────────────────────────────────────────────────────
 const ROUTE_MAP = {
@@ -92,11 +107,11 @@ const ROUTE_MAP = {
   "/leaderboard":        "leaderboard",
   "/referral":           "referral",
   "/checkout":           "checkout",
-  "/terms":              "terms",          // ✅ إضافة Terms
+  "/terms":              "terms",
 };
 
 // ─────────────────────────────────────────────────────────────────
-// getStateFromPath — يقرأ الـ pathname ويحدد الصفحة والـ slug
+// getStateFromPath — يقرأ الـ pathname ويحدد الصفحة + الفلاتر
 // ─────────────────────────────────────────────────────────────────
 const getStateFromPath = (pathname = window.location.pathname) => {
   const clean = pathname.replace(/\/$/, "") || "/";
@@ -104,11 +119,23 @@ const getStateFromPath = (pathname = window.location.pathname) => {
   // /exam/aws-solutions-architect-saa-c03
   if (clean.startsWith("/exam/")) {
     const slug = clean.replace("/exam/", "").trim();
-    return { page: "exam-detail", slug };
+    return { page: "exam-detail", slug, vendorFilter: null, topicFilter: null };
+  }
+
+  // /exams/topic/IT-Fundamentals
+  if (clean.startsWith("/exams/topic/")) {
+    const topicSlug = clean.replace("/exams/topic/", "").trim();
+    return { page: "exams", slug: null, vendorFilter: null, topicFilter: filterDeslugify(topicSlug) };
+  }
+
+  // /exams/vendor/Cisco
+  if (clean.startsWith("/exams/vendor/")) {
+    const vendorSlug = clean.replace("/exams/vendor/", "").trim();
+    return { page: "exams", slug: null, vendorFilter: filterDeslugify(vendorSlug), topicFilter: null };
   }
 
   const page = ROUTE_MAP[clean] || "home";
-  return { page, slug: null };
+  return { page, slug: null, vendorFilter: null, topicFilter: null };
 };
 
 // ─────────────────────────────────────────────────────────────────
@@ -202,7 +229,7 @@ const PAGE_META = {
     description: "Complete your FlexExams purchase securely via PayPal.",
     path: "/checkout",
   },
-  terms: {   // ✅ إضافة Terms
+  terms: {
     title: "Terms of Service & Privacy Policy — FlexExams",
     description: "Read FlexExams terms of service, privacy policy, and cookie policy. Learn how we protect your data and what rights you have.",
     path: "/terms",
@@ -250,7 +277,7 @@ function injectJsonLd(id, data) {
   el.textContent = JSON.stringify(data);
 }
 
-function updatePageSEO(page, activeExam) {
+function updatePageSEO(page, activeExam, activeFilter) {
   const OG_IMAGE = "https://www.flexexams.com/og-image.png";
 
   if (page === "exam-detail" && activeExam) {
@@ -276,6 +303,36 @@ function updatePageSEO(page, activeExam) {
         { "@type": "ListItem", "position": 1, "name": "Home",  "item": "https://www.flexexams.com/" },
         { "@type": "ListItem", "position": 2, "name": "Exams", "item": "https://www.flexexams.com/exams" },
         { "@type": "ListItem", "position": 3, "name": examTitle, "item": `https://www.flexexams.com${path}` },
+      ],
+    });
+    return;
+  }
+
+  // /exams مع فلتر
+  if (page === "exams" && (activeFilter?.vendor || activeFilter?.topic)) {
+    const filterLabel = activeFilter.topic || activeFilter.vendor;
+    const filterType  = activeFilter.topic ? "topic" : "vendor";
+    const filterSlug  = filterSlugify(filterLabel);
+    const path        = `/exams/${filterType}/${filterSlug}`;
+    const title       = `${filterLabel} Certification Exams — FlexExams`;
+    const desc        = `Browse ${filterLabel} practice exams on FlexExams. Real exam-style questions, timed tests, and instant results.`;
+
+    document.title = title;
+    setMeta("description", desc);
+    setCanonical(path);
+    setMeta("og:title",       title,    true);
+    setMeta("og:description", desc,     true);
+    setMeta("og:image",       OG_IMAGE, true);
+    setMeta("twitter:title",  title);
+    setMeta("twitter:description", desc);
+
+    injectJsonLd("ld-breadcrumb", {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "Home",  "item": "https://www.flexexams.com/" },
+        { "@type": "ListItem", "position": 2, "name": "Exams", "item": "https://www.flexexams.com/exams" },
+        { "@type": "ListItem", "position": 3, "name": filterLabel, "item": `https://www.flexexams.com${path}` },
       ],
     });
     return;
@@ -318,10 +375,10 @@ function updatePageSEO(page, activeExam) {
 // ─────────────────────────────────────────────────────────────────
 // usePageSEO hook
 // ─────────────────────────────────────────────────────────────────
-function usePageSEO(page, activeExam) {
+function usePageSEO(page, activeExam, activeFilter) {
   useEffect(() => {
-    updatePageSEO(page, activeExam);
-  }, [page, activeExam]);
+    updatePageSEO(page, activeExam, activeFilter);
+  }, [page, activeExam, activeFilter]);
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -493,7 +550,7 @@ h1,h2,h3,h4,h5,h6 { font-family: 'Plus Jakarta Sans',sans-serif; font-weight: 70
 `;
 
 // ─────────────────────────────────────────────────────────────────
-// QuotaBanner — shown when Firestore free-tier limit is exceeded
+// QuotaBanner
 // ─────────────────────────────────────────────────────────────────
 function QuotaBanner() {
   return (
@@ -538,7 +595,7 @@ function QuotaBanner() {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Loading Screen
+// LoadingScreen
 // ─────────────────────────────────────────────────────────────────
 function LoadingScreen() {
   return (
@@ -609,7 +666,10 @@ function AppInner() {
   const [page, setPage]               = useState(initialState.page);
   const [pendingSlug, setPendingSlug]  = useState(initialState.slug);
   const [authMode, setAuthMode]        = useState("login");
-  const [activeFilter, setActiveFilter] = useState({ vendor: null, topic: null });
+  const [activeFilter, setActiveFilter] = useState({
+    vendor: initialState.vendorFilter || null,
+    topic:  initialState.topicFilter  || null,
+  });
   const [activeExam, setActiveExam]    = useState(null);
   const [quizData, setQuizData]        = useState(null);
   const [resultData, setResultData]    = useState(null);
@@ -620,20 +680,12 @@ function AppInner() {
   const [checkoutData, setCheckoutData] = useState(null);
   const [, startTransition]            = useTransition();
 
+  // SEO — يتابع التغييرات
+  usePageSEO(page, activeExam, activeFilter);
+
   const showToast = useCallback((t) => {
     setToast(t);
     setTimeout(() => setToast(null), 4000);
-  }, []);
-
-  // Weekly counters auto-update function
-  const runWeeklyCountersUpdate = useCallback(async () => {
-    try {
-      const { runWeeklyCountersUpdate: update } = await import("./services/firestore");
-      await update();
-      console.log('[Info] Weekly counters updated successfully.');
-    } catch (err) {
-      console.warn('Weekly counters update failed:', err);
-    }
   }, []);
 
   // ── nav — دالة التنقل المركزية (History API) ─────────────────
@@ -642,7 +694,6 @@ function AppInner() {
       startTransition(() => {
         if (p === "auth") {
           setAuthMode(opts?.mode || "login");
-          // ── حفظ الصفحة الحالية قبل الانتقال لـ auth ─────────────
           try {
             const returnState = {
               page        : page,
@@ -662,11 +713,18 @@ function AppInner() {
         }
 
         if (p === "exams") {
-          setActiveFilter({
-            vendor: opts?.vendorFilter || null,
-            topic:  opts?.topicFilter  || null,
-          });
-          pushPath("/exams");
+          const vendor = opts?.vendorFilter || null;
+          const topic  = opts?.topicFilter  || null;
+          setActiveFilter({ vendor, topic });
+
+          // ── بناء الـ URL حسب الفلتر ──────────────────────────
+          if (topic) {
+            pushPath(`/exams/topic/${filterSlugify(topic)}`);
+          } else if (vendor) {
+            pushPath(`/exams/vendor/${filterSlugify(vendor)}`);
+          } else {
+            pushPath("/exams");
+          }
           setPage("exams");
           return;
         }
@@ -704,7 +762,7 @@ function AppInner() {
     [startTransition, page, activeExam, checkoutData]
   );
 
-  // ── handleReturnAfterAuth — يُستدعى من Auth بعد نجاح الـ login/register ──
+  // ── handleReturnAfterAuth ──────────────────────────────────────
   const handleReturnAfterAuth = useCallback(() => {
     try {
       const raw = sessionStorage.getItem("flexexams_return_to");
@@ -734,7 +792,6 @@ function AppInner() {
         return;
       }
 
-      // صفحة أخرى — نرجع لها
       const validPages = ["exams", "dashboard", "pricing", "my-exams", "favorites"];
       if (validPages.includes(state.page)) {
         nav(state.page);
@@ -758,7 +815,7 @@ function AppInner() {
   // ── مستمع لـ Back / Forward في المتصفح ──────────────────────
   useEffect(() => {
     const handlePopState = () => {
-      const { page: newPage, slug } = getStateFromPath();
+      const { page: newPage, slug, vendorFilter, topicFilter } = getStateFromPath();
 
       startTransition(() => {
         if (newPage === "exam-detail" && slug) {
@@ -771,6 +828,7 @@ function AppInner() {
               setPage("exam-detail");
             } else {
               window.history.replaceState(null, "", "/exams");
+              setActiveFilter({ vendor: null, topic: null });
               setPage("exams");
             }
           } else {
@@ -779,6 +837,13 @@ function AppInner() {
           }
           return;
         }
+
+        if (newPage === "exams") {
+          setActiveFilter({ vendor: vendorFilter, topic: topicFilter });
+          setPage("exams");
+          return;
+        }
+
         setPage(newPage);
       });
     };
@@ -854,14 +919,13 @@ function AppInner() {
     };
   }, [examsLoaded, isLoading, pendingSlug, showToast]);
 
-  // ── refreshExams — يُعاد استدعاؤه بعد أي تعديل على الأسئلة ──
+  // ── refreshExams ──────────────────────────────────────────────
   const refreshExams = useCallback(async () => {
     try {
       const { getExams } = await import("./services/firestore");
       const data = await getExams();
       const active = data.filter((ex) => ex.isActive !== false);
       setExams(active);
-      // إذا كان الاختبار الحالي مفتوحًا، نحدّث بياناته أيضًا
       if (activeExam) {
         const updated = active.find((ex) => ex.id === activeExam.id);
         if (updated) setActiveExam(updated);
@@ -873,7 +937,6 @@ function AppInner() {
 
   const [quotaExceeded, setQuotaExceeded] = React.useState(() => isFirestoreQuotaExceeded());
 
-  // Listen for global quota-exceeded event
   React.useEffect(() => {
     const handler = () => setQuotaExceeded(true);
     window.addEventListener("firestore:quota-exceeded", handler);
@@ -886,8 +949,6 @@ function AppInner() {
   return (
     <>
       <NavBar page={page} setPage={nav} showToast={showToast} extraLinks={[{page:"leaderboard",label:"🏆 Leaderboard"},{page:"referral",label:"🎁 Referral"}]} />
-
-      {/* Pricing button is now inside NavBar right actions */}
 
       <main
         key={page}
@@ -923,17 +984,17 @@ function AppInner() {
 
           {page === "contact" && <Contact showToast={showToast} />}
 
-          {page === "terms" && <Terms />}   {/* ✅ إضافة صفحة Terms */}
+          {page === "terms" && <Terms />}
 
-     {page === "exam-detail" && activeExam && (
-  <ExamDetail
-    exam={activeExam}
-    exams={exams}
-    setPage={nav}
-    startQuiz={startQuiz}
-    showToast={showToast}
-  />
-)}
+          {page === "exam-detail" && activeExam && (
+            <ExamDetail
+              exam={activeExam}
+              exams={exams}
+              setPage={nav}
+              startQuiz={startQuiz}
+              showToast={showToast}
+            />
+          )}
 
           {page === "exam-detail" && !activeExam && <PageFallback />}
 
@@ -1041,7 +1102,6 @@ export default function App() {
     if (!localStorage.getItem("theme")) localStorage.setItem("theme", saved);
     document.documentElement.setAttribute("data-theme", saved);
 
-    // Theme color meta
     let tc = document.querySelector("meta[name='theme-color']");
     if (!tc) {
       tc = document.createElement("meta");
@@ -1050,11 +1110,9 @@ export default function App() {
     }
     tc.content = saved === "dark" ? "#0d1223" : "#ffffff";
 
-    // Twitter card base
     setMeta("twitter:card", "summary_large_image");
     setMeta("twitter:site", "@FlexExams");
 
-    // Resource hints
     [
       { rel: "preconnect",   href: "https://fonts.googleapis.com" },
       { rel: "preconnect",   href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
@@ -1070,7 +1128,6 @@ export default function App() {
       document.head.appendChild(l);
     });
 
-    // Preload logo (LCP)
     if (!document.querySelector("link[rel='preload'][as='image']")) {
       const pl = document.createElement("link");
       pl.rel = "preload";
@@ -1079,7 +1136,6 @@ export default function App() {
       document.head.appendChild(pl);
     }
 
-    // Organization JSON-LD (persistent)
     injectJsonLd("ld-org", {
       "@context": "https://schema.org",
       "@type": "Organization",
