@@ -39,6 +39,17 @@ import {
 } from "../services/payment";
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Slugify helper
+// ─────────────────────────────────────────────────────────────────────────────
+const slugify = (text) =>
+  (text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0600-\u06FF\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 70) || 'exam';
+// ─────────────────────────────────────────────────────────────────────────────
 //  Stars
 // ─────────────────────────────────────────────────────────────────────────────
 const Stars = React.memo(function Stars({ rating = 5 }) {
@@ -608,28 +619,179 @@ export default function ExamDetail({ exam, exams: allExams = [], setPage, startQ
   const abortControllerRef = useRef(null);
   const cacheRef           = useRef({});
 
-  // ── SEO ──────────────────────────────────────────────────────────
-  // NOTE: This intentionally only sets <title> and the basic description/og
-  // meta tags as a fast first-paint for the exam itself. The canonical URL,
-  // og:url, and JSON-LD breadcrumb/structured-data are owned exclusively by
-  // App.jsx's updatePageSEO() to avoid both effects fighting over the same
-  // <link rel="canonical"> tag. Do not add canonical/og:url logic here.
-  useEffect(() => {
-    if (!exam) return;
-    document.title = `${exam.title} | FlexExams Certification Practice`;
-    const setMeta = (sel, attr, val, content) => {
-      let el = document.querySelector(sel);
-      if (!el) { el = document.createElement("meta"); el.setAttribute(attr, val); document.head.appendChild(el); }
-      el.setAttribute("content", content);
-    };
-    setMeta('meta[name="description"]', "name", "description", exam.description || exam.subtitle || `Prepare for ${exam.title} certification.`);
-    setMeta('meta[property="og:title"]', "property", "og:title", `${exam.title} - FlexExams`);
-    setMeta('meta[property="og:description"]', "property", "og:description", exam.description || `Test your knowledge with exam questions.`);
-    if (exam.image) setMeta('meta[property="og:image"]', "property", "og:image", exam.image);
-    const url = new URL(window.location.href);
-    const cpCode = url.searchParams.get("couponCode");
-    if (cpCode) setAutoApplyCoupon(cpCode);
-  }, [exam]);
+// ── SEO ──────────────────────────────────────────────────────────
+// ✅ v8.6 - Complete SEO with Structured Data, Breadcrumb, and Open Graph
+useEffect(() => {
+  if (!exam) return;
+
+  // ====== 1. TITLE ======
+  document.title = `${exam.title} | FlexExams Certification Practice`;
+
+  // ====== 2. DESCRIPTION ======
+  let metaDesc = document.querySelector('meta[name="description"]');
+  if (!metaDesc) {
+    metaDesc = document.createElement('meta');
+    metaDesc.name = 'description';
+    document.head.appendChild(metaDesc);
+  }
+  metaDesc.content = exam.description || exam.subtitle || `Practice ${exam.title} with real exam questions, timed simulations, and detailed explanations.`;
+
+  // ====== 3. KEYWORDS ======
+  let metaKeywords = document.querySelector('meta[name="keywords"]');
+  if (!metaKeywords) {
+    metaKeywords = document.createElement('meta');
+    metaKeywords.name = 'keywords';
+    document.head.appendChild(metaKeywords);
+  }
+  metaKeywords.content = `${exam.title}, ${exam.vendor || ''} certification, ${exam.category || ''} practice test, exam preparation, FlexExams`;
+
+  // ====== 4. CANONICAL ======
+  let canonical = document.querySelector('link[rel="canonical"]');
+  if (!canonical) {
+    canonical = document.createElement('link');
+    canonical.rel = 'canonical';
+    document.head.appendChild(canonical);
+  }
+  canonical.href = `https://www.flexexams.com/exam/${exam.slug || slugify(exam.title)}`;
+
+  // ====== 5. OPEN GRAPH ======
+  const ogProps = [
+    { property: 'og:title', content: `${exam.title} | FlexExams` },
+    { property: 'og:description', content: exam.description || `Practice ${exam.title} exam questions.` },
+    { property: 'og:url', content: `https://www.flexexams.com/exam/${exam.slug || slugify(exam.title)}` },
+    { property: 'og:type', content: 'website' },
+    { property: 'og:image', content: exam.image || 'https://www.flexexams.com/og-image.png' },
+  ];
+  ogProps.forEach(({ property, content }) => {
+    let meta = document.querySelector(`meta[property="${property}"]`);
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.setAttribute('property', property);
+      document.head.appendChild(meta);
+    }
+    meta.content = content;
+  });
+
+  // ====== 6. TWITTER CARD ======
+  const twitterProps = [
+    { name: 'twitter:card', content: 'summary_large_image' },
+    { name: 'twitter:title', content: `${exam.title} | FlexExams` },
+    { name: 'twitter:description', content: exam.description || `Practice ${exam.title} exam questions.` },
+    { name: 'twitter:image', content: exam.image || 'https://www.flexexams.com/og-image.png' },
+  ];
+  twitterProps.forEach(({ name, content }) => {
+    let meta = document.querySelector(`meta[name="${name}"]`);
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.name = name;
+      document.head.appendChild(meta);
+    }
+    meta.content = content;
+  });
+
+  // ====== 7. ROBOTS (ensure index/follow) ======
+  let robotsMeta = document.querySelector('meta[name="robots"]');
+  if (!robotsMeta) {
+    robotsMeta = document.createElement('meta');
+    robotsMeta.name = 'robots';
+    document.head.appendChild(robotsMeta);
+  }
+  robotsMeta.content = 'index, follow, max-image-preview:large, max-snippet:-1';
+
+  // ====== 8. STRUCTURED DATA: BREADCRUMB ======
+  let breadcrumbScript = document.querySelector('#breadcrumb-schema');
+  if (!breadcrumbScript) {
+    breadcrumbScript = document.createElement('script');
+    breadcrumbScript.id = 'breadcrumb-schema';
+    breadcrumbScript.type = 'application/ld+json';
+    document.head.appendChild(breadcrumbScript);
+  }
+  
+  const breadcrumbItems = [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://www.flexexams.com/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Exams",
+      "item": "https://www.flexexams.com/exams"
+    }
+  ];
+  
+  if (exam.topic) {
+    breadcrumbItems.push({
+      "@type": "ListItem",
+      "position": 3,
+      "name": exam.topic,
+      "item": `https://www.flexexams.com/topics/${slugify(exam.topic)}`
+    });
+  }
+  
+  breadcrumbItems.push({
+    "@type": "ListItem",
+    "position": exam.topic ? 4 : 3,
+    "name": exam.title,
+    "item": `https://www.flexexams.com/exam/${exam.slug || slugify(exam.title)}`
+  });
+  
+  breadcrumbScript.textContent = JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": breadcrumbItems
+  });
+
+  // ====== 9. STRUCTURED DATA: EXAM ======
+  let examSchema = document.querySelector('#exam-schema');
+  if (!examSchema) {
+    examSchema = document.createElement('script');
+    examSchema.id = 'exam-schema';
+    examSchema.type = 'application/ld+json';
+    document.head.appendChild(examSchema);
+  }
+  examSchema.textContent = JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "EducationalAudience",
+    "name": exam.title,
+    "description": exam.description || `Practice ${exam.title} certification exam.`,
+    "educationalRole": "student",
+    "audienceType": "Certification Candidate",
+    "provider": {
+      "@type": "Organization",
+      "name": "FlexExams",
+      "url": "https://www.flexexams.com"
+    },
+    "hasCourseInstance": {
+      "@type": "CourseInstance",
+      "courseMode": "online",
+      "name": exam.title,
+      "description": exam.description,
+      "duration": `PT${exam.duration || 60}M`,
+      "startDate": exam.publishedDate || new Date().toISOString().split('T')[0],
+      "hasCourseSchedule": {
+        "@type": "CourseSchedule",
+        "repeatFrequency": "P1M",
+        "duration": `PT${exam.duration || 60}M`
+      }
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": exam.pricing?.price || 0,
+      "priceCurrency": "USD",
+      "availability": "https://schema.org/InStock",
+      "url": `https://www.flexexams.com/exam/${exam.slug || slugify(exam.title)}`
+    }
+  });
+
+  // ====== 10. Auto-apply coupon from URL ======
+  const url = new URL(window.location.href);
+  const cpCode = url.searchParams.get("couponCode");
+  if (cpCode) setAutoApplyCoupon(cpCode);
+
+}, [exam]);
 
   // ── Auto-apply coupon from URL ────────────────────────────────────
   useEffect(() => {
