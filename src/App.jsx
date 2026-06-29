@@ -144,7 +144,7 @@ const getStateFromPath = (pathname = window.location.pathname) => {
 const PAGE_META = {
   home: {
     title: "FlexExams — Practice Smarter, Pass with Confidence",
-    description: "Prepare for 50+ IT certifications with real exam-style questions, timed practice tests, and instant results. Trusted by 100,000+ professionals worldwide.",
+    description: "FlexExams helps IT professionals prepare for Microsoft, AWS, CompTIA, Cisco, and ISC2 certification exams with realistic practice tests, detailed explanations, and instant results.",
     path: "/",
   },
   exams: {
