@@ -925,14 +925,15 @@ function AppInner() {
 
           {page === "terms" && <Terms />}   {/* ✅ إضافة صفحة Terms */}
 
-          {page === "exam-detail" && activeExam && (
-            <ExamDetail
-              exam={activeExam}
-              setPage={nav}
-              startQuiz={startQuiz}
-              showToast={showToast}
-            />
-          )}
+     {page === "exam-detail" && activeExam && (
+  <ExamDetail
+    exam={activeExam}
+    exams={exams}
+    setPage={nav}
+    startQuiz={startQuiz}
+    showToast={showToast}
+  />
+)}
 
           {page === "exam-detail" && !activeExam && <PageFallback />}
 
