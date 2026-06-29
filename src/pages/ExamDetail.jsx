@@ -1,10 +1,15 @@
-// pages/ExamDetail.jsx — v8.3 — Fixed mobile overflow issues
+// pages/ExamDetail.jsx — v8.5 — Fixed mobile overflow + Fixed SuggestedExams crash
 // ✅ Fixed: horizontal overflow on mobile devices
 // ✅ When applied coupon makes exam free, show a direct claim button
 // ✅ v8.4 FIX: re-check subscription access fresh before starting quiz
 //    (prevents expired subscription from granting quiz access when page was kept open)
+// ✅ v8.5 FIX: SuggestedExams no longer crashes the page — added missing Firestore
+//    imports, and falls back to vendor/topic matching from already-loaded exams
+//    when exam.suggested is not set (it never was being set anywhere in the app).
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { collection, query, where, documentId, getDocs } from "firebase/firestore";
+import { db } from "../firebase";
 import { useAuth } from "../hooks/useAuth";
 import {
   getQuestions,
@@ -438,9 +443,14 @@ function CouponInput({ examId, originalPrice, onApply, userId }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SuggestedExams — unchanged
+//  SuggestedExams — FIXED v8.5
+//  - Added missing Firestore imports (collection, query, where, documentId, getDocs, db)
+//  - If exam.suggested is set (array of exam IDs), fetch those specific docs
+//  - Otherwise (the common case, since nothing in the app sets `suggested`),
+//    fall back to matching same-vendor / same-topic exams from the already
+//    loaded `allExams` list — zero extra Firestore reads, zero crash risk.
 // ─────────────────────────────────────────────────────────────────────────────
-const SuggestedExams = React.memo(function SuggestedExams({ currentExam, setPage }) {
+const SuggestedExams = React.memo(function SuggestedExams({ currentExam, allExams = [], setPage }) {
   const [suggested, setSuggested] = useState([]);
   const [loading, setLoading]     = useState(true);
 
@@ -450,47 +460,45 @@ const SuggestedExams = React.memo(function SuggestedExams({ currentExam, setPage
   }, [setPage]);
 
   useEffect(() => {
-    if (!currentExam?.suggested?.length) {
-      setSuggested([]);
-      setLoading(false);
-      return;
-    }
-
-    const ids = currentExam.suggested.slice(0, 4);
-
+    if (!currentExam) { setSuggested([]); setLoading(false); return; }
     let mounted = true;
+    setLoading(true);
 
-    const fetchSuggested = async () => {
+    const buildFallback = () => {
+      const pool = allExams.filter(e => e.id !== currentExam.id && e.isActive !== false);
+      const sameVendor = pool.filter(
+        e => (e.vendor || "").toLowerCase() === (currentExam.vendor || "").toLowerCase() && currentExam.vendor
+      );
+      const sameTopic = pool.filter(
+        e => (e.topic || "").toLowerCase() === (currentExam.topic || "").toLowerCase() && currentExam.topic
+      );
+      const merged = [...sameVendor, ...sameTopic.filter(e => !sameVendor.includes(e))];
+      return merged.slice(0, 4);
+    };
+
+    const fetchExplicitSuggested = async () => {
+      const ids = (currentExam.suggested || []).filter(Boolean).slice(0, 4);
+      if (ids.length === 0) return null;
       try {
-        setLoading(true);
-
-        const q = query(
-          collection(db, "exams"),
-          where(documentId(), "in", ids)
-        );
-
+        const q = query(collection(db, "exams"), where(documentId(), "in", ids));
         const snapshot = await getDocs(q);
-
-        if (!mounted) return;
-
-        const data = snapshot.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        }));
-
-        setSuggested(data);
+        const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        return data.length > 0 ? data : null;
       } catch (err) {
-        console.error("SuggestedExams error:", err);
-        setSuggested([]);
-      } finally {
-        if (mounted) setLoading(false);
+        console.warn("SuggestedExams: explicit fetch failed, falling back:", err);
+        return null;
       }
     };
 
-    fetchSuggested();
+    (async () => {
+      const explicit = await fetchExplicitSuggested();
+      if (!mounted) return;
+      setSuggested(explicit || buildFallback());
+      setLoading(false);
+    })();
 
     return () => { mounted = false; };
-  }, [currentExam?.id, currentExam?.suggested]);
+  }, [currentExam?.id, currentExam?.suggested, allExams]);
 
   if (loading || !suggested.length) return null;
 
@@ -531,9 +539,52 @@ const SuggestedExams = React.memo(function SuggestedExams({ currentExam, setPage
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Breadcrumb — NEW v8.5
+//  Visual breadcrumb UI (in addition to the JSON-LD already injected by App.jsx)
+// ─────────────────────────────────────────────────────────────────────────────
+const Breadcrumb = React.memo(function Breadcrumb({ exam, setPage }) {
+  if (!exam) return null;
+  return (
+    <nav aria-label="Breadcrumb" style={{ marginBottom: 20, fontSize: 13, color: "var(--text3)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      <span role="button" tabIndex={0} onClick={() => setPage("home")}
+        onKeyDown={e => (e.key === "Enter" || e.key === " ") && setPage("home")}
+        style={{ cursor: "pointer", transition: "color 0.15s" }}
+        onMouseEnter={e => e.currentTarget.style.color = "var(--accent)"}
+        onMouseLeave={e => e.currentTarget.style.color = "var(--text3)"}>
+        Home
+      </span>
+      <span style={{ opacity: 0.5 }}>/</span>
+      <span role="button" tabIndex={0} onClick={() => setPage("exams")}
+        onKeyDown={e => (e.key === "Enter" || e.key === " ") && setPage("exams")}
+        style={{ cursor: "pointer", transition: "color 0.15s" }}
+        onMouseEnter={e => e.currentTarget.style.color = "var(--accent)"}
+        onMouseLeave={e => e.currentTarget.style.color = "var(--text3)"}>
+        Exams
+      </span>
+      {exam.topic && (
+        <>
+          <span style={{ opacity: 0.5 }}>/</span>
+          <span role="button" tabIndex={0} onClick={() => setPage("exams", { topicFilter: exam.topic })}
+            onKeyDown={e => (e.key === "Enter" || e.key === " ") && setPage("exams", { topicFilter: exam.topic })}
+            style={{ cursor: "pointer", transition: "color 0.15s" }}
+            onMouseEnter={e => e.currentTarget.style.color = "var(--accent)"}
+            onMouseLeave={e => e.currentTarget.style.color = "var(--text3)"}>
+            {exam.topic}
+          </span>
+        </>
+      )}
+      <span style={{ opacity: 0.5 }}>/</span>
+      <span style={{ color: "var(--text)", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>
+        {exam.title}
+      </span>
+    </nav>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Main ExamDetail Component
 // ─────────────────────────────────────────────────────────────────────────────
-export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
+export default function ExamDetail({ exam, exams: allExams = [], setPage, startQuiz, showToast }) {
   const { user, profile } = useAuth();
   const [questions, setQuestions]           = useState([]);
   const [fullQuestions, setFullQuestions]   = useState([]);
@@ -558,6 +609,11 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   const cacheRef           = useRef({});
 
   // ── SEO ──────────────────────────────────────────────────────────
+  // NOTE: This intentionally only sets <title> and the basic description/og
+  // meta tags as a fast first-paint for the exam itself. The canonical URL,
+  // og:url, and JSON-LD breadcrumb/structured-data are owned exclusively by
+  // App.jsx's updatePageSEO() to avoid both effects fighting over the same
+  // <link rel="canonical"> tag. Do not add canonical/og:url logic here.
   useEffect(() => {
     if (!exam) return;
     document.title = `${exam.title} | FlexExams Certification Practice`;
@@ -730,7 +786,6 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
   }, [user, exam?.id, showToast]);
 
   // ── handleStart — v8.4 FIX: always re-check access fresh before launching quiz
-  //    هذا يمنع الاشتراك المنتهي من منح وصول للاختبار لو ظل المستخدم في الصفحة
   const handleStart = useCallback(async (resumeProgress = false) => {
     if (exam.isActive === false) { showToast({ msg: "🔒 This exam is currently unavailable", type: "error" }); return; }
     let pool = fullQuestions.length > 0 ? [...fullQuestions] : [];
@@ -749,7 +804,6 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     }
 
     // ── v8.4 FIX: re-fetch access fresh every time quiz is started ──
-    // هذا يضمن أن الاشتراك المنتهي لا يمنح وصولاً حتى لو ظلت الصفحة مفتوحة
     const freshAccess = await checkUserAccess(user?.uid, exam.id);
     setUserAccess(freshAccess);
 
@@ -1109,9 +1163,11 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "36px clamp(16px, 4vw, 48px) 72px", overflowX: "hidden", width: "100%", boxSizing: "border-box" }}>
 
       <button onClick={() => setPage("home")}
-        style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, marginBottom: 28, minHeight: 40 }}>
+        style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, marginBottom: 16, minHeight: 40 }}>
         <Icon n="arrow_right" size={14} style={{ transform: "rotate(180deg)" }} /> Back to Exams
       </button>
+
+      <Breadcrumb exam={exam} setPage={setPage} />
 
       <div style={{ background: `linear-gradient(145deg,var(--surface) 0%,${ec}08 100%)`, border: `1px solid var(--border)`, borderRadius: 28, padding: "clamp(20px, 4vw, 28px)", marginBottom: 32, position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: -80, right: -80, width: 200, height: 200, borderRadius: "50%", background: `radial-gradient(circle,${ec}12,transparent 70%)`, pointerEvents: "none" }} />
@@ -1211,7 +1267,7 @@ export default function ExamDetail({ exam, setPage, startQuiz, showToast }) {
             </div>
           )}
 
-          <SuggestedExams currentExam={exam} setPage={setPage} />
+          <SuggestedExams currentExam={exam} allExams={allExams} setPage={setPage} />
         </div>
 
         <SmartStickyPanel topOffset={24}>
