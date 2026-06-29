@@ -142,8 +142,8 @@ ${body}
 </urlset>`;
 }
 
-export default async function handler(req, res) {
-  try {
+module.exports = async function handler(req, res) {
+      try {
     const now = Date.now();
     if (_cache.xml && (now - _cache.ts) < CACHE_TTL) {
       res.setHeader('Content-Type', 'application/xml; charset=utf-8');
