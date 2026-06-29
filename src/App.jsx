@@ -293,6 +293,8 @@ function updatePageSEO(page, activeExam, activeFilter) {
     setMeta("og:title",       title,    true);
     setMeta("og:description", desc,     true);
     setMeta("og:image",       OG_IMAGE, true);
+    setMeta("og:image:width", "1200", true);
+setMeta("og:image:height", "630", true);
     setMeta("twitter:title",  title);
     setMeta("twitter:description", desc);
 
