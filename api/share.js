@@ -1,12 +1,17 @@
-// api/share.js — FlexExams Social Share Handler v11
+// api/share.js — FlexExams Social Share Handler v13
 // ─────────────────────────────────────────────────────────────────────────────
-// Handles /exam/:slug as the single canonical URL for both humans and bots.
+// Handles /exam/:slug as the single canonical URL for humans, search engines,
+// and social-preview bots — each gets the correct treatment.
 //
 // FLOW:
-//   Bot  → serve OG HTML with full meta tags (no redirect)
+//   Search-engine bot (Googlebot, Google Inspection Tool, Bingbot...)
+//     → serve the REAL app HTML with real exam SEO injected, index/follow.
 //   Human Round 1 → redirect to /exam/:slug?_h=1
-//   Human Round 2 (_h=1) → read & serve the real index.html from disk
-//                           (React Router sees /exam/:slug and renders correctly)
+//   Human Round 2 (_h=1) → same real app HTML with real exam SEO injected,
+//                           index/follow (identical branch as search bots).
+//   Preview bot (Facebook, Twitter, Slack, SEO audit tools...)
+//     → thin OG-only placeholder HTML, noindex/nofollow (intentional —
+//       it's a snapshot for link previews, not the real page).
 //
 // WHY TWO ROUNDS FOR HUMANS:
 //   vercel.json routes /exam/:slug to this API. We can't redirect humans back
@@ -14,12 +19,34 @@
 //   which re-enters the API — but now the _h=1 flag tells us to serve index.html
 //   directly. The browser URL stays as /exam/:slug the whole time. ✅
 //
+// v12 FIX — "View Source shows no exam data":
+//   Round 2 used to send the raw built index.html untouched. The real exam
+//   title/description/OG/JSON-LD were only ever injected client-side by
+//   ExamDetail.jsx's useEffect, AFTER React mounts — so View Source / curl /
+//   any non-JS reader saw nothing exam-specific. Fixed by injecting the same
+//   exam metadata directly into the served index.html before sending it.
+//
+// v13 FIX — CRITICAL: "Googlebot was told noindex,nofollow":
+//   Googlebot, Google Inspection Tool (Search Console URL Inspection), and
+//   other real search-engine crawlers were previously classified the same as
+//   social-preview bots (Facebook, Twitter...) and routed to the thin OG-only
+//   botHtml(), which deliberately sets:
+//     <meta name="robots" content="noindex,nofollow">
+//     X-Robots-Tag: noindex, nofollow
+//   That is correct for a social-preview snapshot, but it actively blocked
+//   Google from indexing exam pages — almost certainly the real root cause
+//   of exam pages not being indexed, more so than the sitemap pagination bug.
+//   Search engines are now a separate category and take the same "real
+//   content, index/follow" branch as a real human visitor.
+//
 // ✅ Zero redirect loop
 // ✅ Browser URL always shows /exam/:slug — no address bar flash
 // ✅ React Router picks up /exam/:slug and renders the exam page normally
-// ✅ Bots get full OG + JSON-LD
-// ✅ In-process LRU cache (10 min TTL, 500 slugs)
-// ✅ Edge CDN cache for bot responses
+// ✅ Googlebot/Bingbot/etc. now get real content + index,follow (v13)
+// ✅ Humans get real content + index,follow (v12)
+// ✅ Social-preview bots still get the lightweight noindex OG card (unchanged, correct)
+// ✅ In-process LRU cache (10 min TTL, 500 slugs) for exam metadata
+// ✅ Edge CDN cache for all response branches
 // ─────────────────────────────────────────────────────────────────────────────
 
 import fs   from 'fs';
@@ -50,18 +77,45 @@ function cacheSet(k, v) {
 }
 
 // ── Bot Detection ─────────────────────────────────────────────────────────────
-const BOTS = [
-  'facebookexternalhit','facebot','facebook',
-  'linkedinbot','twitterbot','whatsapp','telegrambot',
-  'discordbot','slackbot','slack-imgproxy',
-  'googlebot','google-structured-data-testing-tool','google-inspectiontool',
-  'bingbot','msnbot','bingpreview','applebot',
-  'pinterestbot','redditbot','vkshare','vkrobot',
-  'semrushbot','ahrefsbot','mj12bot','dotbot','rogerbot',
-  'yandexbot','duckduckbot','ia_archiver','archive.org_bot',
-  'crawler','spider',
+// v13 FIX — CRITICAL: real search-engine crawlers (Googlebot, Google Inspection
+// Tool / Search Console URL Inspection, Bingbot, Yandex, DuckDuckBot...) were
+// being lumped together with social-preview bots (Facebook, Twitter, Slack...).
+// ALL of them were going through botHtml(), which deliberately sets
+//   <meta name="robots" content="noindex,nofollow">
+//   X-Robots-Tag: noindex, nofollow
+// That is correct for a social-preview snapshot (it's not the real page, no
+// reason for Google to index that thin placeholder) — but it is WRONG when
+// the visitor IS Google/Bing/etc., because it told Google point-blank not to
+// index the exam page at all. This was very likely the real reason exam pages
+// weren't getting indexed, more so than the sitemap issue.
+//
+// Fix: split into two lists.
+//   SEARCH_ENGINE_BOTS → these are genuine search engines that crawl AND
+//     render the page for indexing. They now get the SAME real index.html
+//     (with real exam SEO injected, index/follow) that a human gets — not
+//     the thin OG-only placeholder.
+//   PREVIEW_BOTS → social-card fetchers + SEO audit tools that just want OG
+//     tags for a preview/snapshot and never index anything themselves. These
+//     keep getting the lightweight botHtml() with noindex,nofollow, which is
+//     correct and intentional for them.
+const SEARCH_ENGINE_BOTS = [
+  'googlebot', 'google-inspectiontool', 'google-structured-data-testing-tool',
+  'googleother', 'storebot-google', 'google-extended',
+  'bingbot', 'msnbot', 'bingpreview',
+  'yandexbot', 'duckduckbot', 'baiduspider', 'applebot',
 ];
-const isBot = (ua = '') => { const u = ua.toLowerCase(); return BOTS.some(s => u.includes(s)); };
+const PREVIEW_BOTS = [
+  'facebookexternalhit', 'facebot', 'facebook',
+  'linkedinbot', 'twitterbot', 'whatsapp', 'telegrambot',
+  'discordbot', 'slackbot', 'slack-imgproxy',
+  'pinterestbot', 'redditbot', 'vkshare', 'vkrobot',
+  'semrushbot', 'ahrefsbot', 'mj12bot', 'dotbot', 'rogerbot',
+  'ia_archiver', 'archive.org_bot',
+  'crawler', 'spider',
+];
+const isSearchEngineBot = (ua = '') => { const u = ua.toLowerCase(); return SEARCH_ENGINE_BOTS.some(s => u.includes(s)); };
+const isPreviewBot      = (ua = '') => { const u = ua.toLowerCase(); return PREVIEW_BOTS.some(s => u.includes(s)); };
+const isBot             = (ua = '') => isSearchEngineBot(ua) || isPreviewBot(ua);
 
 // ── Sanitizers ────────────────────────────────────────────────────────────────
 const ESC = { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#x27;' };
@@ -154,9 +208,9 @@ async function fetchExam(slug) {
   return exam;
 }
 
-// ── OG HTML (bots only) ───────────────────────────────────────────────────────
-function botHtml({ title, desc, image, canonicalUrl }) {
-  const ld = JSON.stringify({ '@context':'https://schema.org', '@graph': [
+// ── JSON-LD builder (shared by bot HTML and human-injected HTML) ─────────────
+function buildJsonLd({ title, desc, image, canonicalUrl }) {
+  return JSON.stringify({ '@context':'https://schema.org', '@graph': [
     { '@type':'WebSite', '@id':`${BASE_URL}/#website`, name:SITE_NAME, url:BASE_URL },
     { '@type':'Organization', '@id':`${BASE_URL}/#organization`, name:SITE_NAME, url:BASE_URL,
       logo:{ '@type':'ImageObject', url:`${BASE_URL}/logo.png` } },
@@ -170,6 +224,12 @@ function botHtml({ title, desc, image, canonicalUrl }) {
       { '@type':'ListItem', position:3, name:title,   item:canonicalUrl },
     ]},
   ]});
+}
+
+// ── OG HTML (preview bots, or search-bot fallback when index.html is missing) ─
+function botHtml({ title, desc, image, canonicalUrl, indexable = false }) {
+  const ld = buildJsonLd({ title, desc, image, canonicalUrl });
+  const robots = indexable ? 'index, follow' : 'noindex,nofollow';
 
   return `<!DOCTYPE html>
 <html lang="en"><head>
@@ -177,7 +237,7 @@ function botHtml({ title, desc, image, canonicalUrl }) {
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>${title} | ${SITE_NAME}</title>
 <meta name="description"              content="${desc}"/>
-<meta name="robots"                   content="noindex,nofollow"/>
+<meta name="robots"                   content="${robots}"/>
 <link rel="canonical"                 href="${canonicalUrl}"/>
 <meta property="og:type"              content="website"/>
 <meta property="og:site_name"         content="${SITE_NAME}"/>
@@ -208,6 +268,56 @@ function botHtml({ title, desc, image, canonicalUrl }) {
 </body></html>`;
 }
 
+// ── v12 NEW: inject real exam SEO into the actual built index.html ──────────
+// Strips any default/generic SEO tags baked into the build, then inserts the
+// real exam-specific ones right before </head>. The rest of the file
+// (div#root, script bundles, etc.) is left completely untouched so React
+// mounts and behaves exactly as before.
+function stripExistingSeoTags(html) {
+  return html
+    .replace(/<title>[\s\S]*?<\/title>/i, '')
+    .replace(/<meta\s+name=["']description["'][^>]*>\s*/gi, '')
+    .replace(/<meta\s+name=["']robots["'][^>]*>\s*/gi, '')
+    .replace(/<meta\s+property=["']og:[^"']*["'][^>]*>\s*/gi, '')
+    .replace(/<meta\s+name=["']twitter:[^"']*["'][^>]*>\s*/gi, '')
+    .replace(/<link\s+rel=["']canonical["'][^>]*>\s*/gi, '');
+}
+
+function injectSeoIntoIndexHtml(html, { title, desc, image, canonicalUrl }) {
+  const ld = buildJsonLd({ title, desc, image, canonicalUrl });
+  const fullTitle = `${title} | ${SITE_NAME}`;
+
+  const tagsBlock = `<title>${fullTitle}</title>
+<meta name="description" content="${desc}"/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1"/>
+<link rel="canonical" href="${canonicalUrl}"/>
+<meta property="og:type" content="website"/>
+<meta property="og:site_name" content="${SITE_NAME}"/>
+<meta property="og:title" content="${fullTitle}"/>
+<meta property="og:description" content="${desc}"/>
+<meta property="og:url" content="${canonicalUrl}"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:image" content="${image}"/>
+<meta property="og:image:secure_url" content="${image}"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:alt" content="${title} — ${SITE_NAME}"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:site" content="${TWITTER_AT}"/>
+<meta name="twitter:title" content="${fullTitle}"/>
+<meta name="twitter:description" content="${desc}"/>
+<meta name="twitter:image" content="${image}"/>
+<script type="application/ld+json">${ld}</script>
+`;
+
+  const cleaned = stripExistingSeoTags(html);
+  if (cleaned.includes('</head>')) {
+    return cleaned.replace('</head>', `${tagsBlock}</head>`);
+  }
+  // No </head> found (shouldn't happen for a real built index.html) — prepend as a safe fallback
+  return tagsBlock + cleaned;
+}
+
 // ── Main Handler ──────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
   const raw  = (req.query.slug || '').trim();
@@ -217,10 +327,12 @@ export default async function handler(req, res) {
     return res.redirect(302, BASE_URL);
   }
 
-  const canonicalUrl = `${BASE_URL}/exam/${slug}`;
-  const ua           = req.headers['user-agent'] || '';
-  const bot          = isBot(ua);
-  const isHumanPass  = req.query._h === '1';
+  const canonicalUrl  = `${BASE_URL}/exam/${slug}`;
+  const ua            = req.headers['user-agent'] || '';
+  const searchBot     = isSearchEngineBot(ua);
+  const previewBot    = isPreviewBot(ua);
+  const bot           = searchBot || previewBot;
+  const isHumanPass   = req.query._h === '1';
 
   // ── Preserve all extra query params (e.g. couponCode) across the two-round flow ──
   // Build a clean params object: strip internal params (_h, slug, debug) but keep everything else
@@ -237,7 +349,6 @@ export default async function handler(req, res) {
   res.setHeader('X-Content-Type-Options',  'nosniff');
   res.setHeader('X-Frame-Options',         'SAMEORIGIN');
   res.setHeader('Referrer-Policy',         'strict-origin-when-cross-origin');
-  res.setHeader('X-Robots-Tag',            'noindex, nofollow');
 
   // ── Debug ──────────────────────────────────────────────────────────────────
   if (req.query.debug === '1') {
@@ -248,7 +359,7 @@ export default async function handler(req, res) {
     } catch {}
     res.setHeader('Content-Type', 'application/json');
     return res.status(200).json({
-      slug, isBot: bot, isHumanPass, ua,
+      slug, isSearchEngineBot: searchBot, isPreviewBot: previewBot, isBot: bot, isHumanPass, ua,
       canonicalUrl,
       indexHtmlFound: !!getIndexHtml(),
       cacheHit: cacheGet(slug) !== undefined,
@@ -258,16 +369,46 @@ export default async function handler(req, res) {
     });
   }
 
-  // ── HUMAN Round 2 (_h=1): serve real index.html ────────────────────────────
-  // Browser URL already shows /exam/:slug?couponCode=... — React Router renders normally.
-  if (!bot && isHumanPass) {
+  // ── SEARCH ENGINE BOT or HUMAN Round 2 (_h=1): serve real index.html, with
+  // real exam SEO injected — index, follow ───────────────────────────────────
+  // v13 FIX: Googlebot / Google Inspection Tool / Bingbot etc. now take this
+  // same branch as a real human visitor — they get the actual app shell with
+  // the real exam's title/description/OG/canonical/JSON-LD and an explicit
+  // "index, follow" robots tag. They do NOT get the thin noindex placeholder
+  // that social-preview bots get below.
+  if (searchBot || (!bot && isHumanPass)) {
     const html = getIndexHtml();
     if (html) {
-      res.setHeader('Cache-Control', 'no-store');
-      res.setHeader('Content-Type',  'text/html; charset=utf-8');
-      return res.status(200).send(html);
+      let exam = null;
+      try { exam = await fetchExam(slug); }
+      catch (e) { console.error('[share] fetchExam (real content):', e.message); }
+
+      const title = exam?.title || 'Certification Exam Practice';
+      const desc  = exam?.description || `Practice real ${title} questions on ${SITE_NAME}. Timed tests, instant feedback, and detailed explanations.`;
+      const image = exam?.image || OG_IMAGE;
+
+      const finalHtml = injectSeoIntoIndexHtml(html, { title, desc, image, canonicalUrl });
+
+      // Safe to cache briefly at the edge now — content is keyed purely by slug/exam data
+      res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=300, stale-while-revalidate=86400');
+      res.setHeader('Vary', 'User-Agent');
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      // Explicit: do NOT set X-Robots-Tag here — let the injected
+      // "index, follow" meta tag (and nothing else) govern indexing.
+      return res.status(200).send(finalHtml);
     }
-    // index.html not found on disk — redirect preserving extra params (minus _h)
+    // index.html not found on disk
+    if (searchBot) {
+      // Don't redirect a search engine into a redirect chain — fail safe with
+      // the OG-only page instead, still index,follow since it's still a real exam URL.
+      let exam = null;
+      try { exam = await fetchExam(slug); } catch {}
+      const title = exam?.title || 'Certification Exam Practice';
+      const desc  = exam?.description || `Practice real ${title} questions on ${SITE_NAME}.`;
+      const image = exam?.image || OG_IMAGE;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.status(200).send(botHtml({ title, desc, image, canonicalUrl, indexable: true }));
+    }
     console.error('[share] index.html not found on disk — falling back');
     const fallbackUrl = extraParams
       ? `${canonicalUrl}?${extraParams}#fallback`
@@ -281,7 +422,9 @@ export default async function handler(req, res) {
     return res.redirect(302, humanUrl);
   }
 
-  // ── BOT → OG HTML ─────────────────────────────────────────────────────────
+  // ── PREVIEW BOT (social cards, SEO audit tools) → thin OG-only HTML ────────
+  // Intentionally noindex,nofollow: this is a placeholder snapshot for link
+  // previews, not the real page — Google/Bing never land here (handled above).
   let exam = null;
   try { exam = await fetchExam(slug); }
   catch (e) { console.error('[share] fetchExam:', e.message); }
@@ -292,6 +435,7 @@ export default async function handler(req, res) {
 
   res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
   res.setHeader('Vary', 'User-Agent');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   return res.status(200).send(botHtml({ title, desc, image, canonicalUrl }));
 }
