@@ -142,7 +142,7 @@ ${body}
 </urlset>`;
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
       try {
     const now = Date.now();
     if (_cache.xml && (now - _cache.ts) < CACHE_TTL) {
