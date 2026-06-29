@@ -661,6 +661,8 @@ useEffect(() => {
     { property: 'og:url', content: `https://www.flexexams.com/exam/${exam.slug || slugify(exam.title)}` },
     { property: 'og:type', content: 'website' },
     { property: 'og:image', content: exam.image || 'https://www.flexexams.com/og-image.png' },
+    { property: 'og:image:width', content: '1200' },
+{ property: 'og:image:height', content: '630' },
   ];
   ogProps.forEach(({ property, content }) => {
     let meta = document.querySelector(`meta[property="${property}"]`);
