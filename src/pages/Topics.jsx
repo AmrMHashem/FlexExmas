@@ -565,7 +565,7 @@ export default function Topics({ setPage, setActiveExam, exams: propExams = [] }
               topExams={topic.exams.slice(0, 5)}
               examCount={topic.exams.length}
               avgPass={topic.avgPass}
-              onViewAll={() => setPage("exams", { topic: topic.name })}
+              onViewAll={() => setPage("exams", { topicFilter: topic.name })}
               onExamClick={handleExamClick}
               animIdx={idx}
             />
