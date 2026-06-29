@@ -305,7 +305,7 @@ const FilterPanel = React.memo(function FilterPanel({
 // ----------------------------------------------
 //  Main Exams Component with SEO
 // ----------------------------------------------
-export default function Exams({ setPage, setActiveExam, exams: allExams = [], vendorFilter, topicFilter, showToast }) {
+export default function Exams({ setPage, setActiveExam, exams: allExams = [], vendorFilter, topicFilter, showToast, topic }) {
   const { user } = useAuth();
   const [favorites, setFavorites] = useState([]);
   const [enrolledExamIds, setEnrolledExamIds] = useState([]);
@@ -417,8 +417,13 @@ export default function Exams({ setPage, setActiveExam, exams: allExams = [], ve
     if (vendorFilter && vendorFilter !== "All") { setSelectedVendor(vendorFilter); setVisibleCount(12); }
   }, [vendorFilter]);
   useEffect(() => {
-    if (topicFilter && topicFilter !== "All") { setSelectedTopic(topicFilter); setVisibleCount(12); }
-  }, [topicFilter]);
+  // دعم كل من topic (من الـ URL) و topicFilter (للتوافق)
+  const topicValue = topic || topicFilter;
+  if (topicValue && topicValue !== "All") { 
+    setSelectedTopic(topicValue); 
+    setVisibleCount(12); 
+  }
+}, [topic, topicFilter]);
 
   const toggleFavorite = useCallback(async (examId, isCurrentlyFav) => {
     if (!user) {
